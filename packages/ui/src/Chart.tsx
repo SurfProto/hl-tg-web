@@ -103,27 +103,6 @@ export function Chart({ candles, interval, onIntervalChange, currentPrice }: Cha
     }
   }, [candles]);
 
-  // Update current price line
-  useEffect(() => {
-    if (!candlestickSeriesRef.current || !currentPrice) return;
-
-    // Remove existing price line
-    const existingLines = candlestickSeriesRef.current.priceLines();
-    existingLines.forEach((line) => {
-      candlestickSeriesRef.current?.removePriceLine(line);
-    });
-
-    // Add new price line
-    candlestickSeriesRef.current.createPriceLine({
-      price: currentPrice,
-      color: '#6366f1',
-      lineWidth: 1,
-      lineStyle: 2, // Dashed
-      axisLabelVisible: true,
-      title: 'Current',
-    });
-  }, [currentPrice]);
-
   return (
     <div className="w-full">
       {/* Interval Selector */}

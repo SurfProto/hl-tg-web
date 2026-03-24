@@ -12,7 +12,8 @@
     "lint": "eslint . --ext ts,tsx"
   },
   "dependencies": {
-    "@repo/types": "workspace:*"
+    "@repo/types": "workspace:*",
+    "lightweight-charts": "^4.1.0"
   },
   "peerDependencies": {
     "react": "^18.0.0",

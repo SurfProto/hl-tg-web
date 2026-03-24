@@ -29,10 +29,26 @@ function AppContent() {
 }
 
 function App() {
+  const appId = import.meta.env.VITE_PRIVY_APP_ID;
+
+  // Debug: Check in browser console
+  console.log('=== PRIVY DEBUG ===');
+  console.log('App ID:', appId);
+  console.log('App ID type:', typeof appId);
+  console.log('App ID length:', appId?.length);
+
+  if (!appId) {
+    return (
+      <div style={{ color: 'red', padding: 40, fontSize: 24 }}>
+        ❌ VITE_PRIVY_APP_ID is undefined! Check Vercel env vars.
+      </div>
+    );
+  }
+
   return (
     <React.StrictMode>
       <PrivyProvider
-        appId={import.meta.env.VITE_PRIVY_APP_ID || 'YOUR_PRIVY_APP_ID'}
+        appId={appId}
         config={{
           appearance: {
             theme: 'dark',

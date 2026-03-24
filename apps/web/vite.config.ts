@@ -1,6 +1,5 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
@@ -9,18 +8,13 @@ export default defineConfig({
     port: 5174,
   },
   resolve: {
-    // Forces single React instance across all dependencies
+    // Forces single React instance across all dependencies (pnpm-compatible)
     dedupe: [
       'react',
       'react-dom',
       'react/jsx-runtime',
       'react/jsx-dev-runtime',
     ],
-    // Absolute path resolution as a fallback
-    alias: {
-      react: path.resolve(__dirname, 'node_modules/react'),
-      'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
-    },
   },
   build: {
     outDir: 'dist',

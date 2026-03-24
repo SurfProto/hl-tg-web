@@ -1,0 +1,14 @@
+{
+  "name": "@repo/typescript-config",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./base.json": "./base.json",
+    "./react.json": "./react.json",
+    "./nextjs.json": "./nextjs.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

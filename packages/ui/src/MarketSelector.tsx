@@ -1,0 +1,183 @@
+import React, { useState, useMemo } from 'react';
+import type { AnyMarket } from '@repo/types';
+
+interface MarketSelectorProps {
+  markets: AnyMarket[];
+  selectedMarket: string;
+  onSelectMarket: (market: string) => void;
+  prices?: Record<string, string>;
+  priceChanges?: Record<string, number>;
+}
+
+export function MarketSelector({
+  markets,
+  selectedMarket,
+  onSelectMarket,
+  prices = {},
+  priceChanges = {},
+}: MarketSelectorProps) {
+  const [search, setSearch] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+
+  const filteredMarkets = useMemo(() => {
+    return markets.filter((market) =>
+      market.name.toLowerCase().includes(search.toLowerCase())
+    );
+  }, [markets, search]);
+
+  const selectedMarketData = markets.find((m) => m.name === selectedMarket);
+  const currentPrice = prices[selectedMarket];
+  const currentChange = priceChanges[selectedMarket];
+
+  const formatPrice = (price: string | undefined) => {
+    if (!price) return '-';
+    const num = parseFloat(price);
+    if (num >= 1000) return num.toFixed(2);
+    if (num >= 1) return num.toFixed(4);
+    return num.toFixed(6);
+  };
+
+  const formatChange = (change: number | undefined) => {
+    if (change === undefined) return '';
+    const sign = change >= 0 ? '+' : '';
+    return `${sign}${(change * 100).toFixed(2)}%`;
+  };
+
+  return (
+    <div className="relative">
+      {/* Selected Market Button */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between px-4 py-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors"
+      >
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center">
+            <span className="text-sm font-bold">
+              {selectedMarket.slice(0, 2)}
+            </span>
+          </div>
+          <div className="text-left">
+            <div className="flex items-center space-x-2">
+              <p className="font-semibold">{selectedMarket}</p>
+              <span className="text-xs text-gray-500 px-1.5 py-0.5 bg-gray-700 rounded">
+                {selectedMarketData?.type === 'perp' ? 'PERP' : 'SPOT'}
+              </span>
+            </div>
+            <div className="flex items-center space-x-2 mt-0.5">
+              <p className="text-sm text-gray-300">
+                ${formatPrice(currentPrice)}
+              </p>
+              {currentChange !== undefined && (
+                <p className={`text-xs ${currentChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {formatChange(currentChange)}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+        <svg
+          className={`w-5 h-5 text-gray-400 transition-transform ${
+            isOpen ? 'rotate-180' : ''
+          }`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19 9l-7 7-7-7"
+          />
+        </svg>
+      </button>
+
+      {/* Dropdown */}
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 mt-2 bg-gray-900 border border-gray-800 rounded-lg shadow-xl z-50 max-h-96 overflow-hidden">
+          {/* Search */}
+          <div className="p-3 border-b border-gray-800">
+            <input
+              type="text"
+              placeholder="Search markets..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              autoFocus
+            />
+          </div>
+
+          {/* Market List */}
+          <div className="overflow-y-auto max-h-72">
+            {filteredMarkets.length === 0 ? (
+              <p className="text-center text-gray-500 py-4">No markets found</p>
+            ) : (
+              filteredMarkets.map((market) => {
+                const price = prices[market.name];
+                const change = priceChanges[market.name];
+
+                return (
+                  <button
+                    key={market.name}
+                    onClick={() => {
+                      onSelectMarket(market.name);
+                      setIsOpen(false);
+                      setSearch('');
+                    }}
+                    className={`w-full flex items-center justify-between px-4 py-3 hover:bg-gray-800 transition-colors ${
+                      market.name === selectedMarket ? 'bg-gray-800' : ''
+                    }`}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-gray-700 rounded-full flex items-center justify-center">
+                        <span className="text-xs font-bold">
+                          {market.name.slice(0, 2)}
+                        </span>
+                      </div>
+                      <div className="text-left">
+                        <div className="flex items-center space-x-2">
+                          <p className="font-medium">{market.name}</p>
+                          <span className="text-xs text-gray-500 px-1.5 py-0.5 bg-gray-700 rounded">
+                            {market.type === 'perp' ? 'PERP' : 'SPOT'}
+                          </span>
+                          {market.maxLeverage > 1 && (
+                            <span className="text-xs text-indigo-400">
+                              {market.maxLeverage}x
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center space-x-2 mt-0.5">
+                          <p className="text-sm text-gray-400">
+                            ${formatPrice(price)}
+                          </p>
+                          {change !== undefined && (
+                            <p className={`text-xs ${change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                              {formatChange(change)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    {market.name === selectedMarket && (
+                      <svg
+                        className="w-5 h-5 text-indigo-500"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

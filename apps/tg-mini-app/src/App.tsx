@@ -18,7 +18,7 @@ const queryClient = new QueryClient({
 
 // Seamless Telegram auth component
 function TelegramAuthGate({ children }: { children: React.ReactNode }) {
-  const { ready, authenticated, login } = usePrivy();
+  const { ready, authenticated, loginWithTelegram } = usePrivy();
 
   useEffect(() => {
     if (!ready || authenticated) return;
@@ -26,15 +26,10 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
     // Detect if running inside a Telegram Mini App
     const tg = (window as any).Telegram?.WebApp;
     if (tg?.initData) {
-      console.log('=== TELEGRAM MINI APP DETECTED ===');
-      console.log('Init data available:', !!tg.initData);
-      // Privy will auto-authenticate from Telegram's initData
-      // No manual login needed — zero-click onboarding!
-    } else {
-      console.log('=== NOT IN TELEGRAM MINI APP ===');
-      console.log('Running in regular browser — showing login options');
+      // Privy reads initData from window.Telegram.WebApp automatically
+      loginWithTelegram();
     }
-  }, [ready, authenticated, login]);
+  }, [ready, authenticated, loginWithTelegram]);
 
   if (!ready) {
     return (

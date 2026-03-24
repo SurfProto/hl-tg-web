@@ -4,8 +4,9 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { HyperliquidClient } from './client';
 import type { Order, WsMessage } from '@repo/types';
 
-// Create a singleton client instance
+// Singleton client instances
 let clientInstance: HyperliquidClient | null = null;
+let publicClientInstance: HyperliquidClient | null = null;
 
 function getClient(walletAddress: string, customSigner?: unknown, testnet?: boolean): HyperliquidClient {
   if (!clientInstance || clientInstance['walletAddress'] !== walletAddress) {
@@ -16,6 +17,18 @@ function getClient(walletAddress: string, customSigner?: unknown, testnet?: bool
     });
   }
   return clientInstance;
+}
+
+/**
+ * Hook to get a public Hyperliquid client instance (no wallet required)
+ * Use for market data: prices, orderbook, candles, etc.
+ */
+function usePublicHyperliquid() {
+  const testnet = import.meta.env.VITE_HYPERLIQUID_TESTNET === 'true';
+  if (!publicClientInstance) {
+    publicClientInstance = new HyperliquidClient({ testnet });
+  }
+  return { client: publicClientInstance };
 }
 
 /**
@@ -38,12 +51,11 @@ export function useHyperliquid() {
  * Hook to fetch market data
  */
 export function useMarketData() {
-  const { client } = useHyperliquid();
+  const { client } = usePublicHyperliquid();
 
   return useQuery({
     queryKey: ['markets'],
-    queryFn: () => client?.getMarkets(),
-    enabled: !!client,
+    queryFn: () => client.getMarkets(),
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 }
@@ -52,12 +64,11 @@ export function useMarketData() {
  * Hook to fetch all mid prices
  */
 export function useMids() {
-  const { client } = useHyperliquid();
+  const { client } = usePublicHyperliquid();
 
   return useQuery({
     queryKey: ['mids'],
-    queryFn: () => client?.getMids(),
-    enabled: !!client,
+    queryFn: () => client.getMids(),
     refetchInterval: 2000, // Refetch every 2 seconds
   });
 }
@@ -66,12 +77,12 @@ export function useMids() {
  * Hook to fetch orderbook
  */
 export function useOrderbook(coin: string) {
-  const { client } = useHyperliquid();
+  const { client } = usePublicHyperliquid();
 
   return useQuery({
     queryKey: ['orderbook', coin],
-    queryFn: () => client?.getOrderbook(coin),
-    enabled: !!client && !!coin,
+    queryFn: () => client.getOrderbook(coin),
+    enabled: !!coin,
     refetchInterval: 1000, // Refetch every second
   });
 }
@@ -80,12 +91,12 @@ export function useOrderbook(coin: string) {
  * Hook to fetch candles
  */
 export function useCandles(coin: string, interval: string = '1h') {
-  const { client } = useHyperliquid();
+  const { client } = usePublicHyperliquid();
 
   return useQuery({
     queryKey: ['candles', coin, interval],
-    queryFn: () => client?.getCandles(coin, interval),
-    enabled: !!client && !!coin,
+    queryFn: () => client.getCandles(coin, interval),
+    enabled: !!coin,
     staleTime: 1000 * 60, // 1 minute
   });
 }
@@ -227,12 +238,12 @@ export function useHistoricalOrders() {
  * Hook to fetch funding history
  */
 export function useFundingHistory(coin: string, startTime?: number) {
-  const { client } = useHyperliquid();
+  const { client } = usePublicHyperliquid();
 
   return useQuery({
     queryKey: ['fundingHistory', coin, startTime],
-    queryFn: () => client?.getFundingHistory(coin, startTime),
-    enabled: !!client && !!coin,
+    queryFn: () => client.getFundingHistory(coin, startTime),
+    enabled: !!coin,
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 }
@@ -241,12 +252,11 @@ export function useFundingHistory(coin: string, startTime?: number) {
  * Hook to fetch predicted funding rates
  */
 export function usePredictedFundingRates() {
-  const { client } = useHyperliquid();
+  const { client } = usePublicHyperliquid();
 
   return useQuery({
     queryKey: ['predictedFundingRates'],
-    queryFn: () => client?.getPredictedFundingRates(),
-    enabled: !!client,
+    queryFn: () => client.getPredictedFundingRates(),
     refetchInterval: 30000, // Refetch every 30 seconds
   });
 }
@@ -307,11 +317,11 @@ export function usePortfolio() {
  * Hook to subscribe to real-time orderbook updates
  */
 export function useOrderbookWs(coin: string) {
-  const { client } = useHyperliquid();
+  const { client } = usePublicHyperliquid();
   const [orderbook, setOrderbook] = useState<any>(null);
 
   useEffect(() => {
-    if (!client || !coin) return;
+    if (!coin) return;
 
     let unsubscribe: (() => void) | undefined;
 
@@ -340,11 +350,11 @@ export function useOrderbookWs(coin: string) {
  * Hook to subscribe to real-time trades
  */
 export function useTradesWs(coin: string) {
-  const { client } = useHyperliquid();
+  const { client } = usePublicHyperliquid();
   const [trades, setTrades] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!client || !coin) return;
+    if (!coin) return;
 
     let unsubscribe: (() => void) | undefined;
 
@@ -373,11 +383,11 @@ export function useTradesWs(coin: string) {
  * Hook to subscribe to real-time candle updates
  */
 export function useCandlesWs(coin: string, interval: string = '1m') {
-  const { client } = useHyperliquid();
+  const { client } = usePublicHyperliquid();
   const [candle, setCandle] = useState<any>(null);
 
   useEffect(() => {
-    if (!client || !coin) return;
+    if (!coin) return;
 
     let unsubscribe: (() => void) | undefined;
 
@@ -437,11 +447,10 @@ export function useUserEventsWs() {
  * Hook to subscribe to real-time mid prices
  */
 export function useMidsWs() {
-  const { client } = useHyperliquid();
+  const { client } = usePublicHyperliquid();
   const [mids, setMids] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (!client) return;
 
     let unsubscribe: (() => void) | undefined;
 
@@ -470,11 +479,10 @@ export function useMidsWs() {
  * Hook to manage WebSocket connection
  */
 export function useWebSocket() {
-  const { client } = useHyperliquid();
+  const { client } = usePublicHyperliquid();
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    if (!client) return;
 
     const checkConnection = () => {
       setIsConnected(client.isWsConnected());

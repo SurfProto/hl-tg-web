@@ -14,7 +14,7 @@ async function loadHyperliquidSDK() {
 }
 
 export interface HyperliquidClientConfig {
-  walletAddress: string;
+  walletAddress?: string;
   customSigner?: unknown;
   testnet?: boolean;
 }
@@ -37,7 +37,7 @@ export class HyperliquidClient {
     if (!this.client) {
       const SDK = await loadHyperliquidSDK();
       this.client = new SDK.Hyperliquid({
-        walletAddress: this.config.walletAddress,
+        walletAddress: this.config.walletAddress ?? '',
         customSigner: this.config.customSigner,
         testnet: this.testnet,
       });

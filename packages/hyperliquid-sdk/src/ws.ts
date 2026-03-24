@@ -97,9 +97,17 @@ export class WebSocketManager {
   }
 
   private handleMessage(data: WsMessage): void {
-    const channel = data.channel;
-    const callbacks = this.subscriptions.get(channel);
-    
+    let channelKey: string = data.channel;
+
+    if (data.channel === 'l2Book') {
+      channelKey = `l2Book:${data.data.coin}`;
+    } else if (data.channel === 'trades' && data.data.length > 0) {
+      channelKey = `trades:${data.data[0].coin}`;
+    } else if (data.channel === 'candle') {
+      channelKey = `candle:${data.data.s}:${data.data.i}`;
+    }
+
+    const callbacks = this.subscriptions.get(channelKey);
     if (callbacks) {
       callbacks.forEach((callback) => {
         try {

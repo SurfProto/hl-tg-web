@@ -27,7 +27,7 @@ export class HyperliquidClient {
   private config: HyperliquidClientConfig;
 
   constructor(config: HyperliquidClientConfig) {
-    this.walletAddress = config.walletAddress;
+    this.walletAddress = config.walletAddress ?? '';
     this.testnet = config.testnet ?? false;
     this.config = config;
     this.wsManager = new WebSocketManager(this.testnet);

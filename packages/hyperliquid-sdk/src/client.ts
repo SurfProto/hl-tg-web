@@ -131,14 +131,34 @@ export class HyperliquidClient {
   // Get orderbook
   async getOrderbook(coin: string) {
     const client = await this.getPublicClient();
-    return client.l2Book({ coin });
+    const raw = await client.l2Book({ coin });
+    return {
+      coin: raw.coin,
+      time: raw.time,
+      levels: {
+        bids: raw.levels[0].map((l: any) => ({ px: parseFloat(l.px), sz: parseFloat(l.sz), n: l.n })),
+        asks: raw.levels[1].map((l: any) => ({ px: parseFloat(l.px), sz: parseFloat(l.sz), n: l.n })),
+      },
+    };
   }
 
   // Get candles (last 7 days)
   async getCandles(coin: string, interval: string) {
     const client = await this.getPublicClient();
     const startTime = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    return client.candleSnapshot({ coin, interval, startTime });
+    const raw = await client.candleSnapshot({ coin, interval, startTime });
+    return raw.map((c: any) => ({
+      t: c.t,
+      T: c.T,
+      s: c.s,
+      i: c.i,
+      o: parseFloat(c.o),
+      h: parseFloat(c.h),
+      l: parseFloat(c.l),
+      c: parseFloat(c.c),
+      v: parseFloat(c.v),
+      n: c.n,
+    }));
   }
 
   // Get user state

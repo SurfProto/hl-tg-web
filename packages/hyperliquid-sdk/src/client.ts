@@ -8,7 +8,7 @@ let HyperliquidSDK: any = null;
 async function loadHyperliquidSDK() {
   if (!HyperliquidSDK) {
     const module = await import('@nktkas/hyperliquid');
-    HyperliquidSDK = module.default;
+    HyperliquidSDK = module;
   }
   return HyperliquidSDK;
 }
@@ -36,7 +36,7 @@ export class HyperliquidClient {
   private async getClient() {
     if (!this.client) {
       const SDK = await loadHyperliquidSDK();
-      this.client = new SDK({
+      this.client = new SDK.Hyperliquid({
         walletAddress: this.config.walletAddress,
         customSigner: this.config.customSigner,
         testnet: this.testnet,

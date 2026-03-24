@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PrivyProvider } from '@privy-io/react-auth';
 import { Layout } from './components/Layout';
@@ -18,27 +18,6 @@ const queryClient = new QueryClient({
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState<'trade' | 'positions' | 'portfolio'>('trade');
-
-  // Handle Telegram back button
-  useEffect(() => {
-    const tg = window.Telegram?.WebApp;
-    if (tg) {
-      tg.BackButton.onClick(() => {
-        if (activeTab !== 'trade') {
-          setActiveTab('trade');
-        } else {
-          tg.close();
-        }
-      });
-
-      // Show back button when not on trade page
-      if (activeTab !== 'trade') {
-        tg.BackButton.show();
-      } else {
-        tg.BackButton.hide();
-      }
-    }
-  }, [activeTab]);
 
   return (
     <Layout activeTab={activeTab} onTabChange={setActiveTab}>

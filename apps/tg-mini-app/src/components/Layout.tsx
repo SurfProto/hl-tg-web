@@ -1,5 +1,4 @@
-import React, { useEffect, useState } from 'react';
-import { useMiniApp, useViewport, useThemeParams, useHapticFeedback } from '@telegram-apps/sdk-react';
+import React from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 
 interface LayoutProps {
@@ -9,55 +8,22 @@ interface LayoutProps {
 }
 
 export function Layout({ children, activeTab, onTabChange }: LayoutProps) {
-  const miniApp = useMiniApp();
-  const viewport = useViewport();
-  const themeParams = useThemeParams();
-  const haptic = useHapticFeedback();
   const { login, authenticated, user, logout } = usePrivy();
 
-  useEffect(() => {
-    // Expand the Mini App to full height
-    miniApp?.expand();
-    viewport?.expand();
-  }, [miniApp, viewport]);
-
-  useEffect(() => {
-    // Apply Telegram theme
-    if (themeParams.bg_color) {
-      document.documentElement.style.setProperty('--tg-bg-color', themeParams.bg_color);
-    }
-    if (themeParams.text_color) {
-      document.documentElement.style.setProperty('--tg-text-color', themeParams.text_color);
-    }
-    if (themeParams.hint_color) {
-      document.documentElement.style.setProperty('--tg-hint-color', themeParams.hint_color);
-    }
-    if (themeParams.link_color) {
-      document.documentElement.style.setProperty('--tg-link-color', themeParams.link_color);
-    }
-    if (themeParams.button_color) {
-      document.documentElement.style.setProperty('--tg-button-color', themeParams.button_color);
-    }
-    if (themeParams.button_text_color) {
-      document.documentElement.style.setProperty('--tg-button-text-color', themeParams.button_text_color);
-    }
-  }, [themeParams]);
-
   const handleTabChange = (tab: 'trade' | 'positions' | 'portfolio') => {
-    haptic.impactOccurred('light');
     onTabChange(tab);
   };
 
   return (
-    <div className="min-h-screen bg-[var(--tg-bg-color,#000)] text-[var(--tg-text-color,#fff)] flex flex-col">
+    <div className="min-h-screen bg-black text-white flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-[var(--tg-bg-color,#000)] border-b border-gray-800 px-4 py-3 safe-area-top">
+      <header className="sticky top-0 z-50 bg-black border-b border-gray-800 px-4 py-3">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-bold">Hyperliquid</h1>
           <div className="flex items-center space-x-3">
-            {authenticated && (
+            {authenticated && user?.wallet?.address && (
               <span className="text-xs text-gray-500">
-                {user?.wallet?.address?.slice(0, 4)}...{user?.wallet?.address?.slice(-4)}
+                {user.wallet.address.slice(0, 4)}...{user.wallet.address.slice(-4)}
               </span>
             )}
             {authenticated ? (
@@ -85,7 +51,7 @@ export function Layout({ children, activeTab, onTabChange }: LayoutProps) {
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-[var(--tg-bg-color,#000)] border-t border-gray-800 px-4 py-2 safe-area-bottom z-50">
+      <nav className="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 px-4 py-2 z-50">
         <div className="flex justify-around max-w-lg mx-auto">
           <button
             onClick={() => handleTabChange('trade')}

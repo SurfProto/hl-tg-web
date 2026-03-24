@@ -58,6 +58,12 @@ function App() {
           embeddedWallets: {
             createOnLogin: 'users-without-wallets',
           },
+          // Disable Coinbase Wallet SDK to prevent SES Lockdown in Telegram Mini Apps
+          externalWallets: {
+            coinbaseWallet: {
+              connectionOptions: 'smartWalletOnly',
+            },
+          },
         }}
       >
         <QueryClientProvider client={queryClient}>

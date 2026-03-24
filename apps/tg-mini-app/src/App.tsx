@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { PrivyProvider } from '@privy-io/react-auth';
+import { PrivyProvider, usePrivy } from '@privy-io/react-auth';
 import { Layout } from './components/Layout';
 import { TradePage } from './pages/TradePage';
 import { PositionsPage } from './pages/PositionsPage';
@@ -16,15 +16,51 @@ const queryClient = new QueryClient({
   },
 });
 
+// Seamless Telegram auth component
+function TelegramAuthGate({ children }: { children: React.ReactNode }) {
+  const { ready, authenticated, login } = usePrivy();
+
+  useEffect(() => {
+    if (!ready || authenticated) return;
+
+    // Detect if running inside a Telegram Mini App
+    const tg = (window as any).Telegram?.WebApp;
+    if (tg?.initData) {
+      console.log('=== TELEGRAM MINI APP DETECTED ===');
+      console.log('Init data available:', !!tg.initData);
+      // Privy will auto-authenticate from Telegram's initData
+      // No manual login needed — zero-click onboarding!
+    } else {
+      console.log('=== NOT IN TELEGRAM MINI APP ===');
+      console.log('Running in regular browser — showing login options');
+    }
+  }, [ready, authenticated, login]);
+
+  if (!ready) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+
 function AppContent() {
   const [activeTab, setActiveTab] = useState<'trade' | 'positions' | 'portfolio'>('trade');
 
   return (
-    <Layout activeTab={activeTab} onTabChange={setActiveTab}>
-      {activeTab === 'trade' && <TradePage />}
-      {activeTab === 'positions' && <PositionsPage />}
-      {activeTab === 'portfolio' && <PortfolioPage />}
-    </Layout>
+    <TelegramAuthGate>
+      <Layout activeTab={activeTab} onTabChange={setActiveTab}>
+        {activeTab === 'trade' && <TradePage />}
+        {activeTab === 'positions' && <PositionsPage />}
+        {activeTab === 'portfolio' && <PortfolioPage />}
+      </Layout>
+    </TelegramAuthGate>
   );
 }
 
@@ -54,7 +90,7 @@ function App() {
             theme: 'dark',
             accentColor: '#6366f1',
           },
-          loginMethods: ['email', 'sms', 'google', 'telegram'],
+          loginMethods: ['email', 'sms', 'telegram'],
           embeddedWallets: {
             createOnLogin: 'users-without-wallets',
           },

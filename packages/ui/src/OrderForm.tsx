@@ -41,12 +41,10 @@ export function OrderForm({
   const [takeProfitPx, setTakeProfitPx] = useState('');
   const [stopLossPx, setStopLossPx] = useState('');
 
-  // Calculate order value
+  // Calculate order value (size is already in USD)
   const orderValue = useMemo(() => {
-    const sizeNum = parseFloat(size) || 0;
-    const priceNum = orderType === 'limit' ? (parseFloat(price) || 0) : (currentPrice || 0);
-    return sizeNum * priceNum;
-  }, [size, price, orderType, currentPrice]);
+    return parseFloat(size) || 0;
+  }, [size]);
 
   // Calculate margin required
   const marginRequired = useMemo(() => {
@@ -56,7 +54,7 @@ export function OrderForm({
   // Calculate liquidation price (simplified)
   const liquidationPrice = useMemo(() => {
     if (!currentPrice || leverage <= 1) return null;
-    const maintenanceMarginRate = 0.0625; // 6.25%
+    const maintenanceMarginRate = 0.005; // ~0.5% of notional (Hyperliquid high-leverage tier)
     if (side === 'buy') {
       return currentPrice * (1 - (1 / leverage) + maintenanceMarginRate);
     } else {
@@ -66,14 +64,15 @@ export function OrderForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!size) return;
+    const sizeNum = parseFloat(size);
+    if (!size || isNaN(sizeNum) || sizeNum <= 0) return;
 
     onPlaceOrder({
       coin,
       side,
       orderType,
       limitPx: orderType === 'limit' ? parseFloat(price) : undefined,
-      sz: parseFloat(size),
+      sz: currentPrice ? sizeNum / currentPrice : sizeNum,
       reduceOnly,
       leverage,
       takeProfitPx: showTpSl && takeProfitPx ? parseFloat(takeProfitPx) : undefined,
@@ -82,10 +81,9 @@ export function OrderForm({
   };
 
   const handlePercentageClick = (percentage: number) => {
-    if (!currentPrice || availableBalance <= 0) return;
-    const maxOrderValue = availableBalance * leverage * percentage;
-    const sizeValue = maxOrderValue / currentPrice;
-    setSize(sizeValue.toFixed(6));
+    if (availableBalance <= 0) return;
+    const maxUsd = availableBalance * leverage * percentage;
+    setSize(maxUsd.toFixed(2));
   };
 
   return (
@@ -156,6 +154,11 @@ export function OrderForm({
           onChange={(e) => setSize(e.target.value)}
           step="0.01"
         />
+        {size && currentPrice && parseFloat(size) > 0 && (
+          <span className="block text-xs text-gray-500 mt-1">
+            ≈ {(parseFloat(size) / currentPrice).toFixed(6)} {coin}
+          </span>
+        )}
         {/* Quick percentage buttons */}
         <div className="flex space-x-2 mt-2">
           {[0.25, 0.5, 0.75, 1].map((pct) => (

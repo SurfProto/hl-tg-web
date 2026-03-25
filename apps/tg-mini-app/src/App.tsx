@@ -20,6 +20,8 @@ const queryClient = new QueryClient({
 function TelegramAuthGate({ children }: { children: React.ReactNode }) {
   const { ready, authenticated, login } = usePrivy();
   const autoLoginAttempted = useRef(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   const isTMA = Boolean(window.Telegram?.WebApp?.initData);
 
@@ -31,12 +33,39 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
     tg.expand();
   }, [isTMA]);
 
-  // Auto-login in TMA context (seamless path) — fires only once
+  // Auto-login in TMA context (seamless path) — fires only once per retry
   useEffect(() => {
     if (!ready || authenticated || !isTMA || autoLoginAttempted.current) return;
     autoLoginAttempted.current = true;
-    login();
-  }, [ready, authenticated, isTMA, login]);
+    setAuthError(null);
+    (async () => {
+      try {
+        await (login as () => Promise<void>)();
+      } catch (err: unknown) {
+        setAuthError(err instanceof Error ? err.message : 'Login failed');
+      }
+    })();
+  }, [ready, authenticated, isTMA, login, retryCount]);
+
+  if (authError) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center p-6">
+        <div className="text-center space-y-4">
+          <p className="text-red-400">Authentication failed</p>
+          <p className="text-gray-500 text-sm">{authError}</p>
+          <button
+            onClick={() => {
+              autoLoginAttempted.current = false;
+              setRetryCount(c => c + 1);
+            }}
+            className="px-6 py-2 bg-indigo-600 rounded-lg text-sm"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!ready) {
     return (

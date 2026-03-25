@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { PortfolioSummary, Card, TestnetToggle } from '@repo/ui';
-import { useUserState, usePortfolio, useSpotBalance, useUsdClassTransfer, useWithdraw } from '@repo/hyperliquid-sdk';
+import { useUserState, usePortfolio, useSpotBalance, useUsdClassTransfer, useWithdraw, useArbitrumUsdcBalance, useBridgeToHyperliquid } from '@repo/hyperliquid-sdk';
 import { usePrivy } from '@privy-io/react-auth';
 
 type View = 'main' | 'deposit-choice' | 'deposit-fiat' | 'deposit-crypto' | 'withdraw' | 'transfer';
@@ -50,6 +51,9 @@ function DepositFiatView() {
 
 function DepositCryptoView({ address }: { address: string | undefined }) {
   const [copied, setCopied] = useState(false);
+  const [bridgeAmount, setBridgeAmount] = useState('');
+  const { data: arbUsdcBalance, isLoading: arbBalanceLoading } = useArbitrumUsdcBalance(address);
+  const bridge = useBridgeToHyperliquid();
 
   const handleCopy = () => {
     if (!address) return;
@@ -59,39 +63,88 @@ function DepositCryptoView({ address }: { address: string | undefined }) {
     });
   };
 
+  const handleBridge = () => {
+    const amt = parseFloat(bridgeAmount);
+    if (!amt || amt <= 0) return;
+    bridge.mutate({ amount: amt }, { onSuccess: () => setBridgeAmount('') });
+  };
+
   return (
     <div className="p-4 space-y-4">
       <h2 className="text-xl font-semibold">Deposit USDC</h2>
 
-      <div className="bg-gray-800 rounded-xl divide-y divide-gray-700">
-        <div className="flex justify-between items-center px-4 py-3">
-          <span className="text-gray-400">Token</span>
-          <span className="font-medium">USDC</span>
+      {/* Step 1 */}
+      <div className="space-y-1">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Step 1 — Receive USDC on Arbitrum</p>
+        <div className="bg-gray-800 rounded-xl divide-y divide-gray-700">
+          <div className="flex justify-between items-center px-4 py-3">
+            <span className="text-gray-400">Network</span>
+            <span className="font-medium">Arbitrum One</span>
+          </div>
+          <div className="flex justify-between items-center px-4 py-3">
+            <span className="text-gray-400">Wallet balance</span>
+            <span className={`font-medium ${(arbUsdcBalance ?? 0) > 0 ? 'text-green-400' : 'text-gray-400'}`}>
+              {arbBalanceLoading ? '…' : `${(arbUsdcBalance ?? 0).toFixed(2)} USDC`}
+            </span>
+          </div>
         </div>
-        <div className="flex justify-between items-center px-4 py-3">
-          <span className="text-gray-400">Network</span>
-          <span className="font-medium">Arbitrum One</span>
+
+        <div className="space-y-2 pt-1">
+          <p className="text-sm text-gray-400">Your Arbitrum address</p>
+          {address ? (
+            <>
+              <div className="bg-gray-800 rounded-xl px-4 py-3 font-mono text-sm break-all">{address}</div>
+              <button
+                onClick={handleCopy}
+                className="w-full py-3 bg-gray-700 hover:bg-gray-600 rounded-xl font-medium transition-colors"
+              >
+                {copied ? '✓ Copied!' : '📋 Copy address'}
+              </button>
+            </>
+          ) : (
+            <div className="bg-gray-800 rounded-xl px-4 py-3 text-gray-500 text-sm">Connect wallet to see your address</div>
+          )}
         </div>
       </div>
 
+      {/* Step 2 */}
       <div className="space-y-2">
-        <p className="text-sm text-gray-400">Your deposit address</p>
-        {address ? (
-          <>
-            <div className="bg-gray-800 rounded-xl px-4 py-3 font-mono text-sm break-all">
-              {address}
-            </div>
-            <button
-              onClick={handleCopy}
-              className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-medium transition-colors"
-            >
-              {copied ? '✓ Copied!' : '📋 Copy address'}
-            </button>
-          </>
-        ) : (
-          <div className="bg-gray-800 rounded-xl px-4 py-3 text-gray-500 text-sm">
-            Connect wallet to see your address
-          </div>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Step 2 — Bridge to Hyperliquid</p>
+        <p className="text-sm text-gray-400">Once you have USDC in your Arbitrum wallet, bridge it to start trading on Hyperliquid.</p>
+
+        <div className="flex space-x-2">
+          <input
+            type="number"
+            placeholder="Amount to bridge"
+            value={bridgeAmount}
+            onChange={(e) => setBridgeAmount(e.target.value)}
+            className="flex-1 bg-gray-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+          <button
+            onClick={() => setBridgeAmount((arbUsdcBalance ?? 0).toFixed(2))}
+            className="px-4 py-3 bg-gray-800 rounded-xl text-sm text-indigo-400 hover:bg-gray-700 transition-colors"
+          >
+            MAX
+          </button>
+        </div>
+
+        <button
+          onClick={handleBridge}
+          disabled={!bridgeAmount || parseFloat(bridgeAmount) <= 0 || bridge.isPending || !address}
+          className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-medium transition-colors"
+        >
+          {bridge.isPending
+            ? bridge.variables?.step === 'approve' ? 'Step 1/2: Approving USDC…' : 'Step 2/2: Bridging…'
+            : 'Bridge to Hyperliquid'}
+        </button>
+
+        {bridge.isSuccess && (
+          <p className="text-center text-sm text-green-400">Bridge submitted! HL balance updates in ~1 minute.</p>
+        )}
+        {bridge.isError && (
+          <p className="text-center text-sm text-red-400">
+            {bridge.error instanceof Error ? bridge.error.message : 'Bridge failed'}
+          </p>
         )}
       </div>
 
@@ -271,9 +324,22 @@ export function PortfolioPage() {
   const [view, setView] = useState<View>('main');
   const { authenticated, user } = usePrivy();
 
+  const queryClient = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+
   const { data: userState } = useUserState();
   const { data: portfolio } = usePortfolio();
   const { data: spotData } = useSpotBalance();
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['userState'] }),
+      queryClient.invalidateQueries({ queryKey: ['spotBalance'] }),
+      queryClient.invalidateQueries({ queryKey: ['arbitrumUsdc'] }),
+    ]);
+    setRefreshing(false);
+  };
 
   // TMA BackButton wiring
   useEffect(() => {
@@ -326,7 +392,18 @@ export function PortfolioPage() {
       </Card>
 
       {/* Portfolio Summary */}
-      <Card title="Portfolio">
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Portfolio</h2>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className={`text-gray-400 hover:text-white transition-colors disabled:opacity-40 text-xl leading-none select-none ${refreshing ? 'animate-spin' : ''}`}
+            title="Refresh balances"
+          >
+            ↻
+          </button>
+        </div>
         <PortfolioSummary
           accountState={userState || null}
           onDeposit={() => setView('deposit-choice')}

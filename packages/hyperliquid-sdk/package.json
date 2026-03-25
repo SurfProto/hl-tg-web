@@ -12,10 +12,11 @@
     "lint": "eslint . --ext ts"
   },
   "dependencies": {
-    "@repo/types": "workspace:*",
     "@nktkas/hyperliquid": "^0.15.0",
+    "@privy-io/react-auth": "^1.80.0",
+    "@repo/types": "workspace:*",
     "@tanstack/react-query": "^5.40.0",
-    "@privy-io/react-auth": "^1.80.0"
+    "viem": "^2.47.6"
   },
   "peerDependencies": {
     "react": "^18.0.0"

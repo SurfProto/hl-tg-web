@@ -25,6 +25,8 @@ export {
   useSpotBalance,
   useUsdClassTransfer,
   useWithdraw,
+  useArbitrumUsdcBalance,
+  useBridgeToHyperliquid,
   // WebSocket hooks
   useOrderbookWs,
   useTradesWs,

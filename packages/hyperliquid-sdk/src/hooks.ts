@@ -362,6 +362,92 @@ export function useWithdraw() {
   });
 }
 
+/**
+ * Hook to query USDC balance on Arbitrum (before bridging to HL)
+ */
+export function useArbitrumUsdcBalance(address: string | undefined) {
+  return useQuery({
+    queryKey: ['arbitrumUsdc', address],
+    queryFn: async () => {
+      const { createPublicClient, http, erc20Abi } = await import('viem');
+      const { arbitrum } = await import('viem/chains');
+      const client = createPublicClient({ chain: arbitrum, transport: http() });
+      const raw = await client.readContract({
+        address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+        abi: erc20Abi,
+        functionName: 'balanceOf',
+        args: [address as `0x${string}`],
+      });
+      return Number(raw) / 1e6; // USDC has 6 decimals
+    },
+    enabled: Boolean(address),
+    refetchInterval: 10000,
+  });
+}
+
+const USDC_ARBITRUM = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as const;
+const HL_BRIDGE_ARBITRUM = '0x2Df1c51E09aECF9cacB7bc98cB1742757f163dF7' as const;
+const BRIDGE_ABI = [
+  {
+    name: 'depositUsdc',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'amount', type: 'uint64' }],
+    outputs: [],
+  },
+] as const;
+
+/**
+ * Hook to bridge USDC from Arbitrum to Hyperliquid L1
+ * Two steps: (1) approve USDC to bridge contract, (2) call depositUsdc
+ */
+export function useBridgeToHyperliquid() {
+  const { getEthereumProvider } = usePrivy();
+  const queryClient = useQueryClient();
+  const [step, setStep] = useState<'idle' | 'approve' | 'deposit'>('idle');
+
+  const mutation = useMutation({
+    mutationFn: async ({ amount }: { amount: number }) => {
+      const { createWalletClient, custom, erc20Abi } = await import('viem');
+      const { arbitrum } = await import('viem/chains');
+
+      const provider = getEthereumProvider();
+      const walletClient = createWalletClient({ chain: arbitrum, transport: custom(provider) });
+      const [account] = await walletClient.getAddresses();
+      const amountRaw = BigInt(Math.floor(amount * 1e6));
+
+      setStep('approve');
+      await walletClient.writeContract({
+        address: USDC_ARBITRUM,
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [HL_BRIDGE_ARBITRUM, amountRaw],
+        account,
+        chain: arbitrum,
+      });
+
+      setStep('deposit');
+      await walletClient.writeContract({
+        address: HL_BRIDGE_ARBITRUM,
+        abi: BRIDGE_ABI,
+        functionName: 'depositUsdc',
+        args: [amountRaw],
+        account,
+        chain: arbitrum,
+      });
+
+      setStep('idle');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['userState'] });
+      queryClient.invalidateQueries({ queryKey: ['arbitrumUsdc'] });
+    },
+    onError: () => setStep('idle'),
+  });
+
+  return { ...mutation, variables: { ...mutation.variables, step } };
+}
+
 // WebSocket Hooks
 
 /**

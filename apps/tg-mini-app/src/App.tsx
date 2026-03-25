@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PrivyProvider, usePrivy } from '@privy-io/react-auth';
 import { Layout } from './components/Layout';
@@ -19,34 +19,24 @@ const queryClient = new QueryClient({
 // Seamless Telegram auth component
 function TelegramAuthGate({ children }: { children: React.ReactNode }) {
   const { ready, authenticated, login } = usePrivy();
-  const [authError, setAuthError] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
+  const autoLoginAttempted = useRef(false);
 
   const isTMA = Boolean(window.Telegram?.WebApp?.initData);
 
+  // TMA lifecycle: dismiss loading indicator + expand to full height (once)
   useEffect(() => {
-    if (!ready || authenticated) return;
-    if (!isTMA) return; // Non-TMA: skip auto-login, user clicks Connect manually
-
+    if (!isTMA) return;
     const tg = window.Telegram!.WebApp!;
-    tg.ready();   // Dismiss Telegram loading indicator
-    tg.expand();  // Expand to full height
+    tg.ready();
+    tg.expand();
+  }, [isTMA]);
 
-    setAuthError(false);
-    login({ loginMethods: ['telegram'] });
-
-    // Timeout: if not authenticated after 15s, show error
-    const timeout = setTimeout(() => {
-      setAuthError(true);
-    }, 15_000);
-
-    return () => clearTimeout(timeout);
-  }, [ready, authenticated, login, retryCount, isTMA]);
-
-  // Clear error when auth succeeds
+  // Auto-login in TMA context (seamless path) — fires only once
   useEffect(() => {
-    if (authenticated) setAuthError(false);
-  }, [authenticated]);
+    if (!ready || authenticated || !isTMA || autoLoginAttempted.current) return;
+    autoLoginAttempted.current = true;
+    login();
+  }, [ready, authenticated, isTMA, login]);
 
   if (!ready) {
     return (
@@ -59,33 +49,7 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (authError && !authenticated) {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-center p-6">
-          <p className="text-gray-300 mb-2">Connection is taking longer than expected</p>
-          <p className="text-gray-500 text-sm mb-6">Please check your connection and try again</p>
-          <button
-            onClick={() => setRetryCount(c => c + 1)}
-            className="px-6 py-2 bg-indigo-600 rounded-lg hover:bg-indigo-500 transition-colors"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      {!isTMA && !authenticated && (
-        <div className="bg-indigo-900/30 text-center py-2 text-sm text-indigo-300">
-          Open in Telegram for the best experience
-        </div>
-      )}
-      {children}
-    </>
-  );
+  return <>{children}</>;
 }
 
 function AppContent() {
@@ -122,7 +86,6 @@ function App() {
             theme: 'dark',
             accentColor: '#6366f1',
           },
-          loginMethods: ['email', 'sms', 'telegram'],
           embeddedWallets: {
             createOnLogin: 'users-without-wallets',
           },

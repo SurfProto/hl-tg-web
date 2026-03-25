@@ -32,7 +32,6 @@ if (!appId) {
             theme: 'dark',
             accentColor: '#6366f1',
           },
-          loginMethods: ['email', 'sms', 'google', 'wallet'],
           embeddedWallets: {
             createOnLogin: 'users-without-wallets',
           },

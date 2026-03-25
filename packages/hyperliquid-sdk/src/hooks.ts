@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { usePrivy } from '@privy-io/react-auth';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { HyperliquidClient } from './client';
 import type { Order, WsMessage } from '@repo/types';
@@ -9,7 +9,9 @@ let clientInstance: HyperliquidClient | null = null;
 let publicClientInstance: HyperliquidClient | null = null;
 
 function getClient(walletAddress: string, customSigner?: unknown, testnet?: boolean): HyperliquidClient {
-  if (!clientInstance || clientInstance['walletAddress'] !== walletAddress) {
+  const addressChanged = clientInstance?.['walletAddress'] !== walletAddress;
+  const signerChanged = clientInstance?.['config']?.customSigner !== customSigner;
+  if (!clientInstance || addressChanged || (signerChanged && customSigner)) {
     clientInstance = new HyperliquidClient({
       walletAddress,
       customSigner,
@@ -35,15 +37,23 @@ function usePublicHyperliquid() {
  * Hook to get the Hyperliquid client instance
  */
 export function useHyperliquid() {
-  const { user, getEthereumProvider } = usePrivy();
-  const provider = getEthereumProvider();
+  const { user } = usePrivy();
+  const { wallets } = useWallets();
+  const [provider, setProvider] = useState<unknown>(null);
   const testnet = import.meta.env.VITE_HYPERLIQUID_TESTNET === 'true';
+
+  // getEthereumProvider() is async on ConnectedWallet — resolve it once and store
+  const embeddedWallet = wallets.find(w => w.walletClientType === 'privy');
+  useEffect(() => {
+    if (!embeddedWallet) return;
+    embeddedWallet.getEthereumProvider().then(setProvider);
+  }, [embeddedWallet]);
 
   if (!user?.wallet?.address) {
     return { client: null, isConnected: false };
   }
 
-  const client = getClient(user.wallet.address, provider, testnet);
+  const client = getClient(user.wallet.address, provider ?? undefined, testnet);
   return { client, isConnected: true };
 }
 
@@ -402,7 +412,7 @@ const BRIDGE_ABI = [
  * Two steps: (1) approve USDC to bridge contract, (2) call depositUsdc
  */
 export function useBridgeToHyperliquid() {
-  const { getEthereumProvider } = usePrivy();
+  const { wallets } = useWallets();
   const queryClient = useQueryClient();
   const [step, setStep] = useState<'idle' | 'approve' | 'deposit'>('idle');
 
@@ -411,7 +421,9 @@ export function useBridgeToHyperliquid() {
       const { createWalletClient, custom, erc20Abi } = await import('viem');
       const { arbitrum } = await import('viem/chains');
 
-      const provider = getEthereumProvider();
+      const embeddedWallet = wallets.find(w => w.walletClientType === 'privy');
+      if (!embeddedWallet) throw new Error('No embedded wallet found');
+      const provider = await embeddedWallet.getEthereumProvider();
       const walletClient = createWalletClient({ chain: arbitrum, transport: custom(provider) });
       const [account] = await walletClient.getAddresses();
       const amountRaw = BigInt(Math.floor(amount * 1e6));

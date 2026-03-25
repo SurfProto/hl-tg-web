@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   MarketSelector,
   Chart,
@@ -15,8 +15,11 @@ import {
   useUserState,
   useBuilderFeeApproval,
   useApproveBuilderFee,
+  enrichMarkets,
+  CATEGORY_LABELS,
+  CATEGORY_ORDER,
 } from '@repo/hyperliquid-sdk';
-import type { OrderSide, OrderType } from '@repo/types';
+import type { OrderSide, OrderType, AnyMarket } from '@repo/types';
 import { useHaptics } from '../hooks/useHaptics';
 
 export function TradePage() {
@@ -106,15 +109,23 @@ export function TradePage() {
 
   // Handle price click from orderbook
   const handlePriceClick = (price: number) => {
-    // This would set the price in the order form
     console.log('Price clicked:', price);
   };
 
-  // Prepare market list
-  const allMarkets = [
-    ...(markets?.spot || []).map((t: any) => ({ ...t, type: 'spot' })),
-    ...(markets?.perp || []).map((m: any) => ({ ...m, type: 'perp' })),
-  ];
+  // Build enriched market list with categories and tags
+  const allMarkets: AnyMarket[] = useMemo(() => [
+    ...(markets?.spot || []).map((t: any) => ({ ...t, type: 'spot' as const })),
+    ...(markets?.perp || []).map((m: any) => ({ ...m, type: 'perp' as const })),
+  ], [markets]);
+
+  // Compute 24h price changes from mids + prevDayPx if available
+  // For now, priceChanges come from the mids data (we pass empty, the enrichment handles trending)
+  const priceChanges: Record<string, number> = {};
+
+  const enrichedMarkets = useMemo(
+    () => enrichMarkets(allMarkets, priceChanges),
+    [allMarkets],
+  );
 
   // Prepare prices for market selector
   const prices: Record<string, string> = {};
@@ -128,10 +139,13 @@ export function TradePage() {
     <div className="p-4 space-y-4">
       {/* Market Selector */}
       <MarketSelector
-        markets={allMarkets}
+        markets={enrichedMarkets}
         selectedMarket={selectedMarket}
         onSelectMarket={setSelectedMarket}
         prices={prices}
+        priceChanges={priceChanges}
+        categories={CATEGORY_ORDER}
+        categoryLabels={CATEGORY_LABELS}
       />
 
       {/* Chart */}

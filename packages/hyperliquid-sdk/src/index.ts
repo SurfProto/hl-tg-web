@@ -27,6 +27,7 @@ export {
   useWithdraw,
   useArbitrumUsdcBalance,
   useBridgeToHyperliquid,
+  type BridgeStep,
   // Builder fee hooks
   useBuilderFeeApproval,
   useApproveBuilderFee,
@@ -48,6 +49,15 @@ export {
   BUILDER_ADDRESS,
   BUILDER_FEE_TENTHS_BP,
 } from './builder';
+
+// Market classification
+export {
+  classifyMarket,
+  getMarketTags,
+  enrichMarkets,
+  CATEGORY_LABELS,
+  CATEGORY_ORDER,
+} from './market-categories';
 
 // WebSocket manager
 export { WebSocketManager } from './ws';

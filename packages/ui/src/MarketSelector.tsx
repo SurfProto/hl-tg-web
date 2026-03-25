@@ -1,13 +1,30 @@
 import React, { useState, useMemo } from 'react';
-import type { AnyMarket } from '@repo/types';
+import type { EnrichedMarket, MarketCategory } from '@repo/types';
 
 interface MarketSelectorProps {
-  markets: AnyMarket[];
+  markets: EnrichedMarket[];
   selectedMarket: string;
   onSelectMarket: (market: string) => void;
   prices?: Record<string, string>;
   priceChanges?: Record<string, number>;
+  categories?: MarketCategory[];
+  categoryLabels?: Record<string, string>;
 }
+
+const DEFAULT_CATEGORIES: MarketCategory[] = [
+  'all', 'perps', 'spot', 'crypto', 'tradfi', 'hip3', 'trending', 'prelaunch',
+];
+
+const DEFAULT_LABELS: Record<string, string> = {
+  all: 'All',
+  perps: 'Perps',
+  spot: 'Spot',
+  crypto: 'Crypto',
+  tradfi: 'Tradfi',
+  hip3: 'HIP-3',
+  trending: 'Trending',
+  prelaunch: 'Pre-launch',
+};
 
 export function MarketSelector({
   markets,
@@ -15,17 +32,29 @@ export function MarketSelector({
   onSelectMarket,
   prices = {},
   priceChanges = {},
+  categories = DEFAULT_CATEGORIES,
+  categoryLabels = DEFAULT_LABELS,
 }: MarketSelectorProps) {
   const [search, setSearch] = useState('');
   const [isOpen, setIsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<MarketCategory>('all');
+
+  // Only show tabs that have at least one market
+  const visibleTabs = useMemo(() => {
+    return categories.filter(
+      (cat) => cat === 'all' || markets.some((em) => em.categories.includes(cat))
+    );
+  }, [categories, markets]);
 
   const filteredMarkets = useMemo(() => {
-    return markets.filter((market) =>
-      market.name.toLowerCase().includes(search.toLowerCase())
-    );
-  }, [markets, search]);
+    return markets
+      .filter((em) => activeTab === 'all' || em.categories.includes(activeTab))
+      .filter((em) =>
+        em.market.name.toLowerCase().includes(search.toLowerCase())
+      );
+  }, [markets, activeTab, search]);
 
-  const selectedMarketData = markets.find((m) => m.name === selectedMarket);
+  const selectedEnriched = markets.find((em) => em.market.name === selectedMarket);
   const currentPrice = prices[selectedMarket];
   const currentChange = priceChanges[selectedMarket];
 
@@ -59,9 +88,9 @@ export function MarketSelector({
           <div className="text-left">
             <div className="flex items-center space-x-2">
               <p className="font-semibold">{selectedMarket}</p>
-              <span className="text-xs text-gray-500 px-1.5 py-0.5 bg-gray-700 rounded">
-                {selectedMarketData?.type === 'perp' ? 'PERP' : 'SPOT'}
-              </span>
+              {selectedEnriched && (
+                <TagBadges tags={selectedEnriched.tags} maxLeverage={selectedEnriched.market.maxLeverage} />
+              )}
             </div>
             <div className="flex items-center space-x-2 mt-0.5">
               <p className="text-sm text-gray-300">
@@ -94,7 +123,7 @@ export function MarketSelector({
 
       {/* Dropdown */}
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-gray-900 border border-gray-800 rounded-lg shadow-xl z-50 max-h-96 overflow-hidden">
+        <div className="absolute top-full left-0 right-0 mt-2 bg-gray-900 border border-gray-800 rounded-lg shadow-xl z-50 max-h-[28rem] overflow-hidden">
           {/* Search */}
           <div className="p-3 border-b border-gray-800">
             <input
@@ -107,18 +136,36 @@ export function MarketSelector({
             />
           </div>
 
+          {/* Category Tabs */}
+          <div className="flex overflow-x-auto px-3 py-2 gap-1.5 border-b border-gray-800 no-scrollbar">
+            {visibleTabs.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setActiveTab(cat)}
+                className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                  activeTab === cat
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-800 text-gray-400 hover:text-gray-200'
+                }`}
+              >
+                {categoryLabels[cat] ?? cat}
+              </button>
+            ))}
+          </div>
+
           {/* Market List */}
           <div className="overflow-y-auto max-h-72">
             {filteredMarkets.length === 0 ? (
               <p className="text-center text-gray-500 py-4">No markets found</p>
             ) : (
-              filteredMarkets.map((market) => {
+              filteredMarkets.map((em) => {
+                const { market } = em;
                 const price = prices[market.name];
                 const change = priceChanges[market.name];
 
                 return (
                   <button
-                    key={market.name}
+                    key={`${market.type}-${market.name}`}
                     onClick={() => {
                       onSelectMarket(market.name);
                       setIsOpen(false);
@@ -135,16 +182,9 @@ export function MarketSelector({
                         </span>
                       </div>
                       <div className="text-left">
-                        <div className="flex items-center space-x-2">
+                        <div className="flex items-center space-x-1.5">
                           <p className="font-medium">{market.name}</p>
-                          <span className="text-xs text-gray-500 px-1.5 py-0.5 bg-gray-700 rounded">
-                            {market.type === 'perp' ? 'PERP' : 'SPOT'}
-                          </span>
-                          {market.maxLeverage > 1 && (
-                            <span className="text-xs text-indigo-400">
-                              {market.maxLeverage}x
-                            </span>
-                          )}
+                          <TagBadges tags={em.tags} maxLeverage={market.maxLeverage} />
                         </div>
                         <div className="flex items-center space-x-2 mt-0.5">
                           <p className="text-sm text-gray-400">
@@ -179,5 +219,32 @@ export function MarketSelector({
         </div>
       )}
     </div>
+  );
+}
+
+function TagBadges({ tags, maxLeverage }: { tags: string[]; maxLeverage: number }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      {tags.map((tag) => {
+        let colors = 'bg-gray-700 text-gray-400';
+        if (tag === 'SPOT') colors = 'bg-emerald-900/50 text-emerald-400';
+        if (tag === 'xyz') colors = 'bg-yellow-900/50 text-yellow-400';
+        if (tag === 'cash') colors = 'bg-green-900/50 text-green-400';
+
+        return (
+          <span
+            key={tag}
+            className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${colors}`}
+          >
+            {tag}
+          </span>
+        );
+      })}
+      {maxLeverage > 1 && (
+        <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-indigo-900/50 text-indigo-400">
+          {maxLeverage}x
+        </span>
+      )}
+    </span>
   );
 }

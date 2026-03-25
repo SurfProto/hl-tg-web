@@ -135,7 +135,9 @@ function DepositCryptoView({ address }: { address: string | undefined }) {
           className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-medium transition-colors"
         >
           {bridge.isPending
-            ? bridge.variables?.step === 'approve' ? 'Step 1/2: Approving USDC…' : 'Step 2/2: Bridging…'
+            ? bridge.variables?.step === 'approve' ? 'Step 1/3: Approving USDC…'
+              : bridge.variables?.step === 'waiting' ? 'Step 2/3: Waiting for confirmation…'
+              : 'Step 3/3: Bridging to Hyperliquid…'
             : 'Bridge to Hyperliquid'}
         </button>
 

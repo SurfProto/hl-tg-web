@@ -9,8 +9,10 @@ export interface Market {
 
 export interface SpotMarket extends Market {
   type: 'spot';
-  tokens: [string, string];
+  tokens: [number, number];
   index: number;
+  baseName: string;
+  quoteName: string;
 }
 
 export interface PerpMarket extends Market {
@@ -19,6 +21,16 @@ export interface PerpMarket extends Market {
 }
 
 export type AnyMarket = SpotMarket | PerpMarket;
+
+// Market classification types
+export type MarketCategory = 'all' | 'perps' | 'spot' | 'crypto' | 'tradfi' | 'hip3' | 'trending' | 'prelaunch';
+export type MarketTag = 'PERP' | 'SPOT' | 'xyz' | 'cash';
+
+export interface EnrichedMarket {
+  market: AnyMarket;
+  categories: MarketCategory[];
+  tags: MarketTag[];
+}
 
 // Order types
 export type OrderType = 'market' | 'limit';

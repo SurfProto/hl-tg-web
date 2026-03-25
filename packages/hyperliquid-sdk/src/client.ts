@@ -109,16 +109,44 @@ export class HyperliquidClient {
     return this.wsManager.subscribe('allMids', callback);
   }
 
-  // Get all markets (spot + perp)
+  // Get all markets (spot + perp), filtered for tradeable assets
   async getMarkets() {
     const client = await this.getPublicClient();
     const [spotMeta, metaAndCtxs] = await Promise.all([
       client.spotMeta(),
       client.metaAndAssetCtxs(),
     ]);
+
+    // Filter out delisted perps
+    const perpMarkets = metaAndCtxs[0].universe.filter((m: any) => !m.isDelisted);
+
+    // Build spot pairs from universe (actual tradeable pairs, not raw tokens)
+    const tokensByIndex: Record<number, any> = {};
+    for (const token of spotMeta.tokens) {
+      tokensByIndex[token.index] = token;
+    }
+
+    const spotMarkets = spotMeta.universe
+      .filter((pair: any) => pair.isCanonical)
+      .map((pair: any) => {
+        const baseToken = tokensByIndex[pair.tokens[0]];
+        const quoteToken = tokensByIndex[pair.tokens[1]];
+        return {
+          name: pair.name,
+          index: pair.index,
+          tokens: pair.tokens,
+          baseName: baseToken?.name ?? pair.name,
+          quoteName: quoteToken?.name ?? 'USDC',
+          szDecimals: baseToken?.szDecimals ?? 0,
+          maxLeverage: 1,
+          onlyIsolated: false,
+          isDelisted: false,
+        };
+      });
+
     return {
-      spot: spotMeta.tokens,
-      perp: metaAndCtxs[0].universe,
+      spot: spotMarkets,
+      perp: perpMarkets,
     };
   }
 

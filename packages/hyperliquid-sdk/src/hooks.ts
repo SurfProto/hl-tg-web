@@ -412,34 +412,72 @@ const BRIDGE_ABI = [
  * Hook to bridge USDC from Arbitrum to Hyperliquid L1
  * Two steps: (1) approve USDC to bridge contract, (2) call depositUsdc
  */
+export type BridgeStep = 'idle' | 'approve' | 'waiting' | 'deposit';
+
 export function useBridgeToHyperliquid() {
   const { wallets } = useWallets();
   const queryClient = useQueryClient();
-  const [step, setStep] = useState<'idle' | 'approve' | 'deposit'>('idle');
+  const [step, setStep] = useState<BridgeStep>('idle');
 
   const mutation = useMutation({
     mutationFn: async ({ amount }: { amount: number }) => {
-      const { createWalletClient, custom, erc20Abi } = await import('viem');
+      const { createWalletClient, createPublicClient, custom, http, erc20Abi } = await import('viem');
       const { arbitrum } = await import('viem/chains');
 
       const embeddedWallet = wallets.find(w => w.walletClientType === 'privy');
       if (!embeddedWallet) throw new Error('No embedded wallet found');
       const provider = await embeddedWallet.getEthereumProvider();
       const walletClient = createWalletClient({ chain: arbitrum, transport: custom(provider) });
+      const publicClient = createPublicClient({ chain: arbitrum, transport: http() });
       const [account] = await walletClient.getAddresses();
       const amountRaw = BigInt(Math.floor(amount * 1e6));
 
+      // Step 1: Approve USDC with gas estimation
       setStep('approve');
-      await walletClient.writeContract({
+      let approveGas: bigint;
+      try {
+        approveGas = await publicClient.estimateContractGas({
+          address: USDC_ARBITRUM,
+          abi: erc20Abi,
+          functionName: 'approve',
+          args: [HL_BRIDGE_ARBITRUM, amountRaw],
+          account,
+        });
+        approveGas = (approveGas * 150n) / 100n;
+      } catch {
+        approveGas = 100_000n;
+      }
+
+      const approveTxHash = await walletClient.writeContract({
         address: USDC_ARBITRUM,
         abi: erc20Abi,
         functionName: 'approve',
         args: [HL_BRIDGE_ARBITRUM, amountRaw],
         account,
         chain: arbitrum,
+        gas: approveGas,
       });
 
+      // Step 2: Wait for approval to be mined
+      setStep('waiting');
+      await publicClient.waitForTransactionReceipt({ hash: approveTxHash });
+
+      // Step 3: Deposit with gas estimation
       setStep('deposit');
+      let depositGas: bigint;
+      try {
+        depositGas = await publicClient.estimateContractGas({
+          address: HL_BRIDGE_ARBITRUM,
+          abi: BRIDGE_ABI,
+          functionName: 'depositUsdc',
+          args: [amountRaw],
+          account,
+        });
+        depositGas = (depositGas * 150n) / 100n;
+      } catch {
+        depositGas = 300_000n;
+      }
+
       await walletClient.writeContract({
         address: HL_BRIDGE_ARBITRUM,
         abi: BRIDGE_ABI,
@@ -447,6 +485,7 @@ export function useBridgeToHyperliquid() {
         args: [amountRaw],
         account,
         chain: arbitrum,
+        gas: depositGas,
       });
 
       setStep('idle');

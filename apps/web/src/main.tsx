@@ -14,24 +14,34 @@ const queryClient = new QueryClient({
   },
 });
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <PrivyProvider
-      appId={import.meta.env.VITE_PRIVY_APP_ID || 'YOUR_PRIVY_APP_ID'}
-      config={{
-        appearance: {
-          theme: 'dark',
-          accentColor: '#6366f1',
-        },
-        loginMethods: ['email', 'sms', 'google', 'wallet'],
-        embeddedWallets: {
-          createOnLogin: 'users-without-wallets',
-        },
-      }}
-    >
-      <QueryClientProvider client={queryClient}>
-        <App />
-      </QueryClientProvider>
-    </PrivyProvider>
-  </React.StrictMode>
-);
+const appId = import.meta.env.VITE_PRIVY_APP_ID;
+
+if (!appId) {
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <div style={{ color: 'red', padding: 40, fontSize: 24 }}>
+      VITE_PRIVY_APP_ID is undefined! Check environment variables.
+    </div>
+  );
+} else {
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <PrivyProvider
+        appId={appId}
+        config={{
+          appearance: {
+            theme: 'dark',
+            accentColor: '#6366f1',
+          },
+          loginMethods: ['email', 'sms', 'google', 'wallet'],
+          embeddedWallets: {
+            createOnLogin: 'users-without-wallets',
+          },
+        }}
+      >
+        <QueryClientProvider client={queryClient}>
+          <App />
+        </QueryClientProvider>
+      </PrivyProvider>
+    </React.StrictMode>
+  );
+}

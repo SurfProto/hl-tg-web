@@ -19,16 +19,34 @@ const queryClient = new QueryClient({
 // Seamless Telegram auth component
 function TelegramAuthGate({ children }: { children: React.ReactNode }) {
   const { ready, authenticated, login } = usePrivy();
+  const [authError, setAuthError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+
+  const isTMA = Boolean(window.Telegram?.WebApp?.initData);
 
   useEffect(() => {
     if (!ready || authenticated) return;
+    if (!isTMA) return; // Non-TMA: skip auto-login, user clicks Connect manually
 
-    // Detect if running inside a Telegram Mini App
-    const tg = (window as any).Telegram?.WebApp;
-    if (tg?.initData) {
-      login();
-    }
-  }, [ready, authenticated, login]);
+    const tg = window.Telegram!.WebApp!;
+    tg.ready();   // Dismiss Telegram loading indicator
+    tg.expand();  // Expand to full height
+
+    setAuthError(false);
+    login({ loginMethods: ['telegram'] });
+
+    // Timeout: if not authenticated after 15s, show error
+    const timeout = setTimeout(() => {
+      setAuthError(true);
+    }, 15_000);
+
+    return () => clearTimeout(timeout);
+  }, [ready, authenticated, login, retryCount, isTMA]);
+
+  // Clear error when auth succeeds
+  useEffect(() => {
+    if (authenticated) setAuthError(false);
+  }, [authenticated]);
 
   if (!ready) {
     return (
@@ -41,7 +59,33 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  return <>{children}</>;
+  if (authError && !authenticated) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center p-6">
+          <p className="text-gray-300 mb-2">Connection is taking longer than expected</p>
+          <p className="text-gray-500 text-sm mb-6">Please check your connection and try again</p>
+          <button
+            onClick={() => setRetryCount(c => c + 1)}
+            className="px-6 py-2 bg-indigo-600 rounded-lg hover:bg-indigo-500 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {!isTMA && !authenticated && (
+        <div className="bg-indigo-900/30 text-center py-2 text-sm text-indigo-300">
+          Open in Telegram for the best experience
+        </div>
+      )}
+      {children}
+    </>
+  );
 }
 
 function AppContent() {
@@ -60,12 +104,6 @@ function AppContent() {
 
 function App() {
   const appId = import.meta.env.VITE_PRIVY_APP_ID;
-
-  // Debug: Check in browser console
-  console.log('=== PRIVY DEBUG ===');
-  console.log('App ID:', appId);
-  console.log('App ID type:', typeof appId);
-  console.log('App ID length:', appId?.length);
 
   if (!appId) {
     return (

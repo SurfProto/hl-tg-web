@@ -1,4 +1,4 @@
-import type { Order, WsMessage } from '@repo/types';
+import type { AccountState, Order, WsMessage } from '@repo/types';
 import { injectBuilderCode } from './builder';
 import { WebSocketManager } from './ws';
 
@@ -162,9 +162,43 @@ export class HyperliquidClient {
   }
 
   // Get user state
-  async getUserState() {
+  async getUserState(): Promise<AccountState> {
     const client = await this.getPublicClient();
-    return client.clearinghouseState({ user: this.walletAddress as `0x${string}` });
+    const raw = await client.clearinghouseState({ user: this.walletAddress as `0x${string}` });
+
+    const parseMarginSummary = (ms: any) => ({
+      accountValue: parseFloat(ms.accountValue),
+      totalMarginUsed: parseFloat(ms.totalMarginUsed),
+      totalNtlPos: parseFloat(ms.totalNtlPos),
+      totalRawUsd: parseFloat(ms.totalRawUsd),
+    });
+
+    return {
+      marginSummary: parseMarginSummary(raw.marginSummary),
+      crossMarginSummary: parseMarginSummary(raw.crossMarginSummary),
+      crossMaintenanceMarginUsed: parseFloat(raw.crossMaintenanceMarginUsed),
+      withdrawable: parseFloat(raw.withdrawable),
+      assetPositions: (raw.assetPositions ?? []).map((ap: any) => ({
+        type: ap.type,
+        position: {
+          coin: ap.position.coin,
+          szi: parseFloat(ap.position.szi),
+          leverage: {
+            type: ap.position.leverage.type,
+            value: parseFloat(ap.position.leverage.value),
+          },
+          entryPx: parseFloat(ap.position.entryPx),
+          positionValue: parseFloat(ap.position.positionValue),
+          unrealizedPnl: parseFloat(ap.position.unrealizedPnl),
+          returnOnEquity: parseFloat(ap.position.returnOnEquity),
+          liquidationPx: ap.position.liquidationPx != null
+            ? parseFloat(ap.position.liquidationPx)
+            : null,
+          marginUsed: parseFloat(ap.position.marginUsed),
+          maxLeverage: parseFloat(ap.position.maxLeverage),
+        },
+      })),
+    };
   }
 
   // Get open orders

@@ -7,7 +7,7 @@ export function PortfolioPage() {
   const [isTestnet, setIsTestnet] = useState(
     import.meta.env.VITE_HYPERLIQUID_TESTNET === 'true'
   );
-  const { authenticated } = usePrivy();
+  const { authenticated, user } = usePrivy();
 
   // Fetch data
   const { data: userState } = useUserState();
@@ -126,8 +126,9 @@ export function PortfolioPage() {
             <div className="flex justify-between items-center">
               <span className="text-gray-400">Wallet</span>
               <span className="font-mono text-xs">
-                {/* This would show the connected wallet address */}
-                0x1234...abcd
+                {user?.wallet?.address
+                  ? `${user.wallet.address.slice(0, 6)}...${user.wallet.address.slice(-4)}`
+                  : 'No wallet'}
               </span>
             </div>
             <div className="flex justify-between items-center">

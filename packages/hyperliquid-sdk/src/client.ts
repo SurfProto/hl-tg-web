@@ -343,4 +343,22 @@ export class HyperliquidClient {
     const client = await this.getPublicClient();
     return client.portfolio({ user: this.walletAddress as `0x${string}` });
   }
+
+  // Get spot account balance (HL L1 spot)
+  async getSpotBalance() {
+    const client = await this.getPublicClient();
+    return client.spotClearinghouseState({ user: this.walletAddress as `0x${string}` });
+  }
+
+  // Transfer USDC between Perps and Spot accounts on HL L1
+  async usdClassTransfer(amount: string, toPerp: boolean) {
+    const client = await this.getWalletClient();
+    return client.usdClassTransfer({ amount, toPerp });
+  }
+
+  // Withdraw USDC from HL L1 to Arbitrum address
+  async withdraw(destination: string, amount: string) {
+    const client = await this.getWalletClient();
+    return client.withdraw3({ destination: destination as `0x${string}`, amount });
+  }
 }

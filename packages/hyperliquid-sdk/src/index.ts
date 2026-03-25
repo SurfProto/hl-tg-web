@@ -22,6 +22,9 @@ export {
   useUpdateLeverage,
   useUpdateIsolatedMargin,
   usePortfolio,
+  useSpotBalance,
+  useUsdClassTransfer,
+  useWithdraw,
   // WebSocket hooks
   useOrderbookWs,
   useTradesWs,

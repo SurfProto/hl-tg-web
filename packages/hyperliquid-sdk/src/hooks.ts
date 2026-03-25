@@ -311,6 +311,57 @@ export function usePortfolio() {
   });
 }
 
+/**
+ * Hook to fetch spot account balance (HL L1 spot)
+ */
+export function useSpotBalance() {
+  const { client } = useHyperliquid();
+
+  return useQuery({
+    queryKey: ['spotBalance'],
+    queryFn: () => client?.getSpotBalance(),
+    enabled: !!client,
+    refetchInterval: 5000,
+  });
+}
+
+/**
+ * Hook to transfer USDC between Perps and Spot on HL L1
+ */
+export function useUsdClassTransfer() {
+  const { client } = useHyperliquid();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ amount, toPerp }: { amount: string; toPerp: boolean }) => {
+      if (!client) throw new Error('Client not connected');
+      return client.usdClassTransfer(amount, toPerp);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['userState'] });
+      queryClient.invalidateQueries({ queryKey: ['spotBalance'] });
+    },
+  });
+}
+
+/**
+ * Hook to withdraw USDC from HL L1 to Arbitrum
+ */
+export function useWithdraw() {
+  const { client } = useHyperliquid();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ destination, amount }: { destination: string; amount: string }) => {
+      if (!client) throw new Error('Client not connected');
+      return client.withdraw(destination, amount);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['userState'] });
+    },
+  });
+}
+
 // WebSocket Hooks
 
 /**

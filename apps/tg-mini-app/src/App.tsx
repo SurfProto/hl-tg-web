@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PrivyProvider, usePrivy } from '@privy-io/react-auth';
+import { arbitrum } from 'viem/chains';
 import { Layout } from './components/Layout';
 import { TradePage } from './pages/TradePage';
 import { PositionsPage } from './pages/PositionsPage';
@@ -111,6 +112,8 @@ function App() {
       <PrivyProvider
         appId={appId}
         config={{
+          defaultChain: arbitrum,
+          supportedChains: [arbitrum],
           appearance: {
             theme: 'dark',
             accentColor: '#6366f1',

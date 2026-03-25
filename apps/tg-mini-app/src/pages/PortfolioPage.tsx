@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PortfolioSummary, Card, TestnetToggle } from '@repo/ui';
-import { useUserState, usePortfolio } from '@repo/hyperliquid-sdk';
+import { useUserState, usePortfolio, useSpotBalance, useUsdClassTransfer, useWithdraw } from '@repo/hyperliquid-sdk';
 import { usePrivy } from '@privy-io/react-auth';
 
 type View = 'main' | 'deposit-choice' | 'deposit-fiat' | 'deposit-crypto' | 'withdraw' | 'transfer';
@@ -104,9 +104,14 @@ function DepositCryptoView({ address }: { address: string | undefined }) {
   );
 }
 
-function WithdrawView({ withdrawable }: { withdrawable: number }) {
+function WithdrawView({ withdrawable, destination }: { withdrawable: number; destination: string | undefined }) {
   const [amount, setAmount] = useState('');
-  const [submitted, setSubmitted] = useState(false);
+  const withdraw = useWithdraw();
+
+  const handleWithdraw = () => {
+    if (!destination || !amount || parseFloat(amount) <= 0) return;
+    withdraw.mutate({ destination, amount });
+  };
 
   return (
     <div className="p-4 space-y-4">
@@ -120,6 +125,12 @@ function WithdrawView({ withdrawable }: { withdrawable: number }) {
         <div className="flex justify-between items-center px-4 py-3">
           <span className="text-gray-400">Withdrawal chain</span>
           <span className="font-medium">Arbitrum</span>
+        </div>
+        <div className="flex justify-between items-center px-4 py-3">
+          <span className="text-gray-400">Destination</span>
+          <span className="font-mono text-xs text-gray-300">
+            {destination ? `${destination.slice(0, 6)}...${destination.slice(-4)}` : 'No wallet'}
+          </span>
         </div>
       </div>
 
@@ -146,15 +157,20 @@ function WithdrawView({ withdrawable }: { withdrawable: number }) {
       </div>
 
       <button
-        onClick={() => setSubmitted(true)}
-        disabled={!amount || parseFloat(amount) <= 0}
+        onClick={handleWithdraw}
+        disabled={!amount || parseFloat(amount) <= 0 || !destination || withdraw.isPending}
         className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-medium transition-colors"
       >
-        Withdraw to Arbitrum
+        {withdraw.isPending ? 'Submitting…' : 'Withdraw to Arbitrum'}
       </button>
 
-      {submitted && (
-        <p className="text-center text-sm text-yellow-400">Withdrawal execution coming soon.</p>
+      {withdraw.isSuccess && (
+        <p className="text-center text-sm text-green-400">Withdrawal submitted. Arrives in ~5 min.</p>
+      )}
+      {withdraw.isError && (
+        <p className="text-center text-sm text-red-400">
+          {withdraw.error instanceof Error ? withdraw.error.message : 'Withdrawal failed'}
+        </p>
       )}
 
       <div className="text-xs text-gray-500 space-y-1">
@@ -169,11 +185,20 @@ function WithdrawView({ withdrawable }: { withdrawable: number }) {
 function TransferView({ perpsBalance, spotBalance }: { perpsBalance: number; spotBalance: number }) {
   const [direction, setDirection] = useState<'perps-to-spot' | 'spot-to-perps'>('perps-to-spot');
   const [amount, setAmount] = useState('');
-  const [submitted, setSubmitted] = useState(false);
+  const transfer = useUsdClassTransfer();
 
   const fromBalance = direction === 'perps-to-spot' ? perpsBalance : spotBalance;
   const fromLabel = direction === 'perps-to-spot' ? 'Perps' : 'Spot';
   const toLabel = direction === 'perps-to-spot' ? 'Spot' : 'Perps';
+
+  const handleConfirm = () => {
+    if (!amount || parseFloat(amount) <= 0) return;
+    // toPerp=true means Spot→Perps; toPerp=false means Perps→Spot
+    transfer.mutate(
+      { amount, toPerp: direction === 'spot-to-perps' },
+      { onSuccess: () => setAmount('') }
+    );
+  };
 
   return (
     <div className="p-4 space-y-4">
@@ -185,7 +210,7 @@ function TransferView({ perpsBalance, spotBalance }: { perpsBalance: number; spo
           {fromLabel}
         </span>
         <button
-          onClick={() => setDirection(d => d === 'perps-to-spot' ? 'spot-to-perps' : 'perps-to-spot')}
+          onClick={() => { setDirection(d => d === 'perps-to-spot' ? 'spot-to-perps' : 'perps-to-spot'); setAmount(''); }}
           className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors text-indigo-400"
         >
           ⇄
@@ -218,15 +243,20 @@ function TransferView({ perpsBalance, spotBalance }: { perpsBalance: number; spo
       </div>
 
       <button
-        onClick={() => setSubmitted(true)}
-        disabled={!amount || parseFloat(amount) <= 0}
+        onClick={handleConfirm}
+        disabled={!amount || parseFloat(amount) <= 0 || transfer.isPending}
         className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-medium transition-colors"
       >
-        Confirm
+        {transfer.isPending ? 'Submitting…' : 'Confirm'}
       </button>
 
-      {submitted && (
-        <p className="text-center text-sm text-yellow-400">Transfer execution coming soon.</p>
+      {transfer.isSuccess && (
+        <p className="text-center text-sm text-green-400">Transfer submitted successfully.</p>
+      )}
+      {transfer.isError && (
+        <p className="text-center text-sm text-red-400">
+          {transfer.error instanceof Error ? transfer.error.message : 'Transfer failed'}
+        </p>
       )}
     </div>
   );
@@ -243,6 +273,7 @@ export function PortfolioPage() {
 
   const { data: userState } = useUserState();
   const { data: portfolio } = usePortfolio();
+  const { data: spotData } = useSpotBalance();
 
   // TMA BackButton wiring
   useEffect(() => {
@@ -263,9 +294,11 @@ export function PortfolioPage() {
   }, [view]);
 
   const walletAddress = user?.wallet?.address;
-  const withdrawable = parseFloat((userState as any)?.withdrawable ?? '0') || 0;
-  const perpsBalance = parseFloat((userState as any)?.marginSummary?.accountValue ?? '0') || 0;
-  const spotBalance = parseFloat((userState as any)?.spotState?.balances?.[0]?.total ?? '0') || 0;
+  const withdrawable = userState?.withdrawable ?? 0;
+  const perpsBalance = userState?.marginSummary?.accountValue ?? 0;
+  // Spot USDC balance: find USDC (token 0) in spot clearinghouse state
+  const spotUsdcBalance = spotData?.balances?.find((b: any) => b.coin === 'USDC')?.total;
+  const spotBalance = parseFloat(spotUsdcBalance ?? '0') || 0;
 
   if (view !== 'main') {
     return (
@@ -273,7 +306,7 @@ export function PortfolioPage() {
         {view === 'deposit-choice' && <DepositChoiceView onSelect={setView} />}
         {view === 'deposit-fiat' && <DepositFiatView />}
         {view === 'deposit-crypto' && <DepositCryptoView address={walletAddress} />}
-        {view === 'withdraw' && <WithdrawView withdrawable={withdrawable} />}
+        {view === 'withdraw' && <WithdrawView withdrawable={withdrawable} destination={walletAddress} />}
         {view === 'transfer' && <TransferView perpsBalance={perpsBalance} spotBalance={spotBalance} />}
       </div>
     );

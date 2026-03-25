@@ -40,6 +40,7 @@ export function OrderForm({
   const [showTpSl, setShowTpSl] = useState(false);
   const [takeProfitPx, setTakeProfitPx] = useState('');
   const [stopLossPx, setStopLossPx] = useState('');
+  const [showConfirmation, setShowConfirmation] = useState(false);
 
   // Calculate order value (size is already in USD)
   const orderValue = useMemo(() => {
@@ -66,7 +67,12 @@ export function OrderForm({
     e.preventDefault();
     const sizeNum = parseFloat(size);
     if (!size || isNaN(sizeNum) || sizeNum <= 0) return;
+    setShowConfirmation(true);
+  };
 
+  const handleConfirmOrder = () => {
+    const sizeNum = parseFloat(size);
+    setShowConfirmation(false);
     onPlaceOrder({
       coin,
       side,
@@ -266,16 +272,91 @@ export function OrderForm({
         </div>
       )}
 
+      {/* Order Confirmation */}
+      {showConfirmation && (
+        <div className="bg-gray-800 rounded-xl p-4 space-y-3 border border-gray-700">
+          <h3 className="font-semibold text-center">Confirm Order</h3>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-400">Side</span>
+              <span className={side === 'buy' ? 'text-green-500 font-medium' : 'text-red-500 font-medium'}>
+                {side === 'buy' ? 'Buy / Long' : 'Sell / Short'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-400">Market</span>
+              <span className="font-medium">{coin}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-400">Type</span>
+              <span className="font-medium">{orderType === 'market' ? 'Market' : 'Limit'}</span>
+            </div>
+            {orderType === 'limit' && (
+              <div className="flex justify-between">
+                <span className="text-gray-400">Limit Price</span>
+                <span className="font-medium">${parseFloat(price).toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span className="text-gray-400">Size</span>
+              <span className="font-medium">${orderValue.toFixed(2)}</span>
+            </div>
+            {currentPrice && parseFloat(size) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-400">Quantity</span>
+                <span className="font-medium">{(parseFloat(size) / currentPrice).toFixed(6)} {coin}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span className="text-gray-400">Leverage</span>
+              <span className="font-medium text-indigo-400">{leverage}x</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-400">Margin</span>
+              <span className="font-medium">${marginRequired.toFixed(2)}</span>
+            </div>
+            {liquidationPrice && (
+              <div className="flex justify-between">
+                <span className="text-gray-400">Est. Liquidation</span>
+                <span className="text-red-400 font-medium">${liquidationPrice.toFixed(2)}</span>
+              </div>
+            )}
+          </div>
+          <div className="flex space-x-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setShowConfirmation(false)}
+              className="flex-1 py-2.5 bg-gray-700 hover:bg-gray-600 rounded-lg font-medium transition-colors text-sm"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmOrder}
+              className={`flex-1 py-2.5 rounded-lg font-medium transition-colors text-sm ${
+                side === 'buy'
+                  ? 'bg-green-600 hover:bg-green-500'
+                  : 'bg-red-600 hover:bg-red-500'
+              }`}
+            >
+              Confirm {side === 'buy' ? 'Buy' : 'Sell'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Submit Button */}
-      <Button
-        type="submit"
-        variant={side === 'buy' ? 'primary' : 'danger'}
-        className="w-full py-3"
-        loading={isLoading}
-        disabled={!size || (orderType === 'limit' && !price) || marginRequired > availableBalance}
-      >
-        {side === 'buy' ? 'Buy' : 'Sell'} {coin}
-      </Button>
+      {!showConfirmation && (
+        <Button
+          type="submit"
+          variant={side === 'buy' ? 'primary' : 'danger'}
+          className="w-full py-3"
+          loading={isLoading}
+          disabled={!size || (orderType === 'limit' && !price) || marginRequired > availableBalance}
+        >
+          {side === 'buy' ? 'Buy' : 'Sell'} {coin}
+        </Button>
+      )}
     </form>
   );
 }

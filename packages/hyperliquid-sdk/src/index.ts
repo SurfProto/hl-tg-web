@@ -27,6 +27,9 @@ export {
   useWithdraw,
   useArbitrumUsdcBalance,
   useBridgeToHyperliquid,
+  // Builder fee hooks
+  useBuilderFeeApproval,
+  useApproveBuilderFee,
   // WebSocket hooks
   useOrderbookWs,
   useTradesWs,
@@ -41,6 +44,7 @@ export {
   approveBuilderFee,
   injectBuilderCode,
   isBuilderFeeApproved,
+  feeToPercentString,
   BUILDER_ADDRESS,
   BUILDER_FEE_TENTHS_BP,
 } from './builder';

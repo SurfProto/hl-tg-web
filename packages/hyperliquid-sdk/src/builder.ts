@@ -1,34 +1,41 @@
 import type { Order, BuilderCode } from '@repo/types';
+import type { HyperliquidClient } from './client';
 
 // Builder code configuration
-// TODO: Replace with actual values from environment or config
 export const BUILDER_ADDRESS = import.meta.env.VITE_BUILDER_ADDRESS || '0x0000000000000000000000000000000000000000';
 export const BUILDER_FEE_TENTHS_BP = parseInt(import.meta.env.VITE_BUILDER_FEE || '10', 10); // 10 = 1bp
 
 /**
- * Approve builder fee for the user
- * This should be called once on first app load
+ * Convert tenths of basis points to percentage string for SDK.
+ * 10 tenths = 1bp = 0.01% → "0.01%"
+ * 1 tenth = 0.1bp = 0.001% → "0.001%"
  */
-export async function approveBuilderFee(signer: unknown): Promise<void> {
-  // TODO: Implement actual approval logic using the signer
-  // This will call the Hyperliquid exchange endpoint with approveBuilderFee action
-  console.log('Approving builder fee:', {
-    builder: BUILDER_ADDRESS,
-    maxFeeRate: `${BUILDER_FEE_TENTHS_BP}0`,
-  });
-  
-  // Placeholder for actual implementation
-  // const action = {
-  //   type: 'approveBuilderFee',
-  //   builder: BUILDER_ADDRESS,
-  //   maxFeeRate: `${BUILDER_FEE_TENTHS_BP}0`,
-  // };
-  // await signAndSend(signer, action);
+export function feeToPercentString(tenthsBp: number): `${string}%` {
+  const percent = tenthsBp / 1000; // 10 tenths / 1000 = 0.01
+  return `${percent}%` as `${string}%`;
 }
 
 /**
- * Inject builder code into an order
- * This should be called for every order placed
+ * Approve builder fee for the user.
+ * Must be called once before orders with builder code can succeed.
+ */
+export async function approveBuilderFee(client: HyperliquidClient): Promise<void> {
+  const maxFeeRate = feeToPercentString(BUILDER_FEE_TENTHS_BP);
+  await client.approveBuilderFee(BUILDER_ADDRESS, maxFeeRate);
+}
+
+/**
+ * Check if builder fee is approved for the user.
+ * Returns the max approved fee rate (0 = not approved).
+ */
+export async function isBuilderFeeApproved(client: HyperliquidClient): Promise<boolean> {
+  const maxFee = await client.getMaxBuilderFee(BUILDER_ADDRESS);
+  return maxFee > 0;
+}
+
+/**
+ * Inject builder code into an order.
+ * This should be called for every order placed.
  */
 export function injectBuilderCode(order: Order): Order & { builder: BuilderCode } {
   return {
@@ -38,13 +45,4 @@ export function injectBuilderCode(order: Order): Order & { builder: BuilderCode 
       f: BUILDER_FEE_TENTHS_BP,
     },
   };
-}
-
-/**
- * Check if builder fee is approved for the user
- */
-export async function isBuilderFeeApproved(userAddress: string): Promise<boolean> {
-  // TODO: Implement actual check using Hyperliquid info endpoint
-  console.log('Checking builder fee approval for:', userAddress);
-  return false;
 }

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { PortfolioSummary, Card, TestnetToggle } from '@repo/ui';
-import { useUserState, usePortfolio, useSpotBalance, useUsdClassTransfer, useWithdraw, useArbitrumUsdcBalance, useBridgeToHyperliquid } from '@repo/hyperliquid-sdk';
+import { useUserState, usePortfolio, useSpotBalance, useUsdClassTransfer, useWithdraw, useArbitrumUsdcBalance, useBridgeToHyperliquid, useBuilderFeeApproval, useApproveBuilderFee, BUILDER_ADDRESS, BUILDER_FEE_TENTHS_BP } from '@repo/hyperliquid-sdk';
 import { usePrivy } from '@privy-io/react-auth';
+import { useHaptics } from '../hooks/useHaptics';
 
 type View = 'main' | 'deposit-choice' | 'deposit-fiat' | 'deposit-crypto' | 'withdraw' | 'transfer';
 
@@ -315,6 +316,58 @@ function TransferView({ perpsBalance, spotBalance }: { perpsBalance: number; spo
   );
 }
 
+function BuilderCodeCard() {
+  const { data: maxFee, isLoading } = useBuilderFeeApproval();
+  const approve = useApproveBuilderFee();
+  const haptics = useHaptics();
+  const isApproved = (maxFee ?? 0) > 0;
+  const feeDisplay = `${(BUILDER_FEE_TENTHS_BP / 10).toFixed(1)} bp`;
+
+  return (
+    <Card title="Builder Code">
+      <div className="space-y-3">
+        <div className="flex justify-between items-center">
+          <span className="text-gray-400">Status</span>
+          {isLoading ? (
+            <span className="text-gray-500 text-sm">Checking...</span>
+          ) : isApproved ? (
+            <span className="text-green-500 font-medium">Approved</span>
+          ) : (
+            <span className="text-yellow-500 font-medium">Not Approved</span>
+          )}
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="text-gray-400">Fee Rate</span>
+          <span className="font-medium">{feeDisplay}</span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="text-gray-400">Address</span>
+          <span className="font-mono text-xs text-gray-500">
+            {BUILDER_ADDRESS.slice(0, 6)}...{BUILDER_ADDRESS.slice(-4)}
+          </span>
+        </div>
+        {!isLoading && !isApproved && (
+          <button
+            onClick={() => { haptics.medium(); approve.mutate(); }}
+            disabled={approve.isPending}
+            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-medium transition-colors text-sm"
+          >
+            {approve.isPending ? 'Approving...' : 'Approve Builder Fee'}
+          </button>
+        )}
+        {approve.isSuccess && (
+          <p className="text-center text-sm text-green-400">Builder fee approved!</p>
+        )}
+        {approve.isError && (
+          <p className="text-center text-sm text-red-400">
+            {approve.error instanceof Error ? approve.error.message : 'Approval failed'}
+          </p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function PortfolioPage() {
@@ -412,27 +465,7 @@ export function PortfolioPage() {
       </Card>
 
       {/* Builder Code Status */}
-      <Card title="Builder Code">
-        <div className="space-y-3">
-          <div className="flex justify-between items-center">
-            <span className="text-gray-400">Status</span>
-            <span className="text-green-500 font-medium">Active</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-400">Fee Rate</span>
-            <span className="font-medium">
-              {import.meta.env.VITE_BUILDER_FEE || '10'} tenths/bp
-            </span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-400">Address</span>
-            <span className="font-mono text-xs text-gray-500">
-              {(import.meta.env.VITE_BUILDER_ADDRESS || '0x0000...0000').slice(0, 6)}...
-              {(import.meta.env.VITE_BUILDER_ADDRESS || '0x0000...0000').slice(-4)}
-            </span>
-          </div>
-        </div>
-      </Card>
+      <BuilderCodeCard />
 
       {/* Quick Actions */}
       <Card title="Quick Actions">

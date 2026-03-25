@@ -13,13 +13,19 @@ import {
   useCandles,
   usePlaceOrder,
   useUserState,
+  useBuilderFeeApproval,
+  useApproveBuilderFee,
 } from '@repo/hyperliquid-sdk';
 import type { OrderSide, OrderType } from '@repo/types';
+import { useHaptics } from '../hooks/useHaptics';
 
 export function TradePage() {
   const [selectedMarket, setSelectedMarket] = useState('BTC');
   const [interval, setInterval] = useState('1h');
   const [showOrderbook, setShowOrderbook] = useState(false);
+  const [showApprovalPrompt, setShowApprovalPrompt] = useState(false);
+  const [pendingOrder, setPendingOrder] = useState<any>(null);
+  const haptics = useHaptics();
 
   // Fetch data
   const { data: markets } = useMarketData();
@@ -28,6 +34,9 @@ export function TradePage() {
   const { data: candles } = useCandles(selectedMarket, interval);
   const { data: userState } = useUserState();
   const placeOrder = usePlaceOrder();
+  const { data: maxBuilderFee } = useBuilderFeeApproval();
+  const approveBuilder = useApproveBuilderFee();
+  const isBuilderApproved = (maxBuilderFee ?? 0) > 0;
 
   // Get current price
   const currentPrice = mids?.[selectedMarket] ? parseFloat(mids[selectedMarket]) : undefined;
@@ -39,7 +48,26 @@ export function TradePage() {
   const selectedMarketData = markets?.perp?.find((m: any) => m.name === selectedMarket);
   const maxLeverage = selectedMarketData?.maxLeverage || 50;
 
-  // Handle order placement
+  // Submit order (after approval check)
+  const submitOrder = (order: {
+    coin: string;
+    side: OrderSide;
+    orderType: OrderType;
+    limitPx?: number;
+    sz: number;
+    reduceOnly: boolean;
+  }) => {
+    placeOrder.mutate({
+      coin: order.coin,
+      side: order.side,
+      orderType: order.orderType,
+      limitPx: order.limitPx,
+      sz: order.sz,
+      reduceOnly: order.reduceOnly,
+    });
+  };
+
+  // Handle order placement - gate on builder fee approval
   const handlePlaceOrder = (order: {
     coin: string;
     side: OrderSide;
@@ -51,14 +79,29 @@ export function TradePage() {
     takeProfitPx?: number;
     stopLossPx?: number;
   }) => {
-    placeOrder.mutate({
-      coin: order.coin,
-      side: order.side,
-      orderType: order.orderType,
-      limitPx: order.limitPx,
-      sz: order.sz,
-      reduceOnly: order.reduceOnly,
-    });
+    if (!isBuilderApproved) {
+      haptics.warning();
+      setPendingOrder(order);
+      setShowApprovalPrompt(true);
+      return;
+    }
+    haptics.medium();
+    submitOrder(order);
+  };
+
+  // Handle builder fee approval then place pending order
+  const handleApproveAndPlace = async () => {
+    try {
+      await approveBuilder.mutateAsync();
+      haptics.success();
+      setShowApprovalPrompt(false);
+      if (pendingOrder) {
+        submitOrder(pendingOrder);
+        setPendingOrder(null);
+      }
+    } catch {
+      haptics.error();
+    }
   };
 
   // Handle price click from orderbook
@@ -126,6 +169,38 @@ export function TradePage() {
             onPriceClick={handlePriceClick}
             currentPrice={currentPrice}
           />
+        </Card>
+      )}
+
+      {/* Builder Fee Approval Prompt */}
+      {showApprovalPrompt && (
+        <Card>
+          <div className="space-y-3">
+            <h3 className="font-semibold text-yellow-400">Builder Fee Approval Required</h3>
+            <p className="text-sm text-gray-400">
+              To place orders, you need to approve a small builder fee (0.01%). This is a one-time approval.
+            </p>
+            <div className="flex space-x-2">
+              <button
+                onClick={handleApproveAndPlace}
+                disabled={approveBuilder.isPending}
+                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 rounded-lg font-medium transition-colors text-sm"
+              >
+                {approveBuilder.isPending ? 'Approving...' : 'Approve & Place Order'}
+              </button>
+              <button
+                onClick={() => { setShowApprovalPrompt(false); setPendingOrder(null); }}
+                className="px-4 py-2.5 bg-gray-800 hover:bg-gray-700 rounded-lg font-medium transition-colors text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+            {approveBuilder.isError && (
+              <p className="text-sm text-red-400">
+                {approveBuilder.error instanceof Error ? approveBuilder.error.message : 'Approval failed'}
+              </p>
+            )}
+          </div>
         </Card>
       )}
 

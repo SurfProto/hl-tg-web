@@ -344,6 +344,24 @@ export class HyperliquidClient {
     return client.portfolio({ user: this.walletAddress as `0x${string}` });
   }
 
+  // Approve builder fee for this user
+  async approveBuilderFee(builder: string, maxFeeRate: string) {
+    const client = await this.getWalletClient();
+    return client.approveBuilderFee({
+      builder: builder as `0x${string}`,
+      maxFeeRate: maxFeeRate as `${string}%`,
+    });
+  }
+
+  // Check max approved builder fee for this user
+  async getMaxBuilderFee(builder: string): Promise<number> {
+    const client = await this.getPublicClient();
+    return client.maxBuilderFee({
+      user: this.walletAddress as `0x${string}`,
+      builder: builder as `0x${string}`,
+    });
+  }
+
   // Get spot account balance (HL L1 spot)
   async getSpotBalance() {
     const client = await this.getPublicClient();

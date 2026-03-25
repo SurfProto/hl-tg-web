@@ -1,5 +1,6 @@
 import React from 'react';
 import { usePrivy } from '@privy-io/react-auth';
+import { useHaptics } from '../hooks/useHaptics';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -9,8 +10,10 @@ interface LayoutProps {
 
 export function Layout({ children, activeTab, onTabChange }: LayoutProps) {
   const { login, authenticated, user, logout } = usePrivy();
+  const haptics = useHaptics();
 
   const handleTabChange = (tab: 'trade' | 'positions' | 'portfolio') => {
+    haptics.light();
     onTabChange(tab);
   };
 

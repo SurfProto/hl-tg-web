@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { HyperliquidClient } from './client';
+import { BUILDER_ADDRESS, approveBuilderFee as approveBuilderFeeAction } from './builder';
 import type { Order, WsMessage } from '@repo/types';
 
 // Singleton client instances
@@ -458,6 +459,38 @@ export function useBridgeToHyperliquid() {
   });
 
   return { ...mutation, variables: { ...mutation.variables, step } };
+}
+
+/**
+ * Hook to check if builder fee is approved for the current user
+ */
+export function useBuilderFeeApproval() {
+  const { client } = useHyperliquid();
+
+  return useQuery({
+    queryKey: ['builderFeeApproval', BUILDER_ADDRESS],
+    queryFn: () => client!.getMaxBuilderFee(BUILDER_ADDRESS),
+    enabled: !!client,
+    staleTime: 1000 * 60 * 5, // 5 minutes - approval doesn't change often
+  });
+}
+
+/**
+ * Hook to approve builder fee
+ */
+export function useApproveBuilderFee() {
+  const { client } = useHyperliquid();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      if (!client) throw new Error('Client not connected');
+      return approveBuilderFeeAction(client);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['builderFeeApproval'] });
+    },
+  });
 }
 
 // WebSocket Hooks

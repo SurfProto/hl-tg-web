@@ -12,6 +12,8 @@ import {
   useOrderbook,
   useCandles,
   usePlaceOrder,
+  usePlaceSpotOrder,
+  useSpotBalance,
   useUserState,
   useBuilderFeeApproval,
   useApproveBuilderFee,
@@ -37,21 +39,25 @@ export function TradePage() {
   const { data: candles } = useCandles(selectedMarket, interval);
   const { data: userState } = useUserState();
   const placeOrder = usePlaceOrder();
-  const { data: maxBuilderFee } = useBuilderFeeApproval();
+  const placeSpotOrder = usePlaceSpotOrder();
+  const { data: spotData } = useSpotBalance();
+  const { data: maxBuilderFee, isLoading: isApprovalLoading } = useBuilderFeeApproval();
   const approveBuilder = useApproveBuilderFee();
   const isBuilderApproved = (maxBuilderFee ?? 0) > 0;
 
   // Get current price
   const currentPrice = mids?.[selectedMarket] ? parseFloat(mids[selectedMarket]) : undefined;
 
-  // Get available balance
-  const availableBalance = userState?.marginSummary?.accountValue || 0;
+  // Get available balance — spot USDC when a spot market is selected, perp account value otherwise
+  const spotUsdcBalance = parseFloat(
+    spotData?.balances?.find((b: any) => b.coin === 'USDC')?.total ?? '0'
+  ) || 0;
 
   // Get max leverage for selected market
   const selectedMarketData = markets?.perp?.find((m: any) => m.name === selectedMarket);
   const maxLeverage = selectedMarketData?.maxLeverage || 50;
 
-  // Submit order (after approval check)
+  // Submit order — route to spot or perp based on coin
   const submitOrder = (order: {
     coin: string;
     side: OrderSide;
@@ -60,14 +66,19 @@ export function TradePage() {
     sz: number;
     reduceOnly: boolean;
   }) => {
-    placeOrder.mutate({
-      coin: order.coin,
-      side: order.side,
-      orderType: order.orderType,
-      limitPx: order.limitPx,
-      sz: order.sz,
-      reduceOnly: order.reduceOnly,
-    });
+    const isSpot = !!(markets?.spot || []).some((m: any) => m.name === order.coin);
+    if (isSpot) {
+      placeSpotOrder.mutate(order);
+    } else {
+      placeOrder.mutate({
+        coin: order.coin,
+        side: order.side,
+        orderType: order.orderType,
+        limitPx: order.limitPx,
+        sz: order.sz,
+        reduceOnly: order.reduceOnly,
+      });
+    }
   };
 
   // Handle order placement - gate on builder fee approval
@@ -82,6 +93,7 @@ export function TradePage() {
     takeProfitPx?: number;
     stopLossPx?: number;
   }) => {
+    if (isApprovalLoading) return; // wait for approval check before deciding
     if (!isBuilderApproved) {
       haptics.warning();
       setPendingOrder(order);
@@ -230,11 +242,21 @@ export function TradePage() {
           coin={selectedMarket}
           currentPrice={currentPrice}
           maxLeverage={isSpotMarket ? 1 : maxLeverage}
-          availableBalance={availableBalance}
+          availableBalance={isSpotMarket ? spotUsdcBalance : (userState?.marginSummary?.accountValue || 0)}
           isSpot={isSpotMarket}
           onPlaceOrder={handlePlaceOrder}
-          isLoading={placeOrder.isPending}
+          isLoading={placeOrder.isPending || placeSpotOrder.isPending || isApprovalLoading}
         />
+        {(placeOrder.isSuccess || placeSpotOrder.isSuccess) && (
+          <p className="mt-3 text-center text-sm text-green-400">Order placed successfully.</p>
+        )}
+        {(placeOrder.isError || placeSpotOrder.isError) && (
+          <p className="mt-3 text-center text-sm text-red-400">
+            {((placeOrder.error || placeSpotOrder.error) instanceof Error
+              ? (placeOrder.error || placeSpotOrder.error) as Error
+              : null)?.message ?? 'Order failed — please try again'}
+          </p>
+        )}
       </Card>
     </div>
   );

@@ -147,6 +147,31 @@ export function usePlaceOrder() {
 }
 
 /**
+ * Hook to place a spot order
+ */
+export function usePlaceSpotOrder() {
+  const { client } = useHyperliquid();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (order: Order) => {
+      if (!client) throw new Error('Client not connected');
+      return client.placeSpotOrder({
+        coin: order.coin,
+        side: order.side,
+        sz: order.sz,
+        orderType: order.orderType,
+        limitPx: order.limitPx,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['spotBalance'] });
+      queryClient.invalidateQueries({ queryKey: ['userState'] });
+    },
+  });
+}
+
+/**
  * Hook to cancel an order
  */
 export function useCancelOrder() {

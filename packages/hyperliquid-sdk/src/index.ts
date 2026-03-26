@@ -11,6 +11,7 @@ export {
   useCandles,
   useUserState,
   usePlaceOrder,
+  usePlaceSpotOrder,
   useCancelOrder,
   useCancelAllOrders,
   useModifyOrder,

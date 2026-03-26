@@ -28,7 +28,6 @@ export {
   useArbitrumUsdcBalance,
   useBridgeToHyperliquid,
   useSwapUsdcUsdh,
-  type BridgeStep,
   // Builder fee hooks
   useBuilderFeeApproval,
   useApproveBuilderFee,

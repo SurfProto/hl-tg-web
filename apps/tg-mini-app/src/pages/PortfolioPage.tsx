@@ -138,11 +138,7 @@ function DepositCryptoView({ address }: { address: string | undefined }) {
           disabled={!bridgeAmount || parseFloat(bridgeAmount) < 5 || bridge.isPending || !address}
           className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-medium transition-colors"
         >
-          {bridge.isPending
-            ? bridge.variables?.step === 'signing' ? 'Step 1/2: Signing permit…'
-              : bridge.variables?.step === 'depositing' ? 'Step 2/2: Depositing…'
-              : 'Confirming…'
-            : 'Bridge to Hyperliquid'}
+          {bridge.isPending ? 'Bridging…' : 'Bridge to Hyperliquid'}
         </button>
 
         {bridge.isSuccess && (

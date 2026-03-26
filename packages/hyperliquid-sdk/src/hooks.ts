@@ -398,21 +398,56 @@ export function useArbitrumUsdcBalance(address: string | undefined) {
 
 const USDC_ARBITRUM = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as const;
 const HL_BRIDGE_ARBITRUM = '0x2Df1c51E09aECF9cacB7bc98cB1742757f163dF7' as const;
-const BRIDGE_ABI = [
+
+const NONCES_ABI = [
   {
-    name: 'depositUsdc',
+    name: 'nonces',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'owner', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const;
+
+const BRIDGE2_ABI = [
+  {
+    name: 'batchedDepositWithPermit',
     type: 'function',
     stateMutability: 'nonpayable',
-    inputs: [{ name: 'amount', type: 'uint64' }],
+    inputs: [{
+      name: 'deposits',
+      type: 'tuple[]',
+      components: [
+        { name: 'user', type: 'address' },
+        { name: 'usd', type: 'uint64' },
+        { name: 'deadline', type: 'uint64' },
+        { name: 'signature', type: 'tuple', components: [
+          { name: 'v', type: 'uint8' },
+          { name: 'r', type: 'bytes32' },
+          { name: 's', type: 'bytes32' },
+        ]},
+      ],
+    }],
     outputs: [],
   },
 ] as const;
 
+const PERMIT_TYPES = {
+  Permit: [
+    { name: 'owner', type: 'address' },
+    { name: 'spender', type: 'address' },
+    { name: 'value', type: 'uint256' },
+    { name: 'nonce', type: 'uint256' },
+    { name: 'deadline', type: 'uint256' },
+  ],
+} as const;
+
 /**
  * Hook to bridge USDC from Arbitrum to Hyperliquid L1
- * Two steps: (1) approve USDC to bridge contract, (2) call depositUsdc
+ * Uses EIP-2612 permit + batchedDepositWithPermit (single on-chain tx, no approve needed)
+ * Minimum deposit: 5 USDC
  */
-export type BridgeStep = 'idle' | 'approve' | 'waiting' | 'deposit';
+export type BridgeStep = 'idle' | 'signing' | 'depositing' | 'confirming';
 
 export function useBridgeToHyperliquid() {
   const { wallets } = useWallets();
@@ -421,7 +456,9 @@ export function useBridgeToHyperliquid() {
 
   const mutation = useMutation({
     mutationFn: async ({ amount }: { amount: number }) => {
-      const { createWalletClient, createPublicClient, custom, http, erc20Abi } = await import('viem');
+      if (amount < 5) throw new Error('Minimum deposit is 5 USDC');
+
+      const { createWalletClient, createPublicClient, custom, http } = await import('viem');
       const { arbitrum } = await import('viem/chains');
 
       const embeddedWallet = wallets.find(w => w.walletClientType === 'privy');
@@ -432,61 +469,81 @@ export function useBridgeToHyperliquid() {
       const [account] = await walletClient.getAddresses();
       const amountRaw = BigInt(Math.floor(amount * 1e6));
 
-      // Step 1: Approve USDC with gas estimation
-      setStep('approve');
-      let approveGas: bigint;
-      try {
-        approveGas = await publicClient.estimateContractGas({
-          address: USDC_ARBITRUM,
-          abi: erc20Abi,
-          functionName: 'approve',
-          args: [HL_BRIDGE_ARBITRUM, amountRaw],
-          account,
-        });
-        approveGas = (approveGas * 150n) / 100n;
-      } catch {
-        approveGas = 100_000n;
-      }
+      // Step 1: Sign EIP-2612 permit (off-chain, no gas)
+      setStep('signing');
 
-      const approveTxHash = await walletClient.writeContract({
+      const nonce = await publicClient.readContract({
         address: USDC_ARBITRUM,
-        abi: erc20Abi,
-        functionName: 'approve',
-        args: [HL_BRIDGE_ARBITRUM, amountRaw],
-        account,
-        chain: arbitrum,
-        gas: approveGas,
+        abi: NONCES_ABI,
+        functionName: 'nonces',
+        args: [account],
       });
 
-      // Step 2: Wait for approval to be mined
-      setStep('waiting');
-      await publicClient.waitForTransactionReceipt({ hash: approveTxHash });
+      const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600); // 1 hour
 
-      // Step 3: Deposit with gas estimation
-      setStep('deposit');
+      const signature = await walletClient.signTypedData({
+        account,
+        domain: {
+          name: 'USD Coin',
+          version: '2',
+          chainId: 42161,
+          verifyingContract: USDC_ARBITRUM,
+        },
+        types: PERMIT_TYPES,
+        primaryType: 'Permit',
+        message: {
+          owner: account,
+          spender: HL_BRIDGE_ARBITRUM,
+          value: amountRaw,
+          nonce,
+          deadline,
+        },
+      });
+
+      // Parse signature into v, r, s
+      const { parseSignature } = await import('viem');
+      const { v, r, s } = parseSignature(signature);
+
+      // Step 2: Call batchedDepositWithPermit (single on-chain tx)
+      setStep('depositing');
+
       let depositGas: bigint;
       try {
         depositGas = await publicClient.estimateContractGas({
           address: HL_BRIDGE_ARBITRUM,
-          abi: BRIDGE_ABI,
-          functionName: 'depositUsdc',
-          args: [amountRaw],
+          abi: BRIDGE2_ABI,
+          functionName: 'batchedDepositWithPermit',
+          args: [[{
+            user: account,
+            usd: amountRaw,
+            deadline,
+            signature: { v: Number(v), r, s },
+          }]],
           account,
         });
         depositGas = (depositGas * 150n) / 100n;
       } catch {
-        depositGas = 300_000n;
+        depositGas = 500_000n;
       }
 
-      await walletClient.writeContract({
+      const txHash = await walletClient.writeContract({
         address: HL_BRIDGE_ARBITRUM,
-        abi: BRIDGE_ABI,
-        functionName: 'depositUsdc',
-        args: [amountRaw],
+        abi: BRIDGE2_ABI,
+        functionName: 'batchedDepositWithPermit',
+        args: [[{
+          user: account,
+          usd: amountRaw,
+          deadline,
+          signature: { v: Number(v), r, s },
+        }]],
         account,
         chain: arbitrum,
         gas: depositGas,
       });
+
+      // Step 3: Wait for confirmation
+      setStep('confirming');
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
 
       setStep('idle');
     },
@@ -498,6 +555,31 @@ export function useBridgeToHyperliquid() {
   });
 
   return { ...mutation, variables: { ...mutation.variables, step } };
+}
+
+/**
+ * Hook to swap USDC <-> USDH via spot market order
+ */
+export function useSwapUsdcUsdh() {
+  const { client } = useHyperliquid();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ amount, direction }: { amount: number; direction: 'buy' | 'sell' }) => {
+      if (!client) throw new Error('Client not connected');
+      // buy = buy USDH with USDC, sell = sell USDH for USDC
+      return client.placeSpotOrder({
+        coin: '@107', // USDH/USDC spot pair symbol in allMids
+        side: direction,
+        sz: amount,
+        orderType: 'market',
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['spotBalance'] });
+      queryClient.invalidateQueries({ queryKey: ['userState'] });
+    },
+  });
 }
 
 /**

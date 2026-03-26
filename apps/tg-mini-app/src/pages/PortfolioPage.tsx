@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { PortfolioSummary, Card, TestnetToggle } from '@repo/ui';
-import { useUserState, usePortfolio, useSpotBalance, useUsdClassTransfer, useWithdraw, useArbitrumUsdcBalance, useBridgeToHyperliquid, useBuilderFeeApproval, useApproveBuilderFee, BUILDER_ADDRESS, BUILDER_FEE_TENTHS_BP } from '@repo/hyperliquid-sdk';
+import { PortfolioSummary, Card } from '@repo/ui';
+import { useUserState, usePortfolio, useSpotBalance, useUsdClassTransfer, useWithdraw, useArbitrumUsdcBalance, useBridgeToHyperliquid, useSwapUsdcUsdh, useBuilderFeeApproval, useApproveBuilderFee, BUILDER_ADDRESS, BUILDER_FEE_TENTHS_BP } from '@repo/hyperliquid-sdk';
 import { usePrivy } from '@privy-io/react-auth';
 import { useHaptics } from '../hooks/useHaptics';
 
-type View = 'main' | 'deposit-choice' | 'deposit-fiat' | 'deposit-crypto' | 'withdraw' | 'transfer';
+type View = 'main' | 'deposit-choice' | 'deposit-fiat' | 'deposit-crypto' | 'withdraw' | 'transfer' | 'swap';
 
 // ── Sub-views ────────────────────────────────────────────────────────────────
 
@@ -129,15 +129,19 @@ function DepositCryptoView({ address }: { address: string | undefined }) {
           </button>
         </div>
 
+        {bridgeAmount && parseFloat(bridgeAmount) > 0 && parseFloat(bridgeAmount) < 5 && (
+          <p className="text-sm text-yellow-400">Minimum deposit is 5 USDC. Smaller amounts will be permanently lost.</p>
+        )}
+
         <button
           onClick={handleBridge}
-          disabled={!bridgeAmount || parseFloat(bridgeAmount) <= 0 || bridge.isPending || !address}
+          disabled={!bridgeAmount || parseFloat(bridgeAmount) < 5 || bridge.isPending || !address}
           className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-medium transition-colors"
         >
           {bridge.isPending
-            ? bridge.variables?.step === 'approve' ? 'Step 1/3: Approving USDC…'
-              : bridge.variables?.step === 'waiting' ? 'Step 2/3: Waiting for confirmation…'
-              : 'Step 3/3: Bridging to Hyperliquid…'
+            ? bridge.variables?.step === 'signing' ? 'Step 1/2: Signing permit…'
+              : bridge.variables?.step === 'depositing' ? 'Step 2/2: Depositing…'
+              : 'Confirming…'
             : 'Bridge to Hyperliquid'}
         </button>
 
@@ -318,6 +322,83 @@ function TransferView({ perpsBalance, spotBalance }: { perpsBalance: number; spo
   );
 }
 
+function SwapView({ usdhBalance, usdcBalance }: { usdhBalance: number; usdcBalance: number }) {
+  const [direction, setDirection] = useState<'buy' | 'sell'>('buy'); // buy = USDC→USDH, sell = USDH→USDC
+  const [amount, setAmount] = useState('');
+  const swap = useSwapUsdcUsdh();
+
+  const fromLabel = direction === 'buy' ? 'USDC' : 'USDH';
+  const toLabel = direction === 'buy' ? 'USDH' : 'USDC';
+  const fromBalance = direction === 'buy' ? usdcBalance : usdhBalance;
+
+  const handleSwap = () => {
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) return;
+    swap.mutate({ amount: amt, direction }, { onSuccess: () => setAmount('') });
+  };
+
+  return (
+    <div className="p-4 space-y-4">
+      <h2 className="text-xl font-semibold">Swap USDC / USDH</h2>
+      <p className="text-sm text-gray-400">Swap between USDC and USDH on Hyperliquid spot.</p>
+
+      <div className="flex items-center justify-center space-x-3">
+        <span className="font-medium text-white">{fromLabel}</span>
+        <button
+          onClick={() => { setDirection(d => d === 'buy' ? 'sell' : 'buy'); setAmount(''); }}
+          className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors text-indigo-400"
+        >
+          ⇄
+        </button>
+        <span className="font-medium text-white">{toLabel}</span>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex justify-between items-center">
+          <label className="text-sm text-gray-400">Amount ({fromLabel})</label>
+          <span className="text-xs text-indigo-400">Balance: {fromBalance.toFixed(2)}</span>
+        </div>
+        <div className="flex space-x-2">
+          <input
+            type="number"
+            placeholder="0.00"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="flex-1 bg-gray-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+          <button
+            onClick={() => setAmount(fromBalance.toFixed(2))}
+            className="px-4 py-3 bg-gray-800 rounded-xl text-sm text-indigo-400 hover:bg-gray-700 transition-colors"
+          >
+            MAX
+          </button>
+        </div>
+      </div>
+
+      <button
+        onClick={handleSwap}
+        disabled={!amount || parseFloat(amount) <= 0 || swap.isPending}
+        className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-medium transition-colors"
+      >
+        {swap.isPending ? 'Swapping…' : `Swap ${fromLabel} → ${toLabel}`}
+      </button>
+
+      {swap.isSuccess && (
+        <p className="text-center text-sm text-green-400">Swap completed!</p>
+      )}
+      {swap.isError && (
+        <p className="text-center text-sm text-red-400">
+          {swap.error instanceof Error ? swap.error.message : 'Swap failed'}
+        </p>
+      )}
+
+      <div className="text-xs text-gray-500">
+        <p>USDH ≈ 1 USDC. Swap executes as a market order on the USDH/USDC spot pair.</p>
+      </div>
+    </div>
+  );
+}
+
 function BuilderCodeCard() {
   const { data: maxFee, isLoading } = useBuilderFeeApproval();
   const approve = useApproveBuilderFee();
@@ -373,9 +454,6 @@ function BuilderCodeCard() {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function PortfolioPage() {
-  const [isTestnet, setIsTestnet] = useState(
-    import.meta.env.VITE_HYPERLIQUID_TESTNET === 'true'
-  );
   const [view, setView] = useState<View>('main');
   const { authenticated, user } = usePrivy();
 
@@ -385,6 +463,9 @@ export function PortfolioPage() {
   const { data: userState } = useUserState();
   const { data: portfolio } = usePortfolio();
   const { data: spotData } = useSpotBalance();
+
+  const walletAddress = user?.wallet?.address;
+  const { data: arbUsdcBalance } = useArbitrumUsdcBalance(walletAddress);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -414,12 +495,14 @@ export function PortfolioPage() {
     }
   }, [view]);
 
-  const walletAddress = user?.wallet?.address;
   const withdrawable = userState?.withdrawable ?? 0;
   const perpsBalance = userState?.marginSummary?.accountValue ?? 0;
-  // Spot USDC balance: find USDC (token 0) in spot clearinghouse state
-  const spotUsdcBalance = spotData?.balances?.find((b: any) => b.coin === 'USDC')?.total;
-  const spotBalance = parseFloat(spotUsdcBalance ?? '0') || 0;
+  // Spot balances from spot clearinghouse state
+  const spotUsdcRaw = spotData?.balances?.find((b: any) => b.coin === 'USDC')?.total;
+  const spotUsdcBalance = parseFloat(spotUsdcRaw ?? '0') || 0;
+  const spotUsdhRaw = spotData?.balances?.find((b: any) => b.coin === 'USDH')?.total;
+  const spotUsdhBalance = parseFloat(spotUsdhRaw ?? '0') || 0;
+  const walletUsdcBalance = arbUsdcBalance ?? 0;
 
   if (view !== 'main') {
     return (
@@ -428,24 +511,14 @@ export function PortfolioPage() {
         {view === 'deposit-fiat' && <DepositFiatView />}
         {view === 'deposit-crypto' && <DepositCryptoView address={walletAddress} />}
         {view === 'withdraw' && <WithdrawView withdrawable={withdrawable} destination={walletAddress} />}
-        {view === 'transfer' && <TransferView perpsBalance={perpsBalance} spotBalance={spotBalance} />}
+        {view === 'transfer' && <TransferView perpsBalance={perpsBalance} spotBalance={spotUsdcBalance} />}
+        {view === 'swap' && <SwapView usdhBalance={spotUsdhBalance} usdcBalance={spotUsdcBalance} />}
       </div>
     );
   }
 
   return (
     <div className="p-4 space-y-4">
-      {/* Network Toggle */}
-      <Card>
-        <TestnetToggle
-          isTestnet={isTestnet}
-          onToggle={(testnet) => {
-            setIsTestnet(testnet);
-            console.log('Testnet toggled:', testnet);
-          }}
-        />
-      </Card>
-
       {/* Portfolio Summary */}
       <Card>
         <div className="flex items-center justify-between mb-4">
@@ -461,6 +534,9 @@ export function PortfolioPage() {
         </div>
         <PortfolioSummary
           accountState={userState || null}
+          spotUsdcBalance={spotUsdcBalance}
+          spotUsdhBalance={spotUsdhBalance}
+          walletUsdcBalance={walletUsdcBalance}
           onDeposit={() => setView('deposit-choice')}
           onWithdraw={() => setView('withdraw')}
         />
@@ -471,7 +547,7 @@ export function PortfolioPage() {
 
       {/* Quick Actions */}
       <Card title="Quick Actions">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <button
             onClick={() => setView('deposit-choice')}
             className="p-4 bg-green-900/30 rounded-lg text-center hover:bg-green-900/50 transition-colors"
@@ -500,8 +576,17 @@ export function PortfolioPage() {
             <p className="text-sm font-medium">Transfer</p>
           </button>
           <button
+            onClick={() => setView('swap')}
+            className="p-4 bg-indigo-900/30 rounded-lg text-center hover:bg-indigo-900/50 transition-colors"
+          >
+            <svg className="w-6 h-6 mx-auto mb-2 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+            </svg>
+            <p className="text-sm font-medium">Swap</p>
+          </button>
+          <button
             onClick={() => window.open('https://app.hyperliquid.xyz', '_blank')}
-            className="p-4 bg-gray-800 rounded-lg text-center hover:bg-gray-700 transition-colors"
+            className="p-4 bg-gray-800 rounded-lg text-center hover:bg-gray-700 transition-colors col-span-2"
           >
             <svg className="w-6 h-6 mx-auto mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -525,9 +610,7 @@ export function PortfolioPage() {
             </div>
             <div className="flex justify-between items-center">
               <span className="text-gray-400">Network</span>
-              <span className={`font-medium ${isTestnet ? 'text-yellow-500' : 'text-green-500'}`}>
-                {isTestnet ? 'Testnet' : 'Mainnet'}
-              </span>
+              <span className="font-medium text-green-500">Mainnet</span>
             </div>
           </div>
         </Card>

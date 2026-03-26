@@ -9,6 +9,7 @@ interface OrderFormProps {
   currentPrice?: number;
   maxLeverage?: number;
   availableBalance?: number;
+  isSpot?: boolean;
   onPlaceOrder: (order: {
     coin: string;
     side: OrderSide;
@@ -28,6 +29,7 @@ export function OrderForm({
   currentPrice,
   maxLeverage = 50,
   availableBalance = 0,
+  isSpot = false,
   onPlaceOrder,
   isLoading = false,
 }: OrderFormProps) {
@@ -105,7 +107,7 @@ export function OrderForm({
               : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
           }`}
         >
-          Buy / Long
+          {isSpot ? 'Buy' : 'Buy / Long'}
         </button>
         <button
           type="button"
@@ -116,7 +118,7 @@ export function OrderForm({
               : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
           }`}
         >
-          Sell / Short
+          {isSpot ? 'Sell' : 'Sell / Short'}
         </button>
       </div>
 
@@ -180,29 +182,31 @@ export function OrderForm({
         </div>
       </div>
 
-      {/* Leverage Slider */}
-      <div>
-        <div className="flex justify-between items-center mb-1">
-          <label className="block text-sm font-medium text-gray-300">
-            Leverage
-          </label>
-          <span className="text-sm font-medium text-indigo-400">
-            {leverage}x
-          </span>
+      {/* Leverage Slider (perps only) */}
+      {!isSpot && (
+        <div>
+          <div className="flex justify-between items-center mb-1">
+            <label className="block text-sm font-medium text-gray-300">
+              Leverage
+            </label>
+            <span className="text-sm font-medium text-indigo-400">
+              {leverage}x
+            </span>
+          </div>
+          <input
+            type="range"
+            min="1"
+            max={maxLeverage}
+            value={leverage}
+            onChange={(e) => setLeverage(parseInt(e.target.value))}
+            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+          />
+          <div className="flex justify-between text-xs text-gray-500 mt-1">
+            <span>1x</span>
+            <span>{maxLeverage}x</span>
+          </div>
         </div>
-        <input
-          type="range"
-          min="1"
-          max={maxLeverage}
-          value={leverage}
-          onChange={(e) => setLeverage(parseInt(e.target.value))}
-          className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-        />
-        <div className="flex justify-between text-xs text-gray-500 mt-1">
-          <span>1x</span>
-          <span>{maxLeverage}x</span>
-        </div>
-      </div>
+      )}
 
       {/* Order Summary */}
       <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
@@ -210,11 +214,13 @@ export function OrderForm({
           <span className="text-gray-400">Order Value</span>
           <span className="text-gray-300">${orderValue.toFixed(2)}</span>
         </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-400">Margin Required</span>
-          <span className="text-gray-300">${marginRequired.toFixed(2)}</span>
-        </div>
-        {liquidationPrice && (
+        {!isSpot && (
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-400">Margin Required</span>
+            <span className="text-gray-300">${marginRequired.toFixed(2)}</span>
+          </div>
+        )}
+        {!isSpot && liquidationPrice && (
           <div className="flex justify-between text-sm">
             <span className="text-gray-400">Est. Liquidation</span>
             <span className="text-red-400">${liquidationPrice.toFixed(2)}</span>
@@ -280,7 +286,7 @@ export function OrderForm({
             <div className="flex justify-between">
               <span className="text-gray-400">Side</span>
               <span className={side === 'buy' ? 'text-green-500 font-medium' : 'text-red-500 font-medium'}>
-                {side === 'buy' ? 'Buy / Long' : 'Sell / Short'}
+                {side === 'buy' ? (isSpot ? 'Buy' : 'Buy / Long') : (isSpot ? 'Sell' : 'Sell / Short')}
               </span>
             </div>
             <div className="flex justify-between">
@@ -307,15 +313,19 @@ export function OrderForm({
                 <span className="font-medium">{(parseFloat(size) / currentPrice).toFixed(6)} {coin}</span>
               </div>
             )}
-            <div className="flex justify-between">
-              <span className="text-gray-400">Leverage</span>
-              <span className="font-medium text-indigo-400">{leverage}x</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Margin</span>
-              <span className="font-medium">${marginRequired.toFixed(2)}</span>
-            </div>
-            {liquidationPrice && (
+            {!isSpot && (
+              <div className="flex justify-between">
+                <span className="text-gray-400">Leverage</span>
+                <span className="font-medium text-indigo-400">{leverage}x</span>
+              </div>
+            )}
+            {!isSpot && (
+              <div className="flex justify-between">
+                <span className="text-gray-400">Margin</span>
+                <span className="font-medium">${marginRequired.toFixed(2)}</span>
+              </div>
+            )}
+            {!isSpot && liquidationPrice && (
               <div className="flex justify-between">
                 <span className="text-gray-400">Est. Liquidation</span>
                 <span className="text-red-400 font-medium">${liquidationPrice.toFixed(2)}</span>

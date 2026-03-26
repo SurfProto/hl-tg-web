@@ -3,11 +3,14 @@ import type { AccountState } from '@repo/types';
 
 interface PortfolioSummaryProps {
   accountState: AccountState | null;
+  spotUsdcBalance?: number;
+  spotUsdhBalance?: number;
+  walletUsdcBalance?: number;
   onDeposit?: () => void;
   onWithdraw?: () => void;
 }
 
-export function PortfolioSummary({ accountState, onDeposit, onWithdraw }: PortfolioSummaryProps) {
+export function PortfolioSummary({ accountState, spotUsdcBalance = 0, spotUsdhBalance = 0, walletUsdcBalance = 0, onDeposit, onWithdraw }: PortfolioSummaryProps) {
   if (!accountState) {
     return (
       <div className="text-center py-12">
@@ -43,17 +46,35 @@ export function PortfolioSummary({ accountState, onDeposit, onWithdraw }: Portfo
 
   return (
     <div className="space-y-6">
-      {/* Account Value - Hero */}
+      {/* Account Value - Hero (combined) */}
       <div className="bg-gradient-to-r from-indigo-900/50 to-purple-900/50 rounded-xl p-6">
-        <p className="text-gray-400 text-sm mb-1">Account Value</p>
+        <p className="text-gray-400 text-sm mb-1">Total Account Value</p>
         <p className="text-3xl font-bold">
-          ${marginSummary.accountValue.toFixed(2)}
+          ${(marginSummary.accountValue + spotUsdcBalance + spotUsdhBalance + walletUsdcBalance).toFixed(2)}
         </p>
         <div className="flex items-center space-x-2 mt-2">
           <span className={`text-sm ${pnlColor}`}>
             {totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(2)}
           </span>
           <span className="text-gray-500 text-sm">Unrealized PnL</span>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-400">
+          <div className="flex justify-between">
+            <span>HL Perps</span>
+            <span className="text-gray-300">${marginSummary.accountValue.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Spot USDC</span>
+            <span className="text-gray-300">${spotUsdcBalance.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Spot USDH</span>
+            <span className="text-gray-300">${spotUsdhBalance.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Wallet USDC</span>
+            <span className="text-gray-300">${walletUsdcBalance.toFixed(2)}</span>
+          </div>
         </div>
       </div>
 

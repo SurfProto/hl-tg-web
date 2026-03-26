@@ -3,29 +3,19 @@ import type { AnyMarket, MarketCategory, MarketTag, EnrichedMarket } from '@repo
 // Known TradFi symbols on Hyperliquid (commodities, indices, FX, stocks)
 const TRADFI_SYMBOLS = new Set([
   // Commodities
-  'GOLD', 'SILVER', 'WTIOIL', 'BRENTOIL', 'NATGAS', 'PLATINUM',
+  'GOLD', 'SILVER', 'WTIOIL', 'BRENTOIL', 'NATGAS', 'PLATINUM', 'COPPER', 'PALLADIUM',
   // Indices
-  'S&P500', 'XYZ100', 'CRCL', 'USA500',
+  'S&P500', 'XYZ100', 'CRCL', 'USA500', 'NIKKEI', 'DAX', 'FTSE', 'HSI',
   // FX
-  'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'CHF', 'CNH',
+  'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'CHF', 'CNH', 'NZD', 'SGD', 'HKD', 'KRW', 'INR', 'MXN', 'BRL',
   // Stocks / Pre-IPO
   'TSLA', 'AAPL', 'AMZN', 'GOOG', 'MSFT', 'NVDA', 'META', 'NFLX',
   'INTC', 'AMD', 'HOOD', 'COIN', 'GME', 'AMC', 'EWY',
+  'MSTR', 'SQ', 'PYPL', 'SHOP', 'UBER', 'ABNB', 'SNAP', 'RBLX',
+  'NKE', 'DIS', 'BA', 'JPM', 'GS', 'V', 'MA',
 ]);
 
-// HIP-3 tokens are USDT-quoted perpetuals (cash-settled)
-// These are identified by their quote being USDT in the allMids key or by known HIP-3 launches
-const HIP3_SYMBOLS = new Set([
-  'USA500', 'SILVER', 'TSLA', 'HOOD', 'WTI', 'INTC', 'NVDA',
-  'AMZN', 'EWY', 'GOLD',
-]);
-
-// Pre-launch markets (coins not yet fully live)
-const PRELAUNCH_SYMBOLS = new Set<string>([
-  // Add pre-launch symbols as they appear
-]);
-
-export function classifyMarket(market: AnyMarket): MarketCategory[] {
+export function classifyMarket(market: AnyMarket, spotTokenNames?: Set<string>): MarketCategory[] {
   const categories: MarketCategory[] = ['all'];
 
   if (market.type === 'spot') {
@@ -36,37 +26,34 @@ export function classifyMarket(market: AnyMarket): MarketCategory[] {
   // Perp markets
   categories.push('perps');
 
-  const name = market.name.toUpperCase();
+  const name = market.name;
 
-  if (TRADFI_SYMBOLS.has(name)) {
+  if (TRADFI_SYMBOLS.has(name.toUpperCase())) {
     categories.push('tradfi');
   } else {
     categories.push('crypto');
   }
 
-  if (HIP3_SYMBOLS.has(name)) {
+  // HIP-3: perp markets whose underlying also has a deployed spot token
+  if (spotTokenNames && spotTokenNames.has(name)) {
     categories.push('hip3');
-  }
-
-  if (PRELAUNCH_SYMBOLS.has(name)) {
-    categories.push('prelaunch');
   }
 
   return categories;
 }
 
-export function getMarketTags(market: AnyMarket): MarketTag[] {
+export function getMarketTags(market: AnyMarket, spotTokenNames?: Set<string>): MarketTag[] {
   const tags: MarketTag[] = [];
 
   if (market.type === 'spot') {
     tags.push('SPOT');
   } else {
     tags.push('PERP');
-    const name = market.name.toUpperCase();
-    if (TRADFI_SYMBOLS.has(name)) {
+    const name = market.name;
+    if (TRADFI_SYMBOLS.has(name.toUpperCase())) {
       tags.push('xyz');
     }
-    if (HIP3_SYMBOLS.has(name)) {
+    if (spotTokenNames && spotTokenNames.has(name)) {
       tags.push('cash');
     }
   }
@@ -77,11 +64,12 @@ export function getMarketTags(market: AnyMarket): MarketTag[] {
 export function enrichMarkets(
   markets: AnyMarket[],
   priceChanges?: Record<string, number>,
+  spotTokenNames?: Set<string>,
 ): EnrichedMarket[] {
   const enriched = markets.map((market) => ({
     market,
-    categories: classifyMarket(market),
-    tags: getMarketTags(market),
+    categories: classifyMarket(market, spotTokenNames),
+    tags: getMarketTags(market, spotTokenNames),
   }));
 
   // For trending: mark top 20 by absolute 24h change

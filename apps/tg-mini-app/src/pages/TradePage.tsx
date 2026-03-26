@@ -122,10 +122,16 @@ export function TradePage() {
   // For now, priceChanges come from the mids data (we pass empty, the enrichment handles trending)
   const priceChanges: Record<string, number> = {};
 
+  const spotTokenNames = markets?.spotTokenNames;
   const enrichedMarkets = useMemo(
-    () => enrichMarkets(allMarkets, priceChanges),
-    [allMarkets],
+    () => enrichMarkets(allMarkets, priceChanges, spotTokenNames),
+    [allMarkets, spotTokenNames],
   );
+
+  // Detect if current market is spot
+  const isSpotMarket = enrichedMarkets.find(
+    em => em.market.name === selectedMarket
+  )?.market.type === 'spot';
 
   // Prepare prices for market selector
   const prices: Record<string, string> = {};
@@ -223,8 +229,9 @@ export function TradePage() {
         <OrderForm
           coin={selectedMarket}
           currentPrice={currentPrice}
-          maxLeverage={maxLeverage}
+          maxLeverage={isSpotMarket ? 1 : maxLeverage}
           availableBalance={availableBalance}
+          isSpot={isSpotMarket}
           onPlaceOrder={handlePlaceOrder}
           isLoading={placeOrder.isPending}
         />

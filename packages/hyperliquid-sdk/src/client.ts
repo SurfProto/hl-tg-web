@@ -127,7 +127,6 @@ export class HyperliquidClient {
     }
 
     const spotMarkets = spotMeta.universe
-      .filter((pair: any) => pair.isCanonical)
       .map((pair: any) => {
         const baseToken = tokensByIndex[pair.tokens[0]];
         const quoteToken = tokensByIndex[pair.tokens[1]];
@@ -147,6 +146,7 @@ export class HyperliquidClient {
     return {
       spot: spotMarkets,
       perp: perpMarkets,
+      spotTokenNames: new Set(spotMeta.tokens.map((t: any) => t.name)) as Set<string>,
     };
   }
 
@@ -370,6 +370,32 @@ export class HyperliquidClient {
   async getPortfolio() {
     const client = await this.getPublicClient();
     return client.portfolio({ user: this.walletAddress as `0x${string}` });
+  }
+
+  // Place a spot market order (used for USDC-USDH swap)
+  async placeSpotOrder(params: { coin: string; side: 'buy' | 'sell'; sz: number; orderType: 'market' | 'limit'; limitPx?: number }) {
+    const client = await this.getWalletClient();
+    const publicClient = await this.getPublicClient();
+
+    // Get spot meta to find the pair index
+    const spotMeta = await publicClient.spotMeta();
+    const pair = spotMeta.universe.find((p: any) => p.name === params.coin);
+    if (!pair) throw new Error(`Unknown spot pair: ${params.coin}`);
+
+    // Spot asset index = 10000 + universe index
+    const assetIndex = 10000 + pair.index;
+
+    return client.order({
+      orders: [{
+        a: assetIndex,
+        b: params.side === 'buy',
+        p: params.orderType === 'market' ? '0' : String(params.limitPx ?? 0),
+        s: String(params.sz),
+        r: false,
+        t: { limit: { tif: 'Ioc' } },
+      }],
+      grouping: 'na',
+    });
   }
 
   // Approve builder fee for this user

@@ -103,5 +103,5 @@ export const CATEGORY_LABELS: Record<MarketCategory, string> = {
 };
 
 export const CATEGORY_ORDER: MarketCategory[] = [
-  'all', 'perps', 'spot', 'crypto', 'tradfi', 'hip3', 'trending', 'prelaunch',
+  'all', 'perps', 'spot', 'crypto', 'tradfi', 'trending', 'prelaunch',
 ];

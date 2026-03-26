@@ -1,5 +1,13 @@
 import React, { useState, useMemo } from 'react';
-import type { EnrichedMarket, MarketCategory } from '@repo/types';
+import type { AnyMarket, EnrichedMarket, MarketCategory } from '@repo/types';
+
+function getDisplayName(market: AnyMarket): string {
+  if (market.type === 'spot') {
+    const spot = market as any;
+    return `${spot.baseName}/${spot.quoteName}`;
+  }
+  return market.name;
+}
 
 interface MarketSelectorProps {
   markets: EnrichedMarket[];
@@ -12,7 +20,7 @@ interface MarketSelectorProps {
 }
 
 const DEFAULT_CATEGORIES: MarketCategory[] = [
-  'all', 'perps', 'spot', 'crypto', 'tradfi', 'hip3', 'trending', 'prelaunch',
+  'all', 'perps', 'spot', 'crypto', 'tradfi', 'trending', 'prelaunch',
 ];
 
 const DEFAULT_LABELS: Record<string, string> = {
@@ -49,9 +57,11 @@ export function MarketSelector({
   const filteredMarkets = useMemo(() => {
     return markets
       .filter((em) => activeTab === 'all' || em.categories.includes(activeTab))
-      .filter((em) =>
-        em.market.name.toLowerCase().includes(search.toLowerCase())
-      );
+      .filter((em) => {
+        const lower = search.toLowerCase();
+        return em.market.name.toLowerCase().includes(lower) ||
+          getDisplayName(em.market).toLowerCase().includes(lower);
+      });
   }, [markets, activeTab, search]);
 
   const selectedEnriched = markets.find((em) => em.market.name === selectedMarket);
@@ -82,12 +92,12 @@ export function MarketSelector({
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center">
             <span className="text-sm font-bold">
-              {selectedMarket.slice(0, 2)}
+              {selectedEnriched ? getDisplayName(selectedEnriched.market).slice(0, 2) : selectedMarket.slice(0, 2)}
             </span>
           </div>
           <div className="text-left">
             <div className="flex items-center space-x-2">
-              <p className="font-semibold">{selectedMarket}</p>
+              <p className="font-semibold">{selectedEnriched ? getDisplayName(selectedEnriched.market) : selectedMarket}</p>
               {selectedEnriched && (
                 <TagBadges tags={selectedEnriched.tags} maxLeverage={selectedEnriched.market.maxLeverage} />
               )}
@@ -178,12 +188,12 @@ export function MarketSelector({
                     <div className="flex items-center space-x-3">
                       <div className="w-8 h-8 bg-gray-700 rounded-full flex items-center justify-center">
                         <span className="text-xs font-bold">
-                          {market.name.slice(0, 2)}
+                          {getDisplayName(market).slice(0, 2)}
                         </span>
                       </div>
                       <div className="text-left">
                         <div className="flex items-center space-x-1.5">
-                          <p className="font-medium">{market.name}</p>
+                          <p className="font-medium">{getDisplayName(market)}</p>
                           <TagBadges tags={em.tags} maxLeverage={market.maxLeverage} />
                         </div>
                         <div className="flex items-center space-x-2 mt-0.5">

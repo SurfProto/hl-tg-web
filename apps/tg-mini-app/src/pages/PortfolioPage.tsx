@@ -455,7 +455,7 @@ function BuilderCodeCard() {
 
 export function PortfolioPage() {
   const [view, setView] = useState<View>('main');
-  const { authenticated, user } = usePrivy();
+  const { authenticated, user, linkEmail } = usePrivy();
 
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
@@ -599,20 +599,34 @@ export function PortfolioPage() {
       {/* Account Info */}
       {authenticated && (
         <Card title="Account">
-          <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-400">Wallet</span>
-              <span className="font-mono text-xs">
-                {walletAddress
-                  ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
-                  : 'No wallet'}
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-400">Network</span>
-              <span className="font-medium text-green-500">Mainnet</span>
-            </div>
-          </div>
+          {(() => {
+            const hasEmail = user?.linkedAccounts?.some((a: any) => a.type === 'email');
+            const hasTelegram = user?.linkedAccounts?.some((a: any) => a.type === 'telegram');
+            return (
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400">Wallet</span>
+                  <span className="font-mono text-xs">
+                    {walletAddress
+                      ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
+                      : 'No wallet'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400">Network</span>
+                  <span className="font-medium text-green-500">Mainnet</span>
+                </div>
+                {hasTelegram && !hasEmail && (
+                  <button
+                    onClick={() => linkEmail()}
+                    className="w-full py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-sm text-indigo-400 transition-colors"
+                  >
+                    + Link email (backup login)
+                  </button>
+                )}
+              </div>
+            );
+          })()}
         </Card>
       )}
 

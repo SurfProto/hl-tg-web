@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PrivyProvider, usePrivy } from '@privy-io/react-auth';
 import { arbitrum } from 'viem/chains';
@@ -19,10 +19,9 @@ const queryClient = new QueryClient({
 
 // Seamless Telegram auth component
 function TelegramAuthGate({ children }: { children: React.ReactNode }) {
-  const { ready, authenticated, login } = usePrivy();
-  const autoLoginAttempted = useRef(false);
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
+  // loginWithTelegram exists in the Privy bundle but was removed from types in v1.99 — cast to access it
+  const privy = usePrivy() as any;
+  const { ready, authenticated } = privy;
 
   const isTMA = Boolean(window.Telegram?.WebApp?.initData);
 
@@ -45,47 +44,16 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
     if (tp.secondary_bg_color) root.style.setProperty('--tg-secondary-bg-color', tp.secondary_bg_color);
   }, [isTMA]);
 
-  // Auto-login in TMA context (seamless path) — fires only once per retry
+  // Seamless auto-login using TMA initData — no modal shown
   useEffect(() => {
-    if (!ready || authenticated || !isTMA || autoLoginAttempted.current) return;
-    autoLoginAttempted.current = true;
-    setAuthError(null);
-    (async () => {
-      try {
-        await (login as () => Promise<void>)();
-      } catch (err: unknown) {
-        setAuthError(err instanceof Error ? err.message : 'Login failed');
-      }
-    })();
-  }, [ready, authenticated, isTMA, login, retryCount]);
-
-  if (authError) {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center p-6">
-        <div className="text-center space-y-4">
-          <p className="text-red-400">Authentication failed</p>
-          <p className="text-gray-500 text-sm">{authError}</p>
-          <button
-            onClick={() => {
-              autoLoginAttempted.current = false;
-              setRetryCount(c => c + 1);
-            }}
-            className="px-6 py-2 bg-indigo-600 rounded-lg text-sm"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
+    if (!ready || authenticated || !isTMA) return;
+    privy.loginWithTelegram();
+  }, [ready, authenticated, isTMA]);
 
   if (!ready) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p className="text-gray-400">Loading...</p>
-        </div>
+        <div className="animate-spin w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full mx-auto"></div>
       </div>
     );
   }

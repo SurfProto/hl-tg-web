@@ -423,6 +423,8 @@ export function useBridgeToHyperliquid() {
       const [account] = await walletClient.getAddresses();
       const amountRaw = BigInt(Math.floor(amount * 1e6));
 
+      const { maxFeePerGas, maxPriorityFeePerGas } = await publicClient.estimateFeesPerGas();
+
       const txHash = await walletClient.writeContract({
         address: USDC_ARBITRUM,
         abi: erc20Abi,
@@ -430,6 +432,8 @@ export function useBridgeToHyperliquid() {
         args: [HL_BRIDGE_ARBITRUM, amountRaw],
         account,
         chain: arbitrum,
+        maxFeePerGas: (maxFeePerGas * 130n) / 100n,
+        maxPriorityFeePerGas,
       });
 
       await publicClient.waitForTransactionReceipt({ hash: txHash });

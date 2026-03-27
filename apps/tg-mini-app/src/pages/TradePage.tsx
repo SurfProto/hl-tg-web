@@ -53,6 +53,8 @@ export function TradePage() {
   ) || 0;
 
   const selectedPerpMarket = markets?.perp?.find((market: any) => market.name === selectedMarket);
+  const selectedSpotMarket = markets?.spot?.find((market: any) => market.name === selectedMarket);
+  const selectedMarketMeta = selectedPerpMarket ?? selectedSpotMarket;
   const maxLeverage = selectedPerpMarket?.maxLeverage || 50;
 
   const allMarkets: AnyMarket[] = useMemo(() => [
@@ -208,7 +210,10 @@ export function TradePage() {
             currentPrice={currentPrice}
             maxLeverage={isSpotMarket ? 1 : maxLeverage}
             availableBalance={isSpotMarket ? spotUsdcBalance : (userState?.marginSummary?.accountValue || 0)}
+            minNotionalUsd={selectedMarketMeta?.minNotionalUsd ?? 10}
+            minBaseSize={selectedMarketMeta?.minBaseSize ?? 0}
             isSpot={isSpotMarket}
+            onlyIsolated={selectedPerpMarket?.onlyIsolated ?? false}
             onPlaceOrder={handlePlaceOrder}
             isLoading={placeOrder.isPending || placeSpotOrder.isPending || approveBuilder.isPending || isApprovalLoading}
           />

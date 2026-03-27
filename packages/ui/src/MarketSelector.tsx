@@ -20,7 +20,7 @@ interface MarketSelectorProps {
 }
 
 const DEFAULT_CATEGORIES: MarketCategory[] = [
-  'all', 'perps', 'spot', 'crypto', 'tradfi', 'trending', 'prelaunch',
+  'all', 'perps', 'spot', 'crypto', 'tradfi', 'hip3', 'trending', 'prelaunch',
 ];
 
 const DEFAULT_LABELS: Record<string, string> = {
@@ -240,6 +240,7 @@ function TagBadges({ tags, maxLeverage }: { tags: string[]; maxLeverage: number 
         if (tag === 'SPOT') colors = 'bg-emerald-900/50 text-emerald-400';
         if (tag === 'xyz') colors = 'bg-yellow-900/50 text-yellow-400';
         if (tag === 'cash') colors = 'bg-green-900/50 text-green-400';
+        if (tag === 'HIP-3') colors = 'bg-cyan-900/50 text-cyan-400';
 
         return (
           <span

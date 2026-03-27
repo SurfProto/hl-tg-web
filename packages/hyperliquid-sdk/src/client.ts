@@ -5,6 +5,7 @@ import type {
   OpenOrder,
   Order,
   OrderSide,
+  OrderValidationResult,
   WsMessage,
 } from '@repo/types';
 import { BUILDER_ADDRESS, BUILDER_FEE_TENTHS_BP, getBuilderConfig, isBuilderConfigured } from './builder';
@@ -24,11 +25,18 @@ async function loadHyperliquidSDK() {
 interface CachedMarket {
   asset: number;
   name: string;
+  baseCoin: string;
   marketType: MarketType;
   szDecimals: number;
   priceDecimals: number;
   maxLeverage: number;
   aliases: string[];
+  minNotionalUsd: number;
+  minBaseSize: number;
+  dex?: string;
+  dexIndex?: number;
+  isHip3?: boolean;
+  onlyIsolated?: boolean;
 }
 
 interface MarketCache {
@@ -43,6 +51,8 @@ interface MarketCache {
     quoteName: string;
     szDecimals: number;
     maxLeverage: number;
+    minNotionalUsd: number;
+    minBaseSize: number;
     onlyIsolated: boolean;
     isDelisted: boolean;
   }>;
@@ -53,6 +63,15 @@ interface MarketCache {
     onlyIsolated: boolean;
     isDelisted: boolean;
     index: number;
+    minNotionalUsd: number;
+    minBaseSize: number;
+    dex?: string;
+    dexIndex?: number;
+    isHip3?: boolean;
+  }>;
+  perpDexs: Array<{
+    dex: string;
+    dexIndex: number;
   }>;
 }
 
@@ -72,6 +91,8 @@ export interface HyperliquidClientConfig {
   testnet?: boolean;
 }
 
+const MIN_ORDER_NOTIONAL_USD = 10;
+
 export class HyperliquidClient {
   private publicClientInstance: any = null;
   private walletClientInstance: any = null;
@@ -87,6 +108,28 @@ export class HyperliquidClient {
     this.testnet = config.testnet ?? false;
     this.config = config;
     this.wsManager = new WebSocketManager(this.testnet);
+  }
+
+  private getHttpApiUrl(): string {
+    return this.testnet
+      ? 'https://api.hyperliquid-testnet.xyz'
+      : 'https://api.hyperliquid.xyz';
+  }
+
+  private async postInfo<T>(body: Record<string, unknown>): Promise<T> {
+    const response = await fetch(`${this.getHttpApiUrl()}/info`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Info request failed with status ${response.status}`);
+    }
+
+    return response.json() as Promise<T>;
   }
 
   private async getPublicClient() {
@@ -120,9 +163,10 @@ export class HyperliquidClient {
     if (this.marketCache) return this.marketCache;
 
     const client = await this.getPublicClient();
-    const [spotMeta, metaAndCtxs] = await Promise.all([
+    const [spotMeta, metaAndCtxs, perpDexsResponse] = await Promise.all([
       client.spotMeta(),
-      client.metaAndAssetCtxs(),
+      this.postInfo<any>( { type: 'metaAndAssetCtxs' } ),
+      this.postInfo<Array<{ name: string } | null>>({ type: 'perpDexs' }).catch(() => [null]),
     ]);
 
     const tokensByIndex: Record<number, any> = {};
@@ -132,6 +176,9 @@ export class HyperliquidClient {
 
     const spot: Record<string, CachedMarket> = {};
     const perp: Record<string, CachedMarket> = {};
+    const perpDexs = perpDexsResponse
+      .map((entry, dexIndex) => entry ? { dex: entry.name, dexIndex } : null)
+      .filter(Boolean) as Array<{ dex: string; dexIndex: number }>;
 
     const perpMarkets = metaAndCtxs[0].universe
       .filter((market: any) => !market.isDelisted)
@@ -139,9 +186,16 @@ export class HyperliquidClient {
         const cached: CachedMarket = {
           asset: index,
           aliases: [market.name],
+          baseCoin: market.name,
+          dex: undefined,
+          dexIndex: 0,
+          isHip3: false,
           marketType: 'perp',
           maxLeverage: market.maxLeverage,
+          minBaseSize: 10 ** (-market.szDecimals),
+          minNotionalUsd: MIN_ORDER_NOTIONAL_USD,
           name: market.name,
+          onlyIsolated: Boolean(market.onlyIsolated),
           priceDecimals: Math.max(0, 6 - market.szDecimals),
           szDecimals: market.szDecimals,
         };
@@ -149,8 +203,57 @@ export class HyperliquidClient {
         return {
           ...market,
           index,
+          onlyIsolated: Boolean(market.onlyIsolated),
+          minBaseSize: cached.minBaseSize,
+          minNotionalUsd: cached.minNotionalUsd,
         };
       });
+
+    const hip3PerpMarkets = (
+      await Promise.all(
+        perpDexs.map(async ({ dex, dexIndex }) => {
+          const dexMetaAndCtxs = await this.postInfo<any>({
+            type: 'metaAndAssetCtxs',
+            dex,
+          });
+
+          return dexMetaAndCtxs[0].universe
+            .filter((market: any) => !market.isDelisted)
+            .map((market: any, index: number) => {
+              const fullName = `${dex}:${market.name}`;
+              const cached: CachedMarket = {
+                asset: 100000 + dexIndex * 10000 + index,
+                aliases: [fullName],
+                baseCoin: market.name,
+                dex,
+                dexIndex,
+                isHip3: true,
+                marketType: 'perp',
+                maxLeverage: market.maxLeverage,
+                minBaseSize: 10 ** (-market.szDecimals),
+                minNotionalUsd: MIN_ORDER_NOTIONAL_USD,
+                name: fullName,
+                onlyIsolated: Boolean(market.onlyIsolated),
+                priceDecimals: Math.max(0, 6 - market.szDecimals),
+                szDecimals: market.szDecimals,
+              };
+              perp[fullName.toUpperCase()] = cached;
+              return {
+                ...market,
+                dex,
+                dexIndex,
+                index,
+                isHip3: true,
+                maxLeverage: market.maxLeverage,
+                minBaseSize: cached.minBaseSize,
+                minNotionalUsd: cached.minNotionalUsd,
+                name: fullName,
+                onlyIsolated: Boolean(market.onlyIsolated),
+              };
+            });
+        }),
+      )
+    ).flat();
 
     const spotMarkets = spotMeta.universe.map((pair: any) => {
       const baseToken = tokensByIndex[pair.tokens[0]];
@@ -159,8 +262,11 @@ export class HyperliquidClient {
       const cached: CachedMarket = {
         asset: 10000 + pair.index,
         aliases,
+        baseCoin: baseToken?.name ?? pair.name,
         marketType: 'spot',
         maxLeverage: 1,
+        minBaseSize: 10 ** (-(baseToken?.szDecimals ?? 0)),
+        minNotionalUsd: MIN_ORDER_NOTIONAL_USD,
         name: pair.name,
         priceDecimals: Math.max(0, 8 - (baseToken?.szDecimals ?? 0)),
         szDecimals: baseToken?.szDecimals ?? 0,
@@ -176,6 +282,8 @@ export class HyperliquidClient {
         quoteName: quoteToken?.name ?? 'USDC',
         szDecimals: baseToken?.szDecimals ?? 0,
         maxLeverage: 1,
+        minBaseSize: cached.minBaseSize,
+        minNotionalUsd: cached.minNotionalUsd,
         onlyIsolated: false,
         isDelisted: false,
       };
@@ -183,7 +291,8 @@ export class HyperliquidClient {
 
     this.marketCache = {
       perp,
-      perpMarkets,
+      perpDexs,
+      perpMarkets: [...perpMarkets, ...hip3PerpMarkets],
       spot,
       spotMarkets,
       spotTokenNames: new Set(spotMeta.tokens.map((token: any) => token.name)) as Set<string>,
@@ -267,6 +376,76 @@ export class HyperliquidClient {
     return formatted;
   }
 
+  private getOrderValidation(
+    order: Order,
+    market: CachedMarket,
+    referencePrice: number,
+    availableBalance?: number,
+  ): OrderValidationResult {
+    const minSizeUsd = market.minNotionalUsd;
+    const leverage = market.marketType === 'spot' ? 1 : Math.max(order.leverage ?? 1, 1);
+    const minMarginUsd = market.marketType === 'spot'
+      ? minSizeUsd
+      : minSizeUsd / leverage;
+
+    if (!Number.isFinite(order.sizeUsd) || order.sizeUsd <= 0) {
+      return {
+        isValid: false,
+        minMarginUsd,
+        minSizeUsd,
+        reason: 'Enter an order size greater than 0.',
+      };
+    }
+
+    if (order.sizeUsd < minSizeUsd) {
+      return {
+        isValid: false,
+        minMarginUsd,
+        minSizeUsd,
+        reason: `Minimum order value is $${minSizeUsd.toFixed(2)}.`,
+      };
+    }
+
+    if (Number.isFinite(availableBalance) && availableBalance != null) {
+      const requiredBalance = market.marketType === 'spot' ? order.sizeUsd : order.sizeUsd / leverage;
+      if (requiredBalance > availableBalance) {
+        return {
+          isValid: false,
+          minMarginUsd,
+          minSizeUsd,
+          reason: 'Insufficient balance for this order size.',
+        };
+      }
+    }
+
+    const rawSize = order.sizeUsd / referencePrice;
+    if (rawSize < market.minBaseSize) {
+      return {
+        isValid: false,
+        minMarginUsd,
+        minSizeUsd,
+        reason: `Order size is below the minimum lot size for ${market.name}.`,
+      };
+    }
+
+    try {
+      this.formatSize(rawSize, market);
+    } catch (error) {
+      return {
+        isValid: false,
+        minMarginUsd,
+        minSizeUsd,
+        reason: error instanceof Error ? error.message : 'Order size is too small.',
+      };
+    }
+
+    return {
+      isValid: true,
+      minMarginUsd,
+      minSizeUsd,
+    };
+  }
+
   private generateCloid(): `0x${string}` {
     const bytes = new Uint8Array(16);
     if (globalThis.crypto?.getRandomValues) {
@@ -317,6 +496,20 @@ export class HyperliquidClient {
     throw new Error(`${action} failed`);
   }
 
+  private unwrapStatuses(response: any) {
+    const statuses = response?.response?.data?.statuses;
+    if (!Array.isArray(statuses)) {
+      return response;
+    }
+
+    const errorStatus = statuses.find((status: any) => status?.error);
+    if (errorStatus?.error) {
+      throw new Error(errorStatus.error);
+    }
+
+    return response;
+  }
+
   private async ensurePerpLeverage(coin: string, leverage?: number, reduceOnly?: boolean): Promise<void> {
     if (!leverage || leverage <= 0 || reduceOnly) return;
 
@@ -342,6 +535,11 @@ export class HyperliquidClient {
 
     if (!referencePrice || !Number.isFinite(referencePrice) || referencePrice <= 0) {
       throw new Error(`Missing reference price for ${market.name}`);
+    }
+
+    const validation = this.getOrderValidation(order, market, referencePrice);
+    if (!validation.isValid) {
+      throw new Error(validation.reason ?? 'Order validation failed.');
     }
 
     const rawPrice = order.orderType === 'market'
@@ -403,10 +601,36 @@ export class HyperliquidClient {
     };
   }
 
+  async validateOrder(
+    order: Order,
+    options?: { availableBalance?: number; referencePrice?: number },
+  ): Promise<OrderValidationResult> {
+    const market = await this.resolveMarket(order.coin, order.marketType);
+    const referencePrice = options?.referencePrice
+      ?? order.limitPx
+      ?? await this.getReferencePrice(market);
+
+    return this.getOrderValidation(order, market, referencePrice, options?.availableBalance);
+  }
+
   // Get market prices
   async getMids() {
-    const client = await this.getPublicClient();
-    return client.allMids();
+    const cache = await this.ensureMarketCache();
+    const [baseMids, ...dexMids] = await Promise.all([
+      this.postInfo<Record<string, string>>({ type: 'allMids' }),
+      ...cache.perpDexs.map(({ dex }) =>
+        this.postInfo<Record<string, string>>({ type: 'allMids', dex })
+          .then((mids) => ({ dex, mids })),
+      ),
+    ]);
+
+    const merged = { ...baseMids };
+    for (const dexResult of dexMids) {
+      Object.entries(dexResult.mids).forEach(([coin, price]) => {
+        merged[`${dexResult.dex}:${coin}`] = price;
+      });
+    }
+    return merged;
   }
 
   // Get orderbook
@@ -446,8 +670,20 @@ export class HyperliquidClient {
 
   // Get user state
   async getUserState(): Promise<AccountState> {
-    const client = await this.getPublicClient();
-    const raw = await client.clearinghouseState({ user: this.walletAddress as `0x${string}` });
+    const cache = await this.ensureMarketCache();
+    const [baseState, ...dexStates] = await Promise.all([
+      this.postInfo<any>({
+        type: 'clearinghouseState',
+        user: this.walletAddress as `0x${string}`,
+      }),
+      ...cache.perpDexs.map(({ dex }) =>
+        this.postInfo<any>({
+          type: 'clearinghouseState',
+          dex,
+          user: this.walletAddress as `0x${string}`,
+        }),
+      ),
+    ]);
 
     const parseMarginSummary = (marginSummary: any) => ({
       accountValue: parseFloat(marginSummary.accountValue),
@@ -456,15 +692,22 @@ export class HyperliquidClient {
       totalRawUsd: parseFloat(marginSummary.totalRawUsd),
     });
 
+    const allStates = [
+      { dex: undefined, state: baseState },
+      ...dexStates.map((state, index) => ({ dex: cache.perpDexs[index]?.dex, state })),
+    ];
+
     return {
-      marginSummary: parseMarginSummary(raw.marginSummary),
-      crossMarginSummary: parseMarginSummary(raw.crossMarginSummary),
-      crossMaintenanceMarginUsed: parseFloat(raw.crossMaintenanceMarginUsed),
-      withdrawable: parseFloat(raw.withdrawable),
-      assetPositions: (raw.assetPositions ?? []).map((assetPosition: any) => ({
+      marginSummary: parseMarginSummary(baseState.marginSummary),
+      crossMarginSummary: parseMarginSummary(baseState.crossMarginSummary),
+      crossMaintenanceMarginUsed: parseFloat(baseState.crossMaintenanceMarginUsed),
+      withdrawable: parseFloat(baseState.withdrawable),
+      assetPositions: allStates.flatMap(({ dex, state }) => (state.assetPositions ?? []).map((assetPosition: any) => ({
         type: assetPosition.type,
         position: {
-          coin: assetPosition.position.coin,
+          coin: dex && !assetPosition.position.coin.includes(':')
+            ? `${dex}:${assetPosition.position.coin}`
+            : assetPosition.position.coin,
           szi: parseFloat(assetPosition.position.szi),
           leverage: {
             type: assetPosition.position.leverage.type,
@@ -480,7 +723,7 @@ export class HyperliquidClient {
           returnOnEquity: parseFloat(assetPosition.position.returnOnEquity),
           unrealizedPnl: parseFloat(assetPosition.position.unrealizedPnl),
         },
-      })),
+      }))),
     };
   }
 
@@ -542,7 +785,7 @@ export class HyperliquidClient {
       await this.ensurePerpLeverage(normalized.market.name, order.leverage, order.reduceOnly);
       const builder = await this.ensureBuilderApproval();
 
-      return client.order({
+      return this.unwrapStatuses(await client.order({
         orders: [{
           a: normalized.market.asset,
           b: normalized.side === 'buy',
@@ -554,7 +797,7 @@ export class HyperliquidClient {
         }],
         grouping: 'na',
         builder,
-      });
+      }));
     } catch (error) {
       this.normalizeExchangeError('placeOrder', {
         coin: order.coin,
@@ -583,7 +826,7 @@ export class HyperliquidClient {
       const rawPrice = this.getAggressiveMarketPrice(referencePrice, side);
       const builder = await this.ensureBuilderApproval();
 
-      return client.order({
+      return this.unwrapStatuses(await client.order({
         orders: [{
           a: market.asset,
           b: side === 'buy',
@@ -595,7 +838,7 @@ export class HyperliquidClient {
         }],
         grouping: 'na',
         builder,
-      });
+      }));
     } catch (error) {
       this.normalizeExchangeError('closePosition', { coin }, error);
     }
@@ -606,9 +849,9 @@ export class HyperliquidClient {
     try {
       const client = await this.getWalletClient();
       const market = await this.resolveMarket(coin);
-      return client.cancel({
+      return this.unwrapStatuses(await client.cancel({
         cancels: [{ a: market.asset, o: oid }],
-      });
+      }));
     } catch (error) {
       this.normalizeExchangeError('cancelOrder', { coin, oid }, error);
     }
@@ -635,7 +878,7 @@ export class HyperliquidClient {
         }),
       );
 
-      return client.cancel({ cancels });
+      return this.unwrapStatuses(await client.cancel({ cancels }));
     } catch (error) {
       this.normalizeExchangeError('cancelAllOrders', { coin }, error);
     }
@@ -646,7 +889,7 @@ export class HyperliquidClient {
     try {
       const client = await this.getWalletClient();
       const normalized = await this.normalizeOrder(order);
-      return client.modify({
+      return this.unwrapStatuses(await client.modify({
         oid,
         order: {
           a: normalized.market.asset,
@@ -657,7 +900,7 @@ export class HyperliquidClient {
           t: { limit: { tif: normalized.tif } },
           c: normalized.cloid,
         },
-      });
+      }));
     } catch (error) {
       this.normalizeExchangeError('modifyOrder', {
         coin: order.coin,
@@ -700,8 +943,17 @@ export class HyperliquidClient {
 
   // Get funding history
   async getFundingHistory(coin: string, startTime?: number) {
-    const client = await this.getPublicClient();
     const resolved = await this.resolveMarket(coin, 'perp');
+    if (resolved.dex) {
+      return this.postInfo<any>({
+        type: 'fundingHistory',
+        coin: resolved.name,
+        dex: resolved.dex,
+        startTime: startTime ?? Date.now() - 7 * 24 * 60 * 60 * 1000,
+      });
+    }
+
+    const client = await this.getPublicClient();
     return client.fundingHistory({
       coin: resolved.name,
       startTime: startTime ?? Date.now() - 7 * 24 * 60 * 60 * 1000,
@@ -742,7 +994,7 @@ export class HyperliquidClient {
       });
       const builder = await this.ensureBuilderApproval();
 
-      return client.order({
+      return this.unwrapStatuses(await client.order({
         orders: [{
           a: normalized.market.asset,
           b: normalized.side === 'buy',
@@ -754,7 +1006,7 @@ export class HyperliquidClient {
         }],
         grouping: 'na',
         builder,
-      });
+      }));
     } catch (error) {
       this.normalizeExchangeError('placeSpotOrder', {
         coin: order.coin,

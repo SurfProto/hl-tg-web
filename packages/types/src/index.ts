@@ -5,6 +5,11 @@ export interface Market {
   maxLeverage: number;
   onlyIsolated: boolean;
   isDelisted: boolean;
+  minNotionalUsd: number;
+  minBaseSize: number;
+  dex?: string;
+  dexIndex?: number;
+  isHip3?: boolean;
 }
 
 export interface SpotMarket extends Market {
@@ -24,7 +29,7 @@ export type AnyMarket = SpotMarket | PerpMarket;
 
 // Market classification types
 export type MarketCategory = 'all' | 'perps' | 'spot' | 'crypto' | 'tradfi' | 'hip3' | 'trending' | 'prelaunch';
-export type MarketTag = 'PERP' | 'SPOT' | 'xyz' | 'cash';
+export type MarketTag = 'PERP' | 'SPOT' | 'xyz' | 'cash' | 'HIP-3';
 
 export interface EnrichedMarket {
   market: AnyMarket;
@@ -47,6 +52,13 @@ export interface Order {
   leverage?: number;
   marketType?: MarketType;
   cloid?: string;
+}
+
+export interface OrderValidationResult {
+  isValid: boolean;
+  minSizeUsd: number;
+  minMarginUsd: number;
+  reason?: string;
 }
 
 export interface PlacedOrder {

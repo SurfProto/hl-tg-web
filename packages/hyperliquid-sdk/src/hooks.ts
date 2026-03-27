@@ -456,45 +456,17 @@ export function useBridgeToHyperliquid() {
     mutationFn: async ({ amount }: { amount: number }) => {
       if (amount < 5) throw new Error('Minimum deposit is 5 USDC');
 
-      const { createWalletClient, createPublicClient, custom, encodeFunctionData, http, erc20Abi } = await import('viem');
+      const { createPublicClient, encodeFunctionData, http, erc20Abi } = await import('viem');
       const { arbitrum } = await import('viem/chains');
 
       const embeddedWallet = wallets.find(w => w.walletClientType === 'privy');
       if (!embeddedWallet) throw new Error('No embedded wallet found');
-      const provider = await embeddedWallet.getEthereumProvider();
-      const walletClient = createWalletClient({ chain: arbitrum, transport: custom(provider) });
       const publicClient = createPublicClient({ chain: arbitrum, transport: http() });
-      const [account] = await walletClient.getAddresses();
+      const account = embeddedWallet.address as `0x${string}`;
       const amountRaw = BigInt(Math.floor(amount * 1e6));
 
       const { maxFeePerGas, maxPriorityFeePerGas } = await publicClient.estimateFeesPerGas();
-      const gas = await publicClient.estimateContractGas({
-        address: USDC_ARBITRUM,
-        abi: erc20Abi,
-        functionName: 'transfer',
-        args: [HL_BRIDGE_ARBITRUM, amountRaw],
-        account,
-      });
       const bufferedMaxFeePerGas = (maxFeePerGas * BigInt(130)) / BigInt(100);
-      const estimatedGasCost = gas * bufferedMaxFeePerGas;
-      const requiredEthBalance = estimatedGasCost + estimatedGasCost / BigInt(5);
-      const ethBalance = await publicClient.getBalance({ address: account });
-
-      if (ethBalance >= requiredEthBalance) {
-        const txHash = await walletClient.writeContract({
-          address: USDC_ARBITRUM,
-          abi: erc20Abi,
-          functionName: 'transfer',
-          args: [HL_BRIDGE_ARBITRUM, amountRaw],
-          account,
-          chain: arbitrum,
-          maxFeePerGas: bufferedMaxFeePerGas,
-          maxPriorityFeePerGas,
-        });
-
-        await publicClient.waitForTransactionReceipt({ hash: txHash });
-        return;
-      }
 
       const data = encodeFunctionData({
         abi: erc20Abi,
@@ -513,7 +485,7 @@ export function useBridgeToHyperliquid() {
         },
         {
           header: 'Review Hyperliquid deposit',
-          description: `Bridge ${amount.toFixed(2)} USDC from Arbitrum into your Hyperliquid trading balance. Privy will help if your wallet is short on gas.`,
+          description: `Bridge ${amount.toFixed(2)} USDC from Arbitrum into your Hyperliquid trading balance. Sponsored by Tsunami with love.`,
           buttonText: 'Confirm deposit',
           successHeader: 'Deposit submitted',
           successDescription: 'Your USDC transfer to Hyperliquid is on the way.',
@@ -521,7 +493,7 @@ export function useBridgeToHyperliquid() {
             title: 'Deposit details',
             action: 'Bridge USDC',
             contractInfo: {
-              name: 'USDC on Arbitrum',
+              name: 'Sponsored by Tsunami with love',
               url: 'https://arbiscan.io/token/0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
             },
           },

@@ -75,7 +75,7 @@ See [.env.example](.env.example) for required variables:
 - `VITE_PRIVY_APP_ID`: Privy application ID
 - `VITE_HYPERLIQUID_TESTNET`: Use testnet (true/false)
 - `VITE_BUILDER_ADDRESS`: Your builder address for fee collection
-- `VITE_BUILDER_FEE`: Builder fee in tenths of basis points (10 = 1bp)
+- `VITE_BUILDER_FEE`: Builder fee in tenths of basis points (50 = 5bp)
 - `VITE_SUPABASE_URL`: Supabase project URL
 - `VITE_SUPABASE_ANON_KEY`: Supabase anonymous key
 - `VITE_ONRAMP_URL`: On-ramp provider redirect URL

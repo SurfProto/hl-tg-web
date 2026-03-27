@@ -56,7 +56,7 @@ help - Get help
 | `VITE_PRIVY_APP_ID` | `cmn4jruut019s0dl5lg14xz7y` |
 | `VITE_HYPERLIQUID_TESTNET` | `false` |
 | `VITE_BUILDER_ADDRESS` | `0x1924b8561eef20e70ede628a296175d358be80e5` |
-| `VITE_BUILDER_FEE` | `10` |
+| `VITE_BUILDER_FEE` | `50` |
 
 5. After adding all variables, click **"Redeploy"** (uncheck "Use existing build cache")
 

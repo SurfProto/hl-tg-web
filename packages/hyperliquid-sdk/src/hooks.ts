@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { usePrivy, useWallets } from '@privy-io/react-auth';
-import { useEffect, useState, useCallback } from 'react';
+import { useFundWallet, usePrivy, useSendTransaction, useWallets } from '@privy-io/react-auth';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { HyperliquidClient } from './client';
 import {
   BUILDER_ADDRESS,
@@ -449,6 +449,24 @@ export function useArbitrumUsdcBalance(address: string | undefined) {
 const USDC_ARBITRUM = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as const;
 const HL_BRIDGE_ARBITRUM = '0x2Df1c51E09aECF9cacB7bc98cB1742757f163dF7' as const;
 
+export function useFundArbitrumUsdc() {
+  const { user } = usePrivy();
+  const { fundWallet } = useFundWallet();
+
+  return useMutation({
+    mutationFn: async ({ address }: { address?: string } = {}) => {
+      const walletAddress = address ?? user?.wallet?.address;
+      if (!walletAddress) throw new Error('No wallet connected');
+
+      await fundWallet(walletAddress, {
+        chain: { id: 42161 },
+        amount: '10',
+        asset: 'USDC',
+      });
+    },
+  });
+}
+
 /**
  * Hook to bridge USDC from Arbitrum to Hyperliquid L1
  * Sends USDC directly to the bridge address — Hyperliquid credits the sender on HyperCore.
@@ -456,37 +474,58 @@ const HL_BRIDGE_ARBITRUM = '0x2Df1c51E09aECF9cacB7bc98cB1742757f163dF7' as const
  */
 export function useBridgeToHyperliquid() {
   const { wallets } = useWallets();
+  const { sendTransaction } = useSendTransaction();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async ({ amount }: { amount: number }) => {
       if (amount < 5) throw new Error('Minimum deposit is 5 USDC');
 
-      const { createWalletClient, createPublicClient, custom, http, erc20Abi } = await import('viem');
+      const { createPublicClient, encodeFunctionData, http, erc20Abi } = await import('viem');
       const { arbitrum } = await import('viem/chains');
 
       const embeddedWallet = wallets.find(w => w.walletClientType === 'privy');
       if (!embeddedWallet) throw new Error('No embedded wallet found');
-      const provider = await embeddedWallet.getEthereumProvider();
-      const walletClient = createWalletClient({ chain: arbitrum, transport: custom(provider) });
       const publicClient = createPublicClient({ chain: arbitrum, transport: http() });
-      const [account] = await walletClient.getAddresses();
+      const account = embeddedWallet.address as `0x${string}`;
       const amountRaw = BigInt(Math.floor(amount * 1e6));
 
       const { maxFeePerGas, maxPriorityFeePerGas } = await publicClient.estimateFeesPerGas();
+      const bufferedMaxFeePerGas = (maxFeePerGas * BigInt(130)) / BigInt(100);
 
-      const txHash = await walletClient.writeContract({
-        address: USDC_ARBITRUM,
+      const data = encodeFunctionData({
         abi: erc20Abi,
         functionName: 'transfer',
         args: [HL_BRIDGE_ARBITRUM, amountRaw],
-        account,
-        chain: arbitrum,
-        maxFeePerGas: (maxFeePerGas * 130n) / 100n,
-        maxPriorityFeePerGas,
       });
 
-      await publicClient.waitForTransactionReceipt({ hash: txHash });
+      await sendTransaction(
+        {
+          to: USDC_ARBITRUM,
+          data,
+          value: BigInt(0),
+          chainId: arbitrum.id,
+          maxFeePerGas: bufferedMaxFeePerGas,
+          maxPriorityFeePerGas,
+        },
+        {
+          header: 'Review Hyperliquid deposit',
+          description: `Bridge ${amount.toFixed(2)} USDC from Arbitrum into your Hyperliquid trading balance. Sponsored by Tsunami with love.`,
+          buttonText: 'Confirm deposit',
+          successHeader: 'Deposit submitted',
+          successDescription: 'Your USDC transfer to Hyperliquid is on the way.',
+          transactionInfo: {
+            title: 'Deposit details',
+            action: 'Bridge USDC',
+            contractInfo: {
+              name: 'Sponsored by Tsunami with love',
+              url: 'https://arbiscan.io/token/0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+            },
+          },
+        },
+        undefined,
+        account,
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['userState'] });

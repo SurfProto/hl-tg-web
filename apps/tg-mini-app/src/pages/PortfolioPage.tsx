@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { PortfolioSummary, Card } from '@repo/ui';
-import { useUserState, usePortfolio, useSpotBalance, useUsdClassTransfer, useWithdraw, useArbitrumUsdcBalance, useBridgeToHyperliquid, useSwapUsdcUsdh, useBuilderFeeApproval, useApproveBuilderFee, BUILDER_ADDRESS, BUILDER_FEE_TENTHS_BP, isBuilderConfigured } from '@repo/hyperliquid-sdk';
+import { useUserState, usePortfolio, useSpotBalance, useUsdClassTransfer, useWithdraw, useArbitrumUsdcBalance, useFundArbitrumUsdc, useBridgeToHyperliquid, useSwapUsdcUsdh, useBuilderFeeApproval, useApproveBuilderFee, BUILDER_ADDRESS, BUILDER_FEE_TENTHS_BP } from '@repo/hyperliquid-sdk';
 import { usePrivy } from '@privy-io/react-auth';
 import { useHaptics } from '../hooks/useHaptics';
 
@@ -54,6 +54,7 @@ function DepositCryptoView({ address }: { address: string | undefined }) {
   const [copied, setCopied] = useState(false);
   const [bridgeAmount, setBridgeAmount] = useState('');
   const { data: arbUsdcBalance, isLoading: arbBalanceLoading } = useArbitrumUsdcBalance(address);
+  const fundWallet = useFundArbitrumUsdc();
   const bridge = useBridgeToHyperliquid();
 
   const handleCopy = () => {
@@ -91,6 +92,16 @@ function DepositCryptoView({ address }: { address: string | undefined }) {
         </div>
 
         <div className="space-y-2 pt-1">
+          <button
+            onClick={() => fundWallet.mutate({ address })}
+            disabled={!address || fundWallet.isPending}
+            className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-medium transition-colors"
+          >
+            {fundWallet.isPending ? 'Opening funding modal...' : 'Add USDC with Privy'}
+          </button>
+          <p className="text-xs text-gray-500">
+            This opens Privy funding for USDC on Arbitrum. You can still use the wallet address below for manual deposits.
+          </p>
           <p className="text-sm text-gray-400">Your Arbitrum address</p>
           {address ? (
             <>
@@ -101,6 +112,11 @@ function DepositCryptoView({ address }: { address: string | undefined }) {
               >
                 {copied ? '✓ Copied!' : '📋 Copy address'}
               </button>
+              {fundWallet.isError && (
+                <p className="text-center text-sm text-red-400">
+                  {fundWallet.error instanceof Error ? fundWallet.error.message : 'Unable to open funding modal'}
+                </p>
+              )}
             </>
           ) : (
             <div className="bg-gray-800 rounded-xl px-4 py-3 text-gray-500 text-sm">Connect wallet to see your address</div>

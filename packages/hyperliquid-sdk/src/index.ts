@@ -28,6 +28,7 @@ export {
   useUsdClassTransfer,
   useWithdraw,
   useArbitrumUsdcBalance,
+  useFundArbitrumUsdc,
   useBridgeToHyperliquid,
   useSwapUsdcUsdh,
   // Builder fee hooks

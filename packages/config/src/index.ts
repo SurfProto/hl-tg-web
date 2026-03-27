@@ -5,7 +5,7 @@ export const config = {
   },
   builder: {
     address: import.meta.env.VITE_BUILDER_ADDRESS || '0x0000000000000000000000000000000000000000',
-    fee: parseInt(import.meta.env.VITE_BUILDER_FEE || '10', 10),
+    fee: parseInt(import.meta.env.VITE_BUILDER_FEE || '50', 10),
   },
   privy: {
     appId: import.meta.env.VITE_PRIVY_APP_ID || 'YOUR_PRIVY_APP_ID',

@@ -3,7 +3,7 @@ import type { HyperliquidClient } from './client';
 
 // Builder code configuration
 export const BUILDER_ADDRESS = import.meta.env.VITE_BUILDER_ADDRESS || '0x0000000000000000000000000000000000000000';
-export const BUILDER_FEE_TENTHS_BP = parseInt(import.meta.env.VITE_BUILDER_FEE || '10', 10); // 10 = 1bp
+export const BUILDER_FEE_TENTHS_BP = parseInt(import.meta.env.VITE_BUILDER_FEE || '50', 10); // 50 = 5bp
 
 /**
  * Convert tenths of basis points to percentage string for SDK.

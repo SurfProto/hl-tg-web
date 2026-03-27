@@ -1,8 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
 import { useFundWallet, usePrivy, useSendTransaction, useWallets } from '@privy-io/react-auth';
 import { useEffect, useRef, useState, useCallback } from 'react';
+
 import { HyperliquidClient } from './client';
-import { BUILDER_ADDRESS, approveBuilderFee as approveBuilderFeeAction } from './builder';
+import {
+  BUILDER_ADDRESS,
+  approveBuilderFee as approveBuilderFeeAction,
+  isBuilderConfigured,
+} from './builder';
 import type { Order, WsMessage } from '@repo/types';
 
 // Singleton client instances
@@ -142,6 +148,7 @@ export function usePlaceOrder() {
       // Invalidate user state to refresh positions/orders
       queryClient.invalidateQueries({ queryKey: ['userState'] });
       queryClient.invalidateQueries({ queryKey: ['openOrders'] });
+      queryClient.invalidateQueries({ queryKey: ['fills'] });
     },
   });
 }
@@ -156,17 +163,33 @@ export function usePlaceSpotOrder() {
   return useMutation({
     mutationFn: (order: Order) => {
       if (!client) throw new Error('Client not connected');
-      return client.placeSpotOrder({
-        coin: order.coin,
-        side: order.side,
-        sz: order.sz,
-        orderType: order.orderType,
-        limitPx: order.limitPx,
-      });
+      return client.placeSpotOrder(order);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['spotBalance'] });
       queryClient.invalidateQueries({ queryKey: ['userState'] });
+      queryClient.invalidateQueries({ queryKey: ['openOrders'] });
+      queryClient.invalidateQueries({ queryKey: ['fills'] });
+    },
+  });
+}
+
+/**
+ * Hook to close an open position.
+ */
+export function useClosePosition() {
+  const { client } = useHyperliquid();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (coin: string) => {
+      if (!client) throw new Error('Client not connected');
+      return client.closePosition(coin);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['userState'] });
+      queryClient.invalidateQueries({ queryKey: ['openOrders'] });
+      queryClient.invalidateQueries({ queryKey: ['fills'] });
     },
   });
 }
@@ -186,6 +209,7 @@ export function useCancelOrder() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['userState'] });
       queryClient.invalidateQueries({ queryKey: ['openOrders'] });
+      queryClient.invalidateQueries({ queryKey: ['fills'] });
     },
   });
 }
@@ -205,6 +229,7 @@ export function useCancelAllOrders() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['userState'] });
       queryClient.invalidateQueries({ queryKey: ['openOrders'] });
+      queryClient.invalidateQueries({ queryKey: ['fills'] });
     },
   });
 }
@@ -224,6 +249,7 @@ export function useModifyOrder() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['userState'] });
       queryClient.invalidateQueries({ queryKey: ['openOrders'] });
+      queryClient.invalidateQueries({ queryKey: ['fills'] });
     },
   });
 }
@@ -311,6 +337,7 @@ export function useUpdateLeverage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['userState'] });
+      queryClient.invalidateQueries({ queryKey: ['fills'] });
     },
   });
 }
@@ -523,8 +550,10 @@ export function useSwapUsdcUsdh() {
       return client.placeSpotOrder({
         coin: '@107', // USDH/USDC spot pair symbol in allMids
         side: direction,
-        sz: amount,
+        sizeUsd: amount,
         orderType: 'market',
+        reduceOnly: false,
+        marketType: 'spot',
       });
     },
     onSuccess: () => {
@@ -543,7 +572,7 @@ export function useBuilderFeeApproval() {
   return useQuery({
     queryKey: ['builderFeeApproval', BUILDER_ADDRESS],
     queryFn: () => client!.getMaxBuilderFee(BUILDER_ADDRESS),
-    enabled: !!client,
+    enabled: !!client && isBuilderConfigured(),
     staleTime: 1000 * 60 * 5, // 5 minutes - approval doesn't change often
   });
 }
@@ -562,6 +591,7 @@ export function useApproveBuilderFee() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['builderFeeApproval'] });
+      queryClient.invalidateQueries({ queryKey: ['openOrders'] });
     },
   });
 }

@@ -4,21 +4,21 @@
  */
 
 import { HyperliquidClient } from './client';
-import { injectBuilderCode, BUILDER_ADDRESS, BUILDER_FEE_TENTHS_BP } from './builder';
+import { BUILDER_ADDRESS, BUILDER_FEE_TENTHS_BP, getBuilderConfig } from './builder';
 
-// Test builder code injection
-console.log('Testing builder code injection...');
+// Test builder configuration
+console.log('Testing builder configuration...');
 const testOrder = {
   coin: 'BTC',
   side: 'buy' as const,
+  sizeUsd: 100,
   orderType: 'limit' as const,
   limitPx: 50000,
-  sz: 0.01,
   reduceOnly: false,
 };
 
-const orderWithBuilder = injectBuilderCode(testOrder);
-console.log('Order with builder code:', JSON.stringify(orderWithBuilder, null, 2));
+console.log('Test order:', JSON.stringify(testOrder, null, 2));
+console.log('Builder config:', JSON.stringify(getBuilderConfig(), null, 2));
 console.log('Builder address:', BUILDER_ADDRESS);
 console.log('Builder fee (tenths of bp):', BUILDER_FEE_TENTHS_BP);
 

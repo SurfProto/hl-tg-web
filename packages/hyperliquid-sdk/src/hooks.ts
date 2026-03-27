@@ -481,17 +481,13 @@ export function useBridgeToHyperliquid() {
     mutationFn: async ({ amount }: { amount: number }) => {
       if (amount < 5) throw new Error('Minimum deposit is 5 USDC');
 
-      const { createPublicClient, encodeFunctionData, http, erc20Abi } = await import('viem');
+      const { encodeFunctionData, erc20Abi } = await import('viem');
       const { arbitrum } = await import('viem/chains');
 
       const embeddedWallet = wallets.find(w => w.walletClientType === 'privy');
       if (!embeddedWallet) throw new Error('No embedded wallet found');
-      const publicClient = createPublicClient({ chain: arbitrum, transport: http() });
       const account = embeddedWallet.address as `0x${string}`;
       const amountRaw = BigInt(Math.floor(amount * 1e6));
-
-      const { maxFeePerGas, maxPriorityFeePerGas } = await publicClient.estimateFeesPerGas();
-      const bufferedMaxFeePerGas = (maxFeePerGas * BigInt(130)) / BigInt(100);
 
       const data = encodeFunctionData({
         abi: erc20Abi,
@@ -505,8 +501,6 @@ export function useBridgeToHyperliquid() {
           data,
           value: BigInt(0),
           chainId: arbitrum.id,
-          maxFeePerGas: bufferedMaxFeePerGas,
-          maxPriorityFeePerGas,
         },
         {
           header: 'Review Hyperliquid deposit',

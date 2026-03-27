@@ -5,6 +5,7 @@ import {
   useOpenOrders,
   useFills,
   useCancelOrder,
+  useClosePosition,
   useMids,
 } from '@repo/hyperliquid-sdk';
 
@@ -17,6 +18,7 @@ export function PositionsPage() {
   const { data: fills } = useFills();
   const { data: mids } = useMids();
   const cancelOrder = useCancelOrder();
+  const closePosition = useClosePosition();
 
   // Get positions
   const positions = userState?.assetPositions?.map((ap: any) => ap.position) || [];
@@ -31,12 +33,7 @@ export function PositionsPage() {
 
   // Handle close position
   const handleClosePosition = (coin: string) => {
-    // Find the position and place a closing order
-    const position = positions.find((p: any) => p.coin === coin);
-    if (position) {
-      // Place a market order in the opposite direction
-      console.log('Close position:', coin);
-    }
+    closePosition.mutate(coin);
   };
 
   // Handle cancel order
@@ -87,7 +84,7 @@ export function PositionsPage() {
             positions={positions}
             currentPrices={currentPrices}
             onClosePosition={handleClosePosition}
-            isLoading={cancelOrder.isPending}
+            isLoading={cancelOrder.isPending || closePosition.isPending}
           />
         </Card>
       )}

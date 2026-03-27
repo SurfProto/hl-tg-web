@@ -35,15 +35,17 @@ export interface EnrichedMarket {
 // Order types
 export type OrderType = 'market' | 'limit';
 export type OrderSide = 'buy' | 'sell';
+export type MarketType = 'perp' | 'spot';
 
 export interface Order {
   coin: string;
   side: OrderSide;
+  sizeUsd: number;
   limitPx?: number;
-  sz: number;
   orderType: OrderType;
   reduceOnly: boolean;
-  postOnly?: boolean;
+  leverage?: number;
+  marketType?: MarketType;
   cloid?: string;
 }
 
@@ -57,6 +59,21 @@ export interface PlacedOrder {
   orderType: OrderType;
   reduceOnly: boolean;
   postOnly: boolean;
+}
+
+export interface OpenOrder {
+  oid: number;
+  coin: string;
+  side: OrderSide;
+  limitPx: number;
+  sz: number;
+  timestamp: number;
+  orderType: OrderType;
+  reduceOnly: boolean;
+  tif?: string | null;
+  triggerPx?: number | null;
+  isTrigger?: boolean;
+  cloid?: string | null;
 }
 
 // Position types
@@ -143,6 +160,8 @@ export interface Fill {
   crossed: boolean;
   fee: number;
   tid: number;
+  cloid?: string | null;
+  feeToken?: string;
 }
 
 // Builder code types

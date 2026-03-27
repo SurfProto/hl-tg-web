@@ -14,12 +14,10 @@ interface OrderFormProps {
     coin: string;
     side: OrderSide;
     orderType: OrderType;
+    sizeUsd: number;
     limitPx?: number;
-    sz: number;
     reduceOnly: boolean;
     leverage?: number;
-    takeProfitPx?: number;
-    stopLossPx?: number;
   }) => void;
   isLoading?: boolean;
 }
@@ -39,9 +37,6 @@ export function OrderForm({
   const [price, setPrice] = useState('');
   const [leverage, setLeverage] = useState(1);
   const [reduceOnly, setReduceOnly] = useState(false);
-  const [showTpSl, setShowTpSl] = useState(false);
-  const [takeProfitPx, setTakeProfitPx] = useState('');
-  const [stopLossPx, setStopLossPx] = useState('');
   const [showConfirmation, setShowConfirmation] = useState(false);
 
   // Calculate order value (size is already in USD)
@@ -79,12 +74,10 @@ export function OrderForm({
       coin,
       side,
       orderType,
+      sizeUsd: sizeNum,
       limitPx: orderType === 'limit' ? parseFloat(price) : undefined,
-      sz: currentPrice ? sizeNum / currentPrice : sizeNum,
       reduceOnly,
       leverage,
-      takeProfitPx: showTpSl && takeProfitPx ? parseFloat(takeProfitPx) : undefined,
-      stopLossPx: showTpSl && stopLossPx ? parseFloat(stopLossPx) : undefined,
     });
   };
 
@@ -229,53 +222,16 @@ export function OrderForm({
       </div>
 
       {/* Reduce Only */}
-      <label className="flex items-center space-x-2">
-        <input
-          type="checkbox"
-          checked={reduceOnly}
-          onChange={(e) => setReduceOnly(e.target.checked)}
-          className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-indigo-600 focus:ring-indigo-500"
-        />
-        <span className="text-sm text-gray-400">Reduce Only</span>
-      </label>
-
-      {/* TP/SL Toggle */}
-      <button
-        type="button"
-        onClick={() => setShowTpSl(!showTpSl)}
-        className="flex items-center space-x-2 text-sm text-indigo-400 hover:text-indigo-300"
-      >
-        <svg
-          className={`w-4 h-4 transition-transform ${showTpSl ? 'rotate-90' : ''}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-        <span>Take Profit / Stop Loss</span>
-      </button>
-
-      {/* TP/SL Inputs */}
-      {showTpSl && (
-        <div className="space-y-3 pl-4 border-l-2 border-gray-700">
-          <Input
-            label="Take Profit Price (USD)"
-            type="number"
-            placeholder="0.00"
-            value={takeProfitPx}
-            onChange={(e) => setTakeProfitPx(e.target.value)}
-            step="0.01"
+      {!isSpot && (
+        <label className="flex items-center space-x-2">
+          <input
+            type="checkbox"
+            checked={reduceOnly}
+            onChange={(e) => setReduceOnly(e.target.checked)}
+            className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-indigo-600 focus:ring-indigo-500"
           />
-          <Input
-            label="Stop Loss Price (USD)"
-            type="number"
-            placeholder="0.00"
-            value={stopLossPx}
-            onChange={(e) => setStopLossPx(e.target.value)}
-            step="0.01"
-          />
-        </div>
+          <span className="text-sm text-gray-400">Reduce Only</span>
+        </label>
       )}
 
       {/* Order Confirmation */}

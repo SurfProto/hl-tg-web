@@ -415,6 +415,7 @@ function BuilderCodeCard() {
   const { data: maxFee, isLoading } = useBuilderFeeApproval();
   const approve = useApproveBuilderFee();
   const haptics = useHaptics();
+  const builderConfigured = isBuilderConfigured();
   const isApproved = (maxFee ?? 0) > 0;
   const feeDisplay = `${(BUILDER_FEE_TENTHS_BP / 10).toFixed(1)} bp`;
 
@@ -423,7 +424,9 @@ function BuilderCodeCard() {
       <div className="space-y-3">
         <div className="flex justify-between items-center">
           <span className="text-gray-400">Status</span>
-          {isLoading ? (
+          {!builderConfigured ? (
+            <span className="text-gray-500 text-sm">Disabled</span>
+          ) : isLoading ? (
             <span className="text-gray-500 text-sm">Checking...</span>
           ) : isApproved ? (
             <span className="text-green-500 font-medium">Approved</span>
@@ -441,7 +444,7 @@ function BuilderCodeCard() {
             {BUILDER_ADDRESS.slice(0, 6)}...{BUILDER_ADDRESS.slice(-4)}
           </span>
         </div>
-        {!isLoading && !isApproved && (
+        {builderConfigured && !isLoading && !isApproved && (
           <button
             onClick={() => { haptics.medium(); approve.mutate(); }}
             disabled={approve.isPending}

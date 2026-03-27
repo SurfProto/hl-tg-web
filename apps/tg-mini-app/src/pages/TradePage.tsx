@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
+import { usePrivy } from '@privy-io/react-auth';
 import {
   MarketSelector,
   Chart,
@@ -20,19 +21,18 @@ import {
   enrichMarkets,
   CATEGORY_LABELS,
   CATEGORY_ORDER,
+  isBuilderConfigured,
 } from '@repo/hyperliquid-sdk';
-import type { OrderSide, OrderType, AnyMarket } from '@repo/types';
+import type { AnyMarket, Order } from '@repo/types';
 import { useHaptics } from '../hooks/useHaptics';
 
 export function TradePage() {
   const [selectedMarket, setSelectedMarket] = useState('BTC');
   const [interval, setInterval] = useState('1h');
   const [showOrderbook, setShowOrderbook] = useState(false);
-  const [showApprovalPrompt, setShowApprovalPrompt] = useState(false);
-  const [pendingOrder, setPendingOrder] = useState<any>(null);
   const haptics = useHaptics();
+  const { authenticated } = usePrivy();
 
-  // Fetch data
   const { data: markets } = useMarketData();
   const { data: mids } = useMids();
   const { data: orderbook } = useOrderbook(selectedMarket);
@@ -43,109 +43,36 @@ export function TradePage() {
   const { data: spotData } = useSpotBalance();
   const { data: maxBuilderFee, isLoading: isApprovalLoading } = useBuilderFeeApproval();
   const approveBuilder = useApproveBuilderFee();
+
+  const builderConfigured = isBuilderConfigured();
   const isBuilderApproved = (maxBuilderFee ?? 0) > 0;
 
-  // Get current price
   const currentPrice = mids?.[selectedMarket] ? parseFloat(mids[selectedMarket]) : undefined;
-
-  // Get available balance — spot USDC when a spot market is selected, perp account value otherwise
   const spotUsdcBalance = parseFloat(
-    spotData?.balances?.find((b: any) => b.coin === 'USDC')?.total ?? '0'
+    spotData?.balances?.find((balance: any) => balance.coin === 'USDC')?.total ?? '0',
   ) || 0;
 
-  // Get max leverage for selected market
-  const selectedMarketData = markets?.perp?.find((m: any) => m.name === selectedMarket);
-  const maxLeverage = selectedMarketData?.maxLeverage || 50;
+  const selectedPerpMarket = markets?.perp?.find((market: any) => market.name === selectedMarket);
+  const selectedSpotMarket = markets?.spot?.find((market: any) => market.name === selectedMarket);
+  const selectedMarketMeta = selectedPerpMarket ?? selectedSpotMarket;
+  const maxLeverage = selectedPerpMarket?.maxLeverage || 50;
 
-  // Submit order — route to spot or perp based on coin
-  const submitOrder = (order: {
-    coin: string;
-    side: OrderSide;
-    orderType: OrderType;
-    limitPx?: number;
-    sz: number;
-    reduceOnly: boolean;
-  }) => {
-    const isSpot = !!(markets?.spot || []).some((m: any) => m.name === order.coin);
-    if (isSpot) {
-      placeSpotOrder.mutate(order);
-    } else {
-      placeOrder.mutate({
-        coin: order.coin,
-        side: order.side,
-        orderType: order.orderType,
-        limitPx: order.limitPx,
-        sz: order.sz,
-        reduceOnly: order.reduceOnly,
-      });
-    }
-  };
-
-  // Handle order placement - gate on builder fee approval
-  const handlePlaceOrder = (order: {
-    coin: string;
-    side: OrderSide;
-    orderType: OrderType;
-    limitPx?: number;
-    sz: number;
-    reduceOnly: boolean;
-    leverage?: number;
-    takeProfitPx?: number;
-    stopLossPx?: number;
-  }) => {
-    if (isApprovalLoading) return; // wait for approval check before deciding
-    if (!isBuilderApproved) {
-      haptics.warning();
-      setPendingOrder(order);
-      setShowApprovalPrompt(true);
-      return;
-    }
-    haptics.medium();
-    submitOrder(order);
-  };
-
-  // Handle builder fee approval then place pending order
-  const handleApproveAndPlace = async () => {
-    try {
-      await approveBuilder.mutateAsync();
-      haptics.success();
-      setShowApprovalPrompt(false);
-      if (pendingOrder) {
-        submitOrder(pendingOrder);
-        setPendingOrder(null);
-      }
-    } catch {
-      haptics.error();
-    }
-  };
-
-  // Handle price click from orderbook
-  const handlePriceClick = (price: number) => {
-    console.log('Price clicked:', price);
-  };
-
-  // Build enriched market list with categories and tags
   const allMarkets: AnyMarket[] = useMemo(() => [
-    ...(markets?.spot || []).map((t: any) => ({ ...t, type: 'spot' as const })),
-    ...(markets?.perp || []).map((m: any) => ({ ...m, type: 'perp' as const })),
+    ...(markets?.spot || []).map((market: any) => ({ ...market, type: 'spot' as const })),
+    ...(markets?.perp || []).map((market: any) => ({ ...market, type: 'perp' as const })),
   ], [markets]);
 
-  // Compute 24h price changes from mids + prevDayPx if available
-  // For now, priceChanges come from the mids data (we pass empty, the enrichment handles trending)
   const priceChanges: Record<string, number> = {};
-
   const spotTokenNames = markets?.spotTokenNames;
   const enrichedMarkets = useMemo(
     () => enrichMarkets(allMarkets, priceChanges, spotTokenNames),
     [allMarkets, spotTokenNames],
   );
 
-  // Detect if current market is spot
   const isSpotMarket = enrichedMarkets.find(
-    em => em.market.name === selectedMarket
+    (enrichedMarket) => enrichedMarket.market.name === selectedMarket,
   )?.market.type === 'spot';
 
-  // Prepare prices for market selector
   const prices: Record<string, string> = {};
   if (mids) {
     Object.entries(mids).forEach(([coin, price]) => {
@@ -153,9 +80,51 @@ export function TradePage() {
     });
   }
 
+  const tradingBlockedByBuilder = authenticated && builderConfigured && !isApprovalLoading && !isBuilderApproved;
+  const tradingMutation = isSpotMarket ? placeSpotOrder : placeOrder;
+
+  const submitOrder = (order: Order) => {
+    if (isSpotMarket) {
+      placeSpotOrder.mutate({
+        ...order,
+        marketType: 'spot',
+      });
+      return;
+    }
+
+    placeOrder.mutate({
+      ...order,
+      marketType: 'perp',
+    });
+  };
+
+  const handlePlaceOrder = (order: Order) => {
+    if (isApprovalLoading) return;
+    if (tradingBlockedByBuilder) {
+      haptics.warning();
+      return;
+    }
+
+    haptics.medium();
+    submitOrder(order);
+  };
+
+  const handlePriceClick = (price: number) => {
+    console.log('Price clicked:', price);
+  };
+
+  const handleApproveBuilder = async () => {
+    try {
+      haptics.medium();
+      await approveBuilder.mutateAsync();
+      haptics.success();
+    } catch {
+      haptics.error();
+    }
+  };
+
   return (
     <div className="p-4 space-y-4">
-      {/* Market Selector */}
       <MarketSelector
         markets={enrichedMarkets}
         selectedMarket={selectedMarket}
@@ -166,7 +135,6 @@ export function TradePage() {
         categoryLabels={CATEGORY_LABELS}
       />
 
-      {/* Chart */}
       <Card>
         <Chart
           candles={candles || []}
@@ -176,7 +144,6 @@ export function TradePage() {
         />
       </Card>
 
-      {/* Orderbook Toggle */}
       <button
         onClick={() => setShowOrderbook(!showOrderbook)}
         className="w-full flex items-center justify-between px-4 py-3 bg-gray-900 rounded-lg"
@@ -192,7 +159,6 @@ export function TradePage() {
         </svg>
       </button>
 
-      {/* Orderbook (Collapsible) */}
       {showOrderbook && orderbook && (
         <Card>
           <Orderbook
@@ -204,29 +170,26 @@ export function TradePage() {
         </Card>
       )}
 
-      {/* Builder Fee Approval Prompt */}
-      {showApprovalPrompt && (
+      {authenticated && builderConfigured && (
         <Card>
           <div className="space-y-3">
-            <h3 className="font-semibold text-yellow-400">Builder Fee Approval Required</h3>
+            <h3 className={`font-semibold ${isBuilderApproved ? 'text-green-400' : 'text-yellow-400'}`}>
+              {isBuilderApproved ? 'Builder Fee Approved' : 'Builder Fee Approval Required'}
+            </h3>
             <p className="text-sm text-gray-400">
-              To place orders, you need to approve a small builder fee (0.01%). This is a one-time approval.
+              {isBuilderApproved
+                ? 'This wallet is already approved for the configured builder fee. Trading is unlocked.'
+                : 'Trading is locked until you approve the configured builder fee once for this wallet.'}
             </p>
-            <div className="flex space-x-2">
+            {!isBuilderApproved && (
               <button
-                onClick={handleApproveAndPlace}
+                onClick={handleApproveBuilder}
                 disabled={approveBuilder.isPending}
-                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 rounded-lg font-medium transition-colors text-sm"
+                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 rounded-lg font-medium transition-colors text-sm"
               >
-                {approveBuilder.isPending ? 'Approving...' : 'Approve & Place Order'}
+                {approveBuilder.isPending ? 'Approving...' : 'Approve Builder Fee'}
               </button>
-              <button
-                onClick={() => { setShowApprovalPrompt(false); setPendingOrder(null); }}
-                className="px-4 py-2.5 bg-gray-800 hover:bg-gray-700 rounded-lg font-medium transition-colors text-sm"
-              >
-                Cancel
-              </button>
-            </div>
+            )}
             {approveBuilder.isError && (
               <p className="text-sm text-red-400">
                 {approveBuilder.error instanceof Error ? approveBuilder.error.message : 'Approval failed'}
@@ -236,25 +199,31 @@ export function TradePage() {
         </Card>
       )}
 
-      {/* Order Form */}
       <Card title="Place Order">
-        <OrderForm
-          coin={selectedMarket}
-          currentPrice={currentPrice}
-          maxLeverage={isSpotMarket ? 1 : maxLeverage}
-          availableBalance={isSpotMarket ? spotUsdcBalance : (userState?.marginSummary?.accountValue || 0)}
-          isSpot={isSpotMarket}
-          onPlaceOrder={handlePlaceOrder}
-          isLoading={placeOrder.isPending || placeSpotOrder.isPending || isApprovalLoading}
-        />
-        {(placeOrder.isSuccess || placeSpotOrder.isSuccess) && (
+        {tradingBlockedByBuilder ? (
+          <div className="rounded-lg border border-yellow-700/40 bg-yellow-900/20 p-4 text-sm text-yellow-200">
+            Approve the builder fee above to unlock order placement for this wallet.
+          </div>
+        ) : (
+          <OrderForm
+            coin={selectedMarket}
+            currentPrice={currentPrice}
+            maxLeverage={isSpotMarket ? 1 : maxLeverage}
+            availableBalance={isSpotMarket ? spotUsdcBalance : (userState?.marginSummary?.accountValue || 0)}
+            minNotionalUsd={selectedMarketMeta?.minNotionalUsd ?? 10}
+            minBaseSize={selectedMarketMeta?.minBaseSize ?? 0}
+            isSpot={isSpotMarket}
+            onlyIsolated={selectedPerpMarket?.onlyIsolated ?? false}
+            onPlaceOrder={handlePlaceOrder}
+            isLoading={placeOrder.isPending || placeSpotOrder.isPending || approveBuilder.isPending || isApprovalLoading}
+          />
+        )}
+        {tradingMutation.isSuccess && !tradingBlockedByBuilder && (
           <p className="mt-3 text-center text-sm text-green-400">Order placed successfully.</p>
         )}
-        {(placeOrder.isError || placeSpotOrder.isError) && (
+        {tradingMutation.isError && (
           <p className="mt-3 text-center text-sm text-red-400">
-            {((placeOrder.error || placeSpotOrder.error) instanceof Error
-              ? (placeOrder.error || placeSpotOrder.error) as Error
-              : null)?.message ?? 'Order failed — please try again'}
+            {tradingMutation.error instanceof Error ? tradingMutation.error.message : 'Order failed — please try again'}
           </p>
         )}
       </Card>

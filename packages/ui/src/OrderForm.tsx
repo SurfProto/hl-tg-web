@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Button } from './Button';
 import { Input } from './Input';
 import { Select } from './Select';
@@ -9,17 +9,18 @@ interface OrderFormProps {
   currentPrice?: number;
   maxLeverage?: number;
   availableBalance?: number;
+  minNotionalUsd?: number;
+  minBaseSize?: number;
   isSpot?: boolean;
+  onlyIsolated?: boolean;
   onPlaceOrder: (order: {
     coin: string;
     side: OrderSide;
     orderType: OrderType;
+    sizeUsd: number;
     limitPx?: number;
-    sz: number;
     reduceOnly: boolean;
     leverage?: number;
-    takeProfitPx?: number;
-    stopLossPx?: number;
   }) => void;
   isLoading?: boolean;
 }
@@ -29,7 +30,10 @@ export function OrderForm({
   currentPrice,
   maxLeverage = 50,
   availableBalance = 0,
+  minNotionalUsd = 10,
+  minBaseSize = 0,
   isSpot = false,
+  onlyIsolated = false,
   onPlaceOrder,
   isLoading = false,
 }: OrderFormProps) {
@@ -39,36 +43,64 @@ export function OrderForm({
   const [price, setPrice] = useState('');
   const [leverage, setLeverage] = useState(1);
   const [reduceOnly, setReduceOnly] = useState(false);
-  const [showTpSl, setShowTpSl] = useState(false);
-  const [takeProfitPx, setTakeProfitPx] = useState('');
-  const [stopLossPx, setStopLossPx] = useState('');
   const [showConfirmation, setShowConfirmation] = useState(false);
 
-  // Calculate order value (size is already in USD)
-  const orderValue = useMemo(() => {
-    return parseFloat(size) || 0;
-  }, [size]);
+  const orderValue = useMemo(() => parseFloat(size) || 0, [size]);
 
-  // Calculate margin required
   const marginRequired = useMemo(() => {
+    if (isSpot) return orderValue;
     return orderValue / leverage;
-  }, [orderValue, leverage]);
+  }, [isSpot, leverage, orderValue]);
 
-  // Calculate liquidation price (simplified)
   const liquidationPrice = useMemo(() => {
-    if (!currentPrice || leverage <= 1) return null;
-    const maintenanceMarginRate = 0.005; // ~0.5% of notional (Hyperliquid high-leverage tier)
+    if (isSpot || !currentPrice || leverage <= 1) return null;
+    const maintenanceMarginRate = 0.005;
     if (side === 'buy') {
       return currentPrice * (1 - (1 / leverage) + maintenanceMarginRate);
-    } else {
-      return currentPrice * (1 + (1 / leverage) - maintenanceMarginRate);
     }
-  }, [currentPrice, leverage, side]);
+    return currentPrice * (1 + (1 / leverage) - maintenanceMarginRate);
+  }, [currentPrice, isSpot, leverage, side]);
+
+  const baseSize = useMemo(() => {
+    if (!currentPrice || orderValue <= 0) return 0;
+    return orderValue / currentPrice;
+  }, [currentPrice, orderValue]);
+
+  const validation = useMemo(() => {
+    if (!size) {
+      return { isValid: false, reason: undefined };
+    }
+
+    if (orderValue <= 0) {
+      return { isValid: false, reason: 'Enter an order size greater than 0.' };
+    }
+
+    if (orderValue < minNotionalUsd) {
+      return { isValid: false, reason: `Minimum order value is $${minNotionalUsd.toFixed(2)}.` };
+    }
+
+    if (!isSpot && marginRequired > availableBalance) {
+      return { isValid: false, reason: 'Insufficient balance for this margin requirement.' };
+    }
+
+    if (isSpot && orderValue > availableBalance) {
+      return { isValid: false, reason: 'Insufficient balance for this spot order.' };
+    }
+
+    if (currentPrice && minBaseSize > 0 && baseSize < minBaseSize) {
+      return {
+        isValid: false,
+        reason: `Order size is below the minimum lot size (${minBaseSize.toFixed(6)} ${coin}).`,
+      };
+    }
+
+    return { isValid: true, reason: undefined };
+  }, [availableBalance, baseSize, coin, currentPrice, isSpot, marginRequired, minBaseSize, minNotionalUsd, orderValue, size]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const sizeNum = parseFloat(size);
-    if (!size || isNaN(sizeNum) || sizeNum <= 0) return;
+    if (!size || isNaN(sizeNum) || sizeNum <= 0 || !validation.isValid) return;
     setShowConfirmation(true);
   };
 
@@ -79,24 +111,21 @@ export function OrderForm({
       coin,
       side,
       orderType,
+      sizeUsd: sizeNum,
       limitPx: orderType === 'limit' ? parseFloat(price) : undefined,
-      sz: currentPrice ? sizeNum / currentPrice : sizeNum,
       reduceOnly,
       leverage,
-      takeProfitPx: showTpSl && takeProfitPx ? parseFloat(takeProfitPx) : undefined,
-      stopLossPx: showTpSl && stopLossPx ? parseFloat(stopLossPx) : undefined,
     });
   };
 
   const handlePercentageClick = (percentage: number) => {
     if (availableBalance <= 0) return;
-    const maxUsd = availableBalance * leverage * percentage;
+    const maxUsd = isSpot ? availableBalance * percentage : availableBalance * leverage * percentage;
     setSize(maxUsd.toFixed(2));
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Side Toggle */}
       <div className="flex space-x-2">
         <button
           type="button"
@@ -122,7 +151,6 @@ export function OrderForm({
         </button>
       </div>
 
-      {/* Order Type */}
       <Select
         label="Order Type"
         value={orderType}
@@ -133,7 +161,6 @@ export function OrderForm({
         ]}
       />
 
-      {/* Price (Limit only) */}
       {orderType === 'limit' && (
         <Input
           label="Price (USD)"
@@ -145,7 +172,6 @@ export function OrderForm({
         />
       )}
 
-      {/* Size */}
       <div>
         <div className="flex justify-between items-center mb-1">
           <label className="block text-sm font-medium text-gray-300">
@@ -160,14 +186,20 @@ export function OrderForm({
           placeholder="0.00"
           value={size}
           onChange={(e) => setSize(e.target.value)}
+          min={minNotionalUsd.toString()}
           step="0.01"
         />
         {size && currentPrice && parseFloat(size) > 0 && (
           <span className="block text-xs text-gray-500 mt-1">
-            ≈ {(parseFloat(size) / currentPrice).toFixed(6)} {coin}
+            approx {(parseFloat(size) / currentPrice).toFixed(6)} {coin}
           </span>
         )}
-        {/* Quick percentage buttons */}
+        <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
+          <span>Minimum: ${minNotionalUsd.toFixed(2)}</span>
+          {minBaseSize > 0 && currentPrice && (
+            <span>Lot size: {minBaseSize.toFixed(6)} {coin}</span>
+          )}
+        </div>
         <div className="flex space-x-2 mt-2">
           {[0.25, 0.5, 0.75, 1].map((pct) => (
             <button
@@ -182,7 +214,6 @@ export function OrderForm({
         </div>
       </div>
 
-      {/* Leverage Slider (perps only) */}
       {!isSpot && (
         <div>
           <div className="flex justify-between items-center mb-1">
@@ -198,17 +229,21 @@ export function OrderForm({
             min="1"
             max={maxLeverage}
             value={leverage}
-            onChange={(e) => setLeverage(parseInt(e.target.value))}
+            onChange={(e) => setLeverage(parseInt(e.target.value, 10))}
             className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
           />
           <div className="flex justify-between text-xs text-gray-500 mt-1">
             <span>1x</span>
             <span>{maxLeverage}x</span>
           </div>
+          {onlyIsolated && (
+            <p className="mt-2 text-xs text-yellow-400">
+              This market only supports isolated margin.
+            </p>
+          )}
         </div>
       )}
 
-      {/* Order Summary */}
       <div className="bg-gray-800/50 rounded-lg p-3 space-y-2">
         <div className="flex justify-between text-sm">
           <span className="text-gray-400">Order Value</span>
@@ -228,57 +263,22 @@ export function OrderForm({
         )}
       </div>
 
-      {/* Reduce Only */}
-      <label className="flex items-center space-x-2">
-        <input
-          type="checkbox"
-          checked={reduceOnly}
-          onChange={(e) => setReduceOnly(e.target.checked)}
-          className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-indigo-600 focus:ring-indigo-500"
-        />
-        <span className="text-sm text-gray-400">Reduce Only</span>
-      </label>
-
-      {/* TP/SL Toggle */}
-      <button
-        type="button"
-        onClick={() => setShowTpSl(!showTpSl)}
-        className="flex items-center space-x-2 text-sm text-indigo-400 hover:text-indigo-300"
-      >
-        <svg
-          className={`w-4 h-4 transition-transform ${showTpSl ? 'rotate-90' : ''}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-        <span>Take Profit / Stop Loss</span>
-      </button>
-
-      {/* TP/SL Inputs */}
-      {showTpSl && (
-        <div className="space-y-3 pl-4 border-l-2 border-gray-700">
-          <Input
-            label="Take Profit Price (USD)"
-            type="number"
-            placeholder="0.00"
-            value={takeProfitPx}
-            onChange={(e) => setTakeProfitPx(e.target.value)}
-            step="0.01"
+      {!isSpot && (
+        <label className="flex items-center space-x-2">
+          <input
+            type="checkbox"
+            checked={reduceOnly}
+            onChange={(e) => setReduceOnly(e.target.checked)}
+            className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-indigo-600 focus:ring-indigo-500"
           />
-          <Input
-            label="Stop Loss Price (USD)"
-            type="number"
-            placeholder="0.00"
-            value={stopLossPx}
-            onChange={(e) => setStopLossPx(e.target.value)}
-            step="0.01"
-          />
-        </div>
+          <span className="text-sm text-gray-400">Reduce Only</span>
+        </label>
       )}
 
-      {/* Order Confirmation */}
+      {validation.reason && (
+        <p className="text-sm text-yellow-400">{validation.reason}</p>
+      )}
+
       {showConfirmation && (
         <div className="bg-gray-800 rounded-xl p-4 space-y-3 border border-gray-700">
           <h3 className="font-semibold text-center">Confirm Order</h3>
@@ -355,14 +355,13 @@ export function OrderForm({
         </div>
       )}
 
-      {/* Submit Button */}
       {!showConfirmation && (
         <Button
           type="submit"
           variant={side === 'buy' ? 'primary' : 'danger'}
           className="w-full py-3"
           loading={isLoading}
-          disabled={!size || (orderType === 'limit' && !price) || marginRequired > availableBalance}
+          disabled={!size || (orderType === 'limit' && !price) || !validation.isValid}
         >
           {side === 'buy' ? 'Buy' : 'Sell'} {coin}
         </Button>

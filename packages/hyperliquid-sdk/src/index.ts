@@ -12,6 +12,7 @@ export {
   useUserState,
   usePlaceOrder,
   usePlaceSpotOrder,
+  useClosePosition,
   useCancelOrder,
   useCancelAllOrders,
   useModifyOrder,
@@ -45,11 +46,13 @@ export {
 // Builder code
 export {
   approveBuilderFee,
-  injectBuilderCode,
+  getBuilderConfig,
   isBuilderFeeApproved,
+  isBuilderConfigured,
   feeToPercentString,
   BUILDER_ADDRESS,
   BUILDER_FEE_TENTHS_BP,
+  ZERO_ADDRESS,
 } from './builder';
 
 // Market classification

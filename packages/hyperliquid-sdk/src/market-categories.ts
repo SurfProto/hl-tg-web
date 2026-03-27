@@ -34,8 +34,7 @@ export function classifyMarket(market: AnyMarket, spotTokenNames?: Set<string>):
     categories.push('crypto');
   }
 
-  // HIP-3: perp markets whose underlying also has a deployed spot token
-  if (spotTokenNames && spotTokenNames.has(name)) {
+  if (market.isHip3) {
     categories.push('hip3');
   }
 
@@ -49,11 +48,14 @@ export function getMarketTags(market: AnyMarket, spotTokenNames?: Set<string>): 
     tags.push('SPOT');
   } else {
     tags.push('PERP');
+    if (market.isHip3) {
+      tags.push('HIP-3');
+    }
     const name = market.name;
     if (TRADFI_SYMBOLS.has(name.toUpperCase())) {
       tags.push('xyz');
     }
-    if (spotTokenNames && spotTokenNames.has(name)) {
+    if (!market.isHip3 && spotTokenNames && spotTokenNames.has(name)) {
       tags.push('cash');
     }
   }
@@ -103,5 +105,5 @@ export const CATEGORY_LABELS: Record<MarketCategory, string> = {
 };
 
 export const CATEGORY_ORDER: MarketCategory[] = [
-  'all', 'perps', 'spot', 'crypto', 'tradfi', 'trending', 'prelaunch',
+  'all', 'perps', 'spot', 'crypto', 'tradfi', 'hip3', 'trending', 'prelaunch',
 ];

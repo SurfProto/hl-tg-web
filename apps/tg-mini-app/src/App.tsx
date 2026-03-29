@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
+import { HashRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PrivyProvider, usePrivy } from '@privy-io/react-auth';
 import { arbitrum } from 'viem/chains';
 import { Layout } from './components/Layout';
-import { TradePage } from './pages/TradePage';
+import { HomePage } from './pages/HomePage';
 import { PositionsPage } from './pages/PositionsPage';
-import { PortfolioPage } from './pages/PortfolioPage';
+import { PointsPage } from './pages/PointsPage';
+import { AccountPage } from './pages/AccountPage';
+import { CoinDetailPage } from './pages/CoinDetailPage';
+import { TradePage } from './pages/TradePage';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -25,23 +29,12 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
 
   const isTMA = Boolean(window.Telegram?.WebApp?.initData);
 
-  // TMA lifecycle: dismiss loading indicator + expand to full height + sync theme (once)
+  // TMA lifecycle: dismiss loading indicator + expand to full height (once)
   useEffect(() => {
     if (!isTMA) return;
     const tg = window.Telegram!.WebApp!;
     tg.ready();
     tg.expand();
-
-    // Sync Telegram theme to CSS variables
-    const tp = tg.themeParams;
-    const root = document.documentElement;
-    if (tp.bg_color) root.style.setProperty('--tg-bg-color', tp.bg_color);
-    if (tp.text_color) root.style.setProperty('--tg-text-color', tp.text_color);
-    if (tp.hint_color) root.style.setProperty('--tg-hint-color', tp.hint_color);
-    if (tp.link_color) root.style.setProperty('--tg-link-color', tp.link_color);
-    if (tp.button_color) root.style.setProperty('--tg-button-color', tp.button_color);
-    if (tp.button_text_color) root.style.setProperty('--tg-button-text-color', tp.button_text_color);
-    if (tp.secondary_bg_color) root.style.setProperty('--tg-secondary-bg-color', tp.secondary_bg_color);
   }, [isTMA]);
 
   // Seamless auto-login using TMA initData — no modal shown
@@ -52,8 +45,8 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
 
   if (!ready) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full mx-auto"></div>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto"></div>
       </div>
     );
   }
@@ -62,16 +55,21 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
 }
 
 function AppContent() {
-  const [activeTab, setActiveTab] = useState<'trade' | 'positions' | 'portfolio'>('trade');
-
   return (
-    <TelegramAuthGate>
-      <Layout activeTab={activeTab} onTabChange={setActiveTab}>
-        {activeTab === 'trade' && <TradePage />}
-        {activeTab === 'positions' && <PositionsPage />}
-        {activeTab === 'portfolio' && <PortfolioPage />}
-      </Layout>
-    </TelegramAuthGate>
+    <HashRouter>
+      <TelegramAuthGate>
+        <Layout>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/positions" element={<PositionsPage />} />
+            <Route path="/points" element={<PointsPage />} />
+            <Route path="/account" element={<AccountPage />} />
+            <Route path="/coin/:symbol" element={<CoinDetailPage />} />
+            <Route path="/trade/:symbol" element={<TradePage />} />
+          </Routes>
+        </Layout>
+      </TelegramAuthGate>
+    </HashRouter>
   );
 }
 
@@ -81,7 +79,7 @@ function App() {
   if (!appId) {
     return (
       <div style={{ color: 'red', padding: 40, fontSize: 24 }}>
-        ❌ VITE_PRIVY_APP_ID is undefined! Check Vercel env vars.
+        VITE_PRIVY_APP_ID is undefined! Check Vercel env vars.
       </div>
     );
   }
@@ -94,8 +92,8 @@ function App() {
           defaultChain: arbitrum,
           supportedChains: [arbitrum],
           appearance: {
-            theme: 'dark',
-            accentColor: '#6366f1',
+            theme: 'light',
+            accentColor: '#3b82f6',
           },
           embeddedWallets: {
             createOnLogin: 'users-without-wallets',

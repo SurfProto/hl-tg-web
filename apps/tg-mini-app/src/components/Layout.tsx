@@ -1,102 +1,129 @@
-import React from 'react';
-import { usePrivy } from '@privy-io/react-auth';
+import React, { useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useHaptics } from '../hooks/useHaptics';
 
 interface LayoutProps {
   children: React.ReactNode;
-  activeTab: 'trade' | 'positions' | 'portfolio';
-  onTabChange: (tab: 'trade' | 'positions' | 'portfolio') => void;
 }
 
-export function Layout({ children, activeTab, onTabChange }: LayoutProps) {
-  const { login, authenticated, user, logout } = usePrivy();
+const TAB_ROUTES = [
+  { path: '/', label: 'Home', match: (p: string) => p === '/' },
+  { path: '/positions', label: 'Positions', match: (p: string) => p.startsWith('/positions') },
+  { path: '/points', label: 'Points', match: (p: string) => p.startsWith('/points') },
+  { path: '/account', label: 'Account', match: (p: string) => p.startsWith('/account') },
+] as const;
+
+const SUB_ROUTES_HIDE_NAV = ['/coin/', '/trade/'];
+
+export function Layout({ children }: LayoutProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const haptics = useHaptics();
 
-  const handleTabChange = (tab: 'trade' | 'positions' | 'portfolio') => {
+  const hideNav = SUB_ROUTES_HIDE_NAV.some(prefix => location.pathname.startsWith(prefix));
+  const activeTab = TAB_ROUTES.find(t => t.match(location.pathname))?.path ?? '/';
+
+  // Force light theme CSS variables (override any Telegram dark theme sync)
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty('--tg-bg-color', '#ffffff');
+    root.style.setProperty('--tg-text-color', '#111827');
+    root.style.setProperty('--tg-hint-color', '#6b7280');
+    root.style.setProperty('--tg-link-color', '#3b82f6');
+    root.style.setProperty('--tg-button-color', '#3b82f6');
+    root.style.setProperty('--tg-button-text-color', '#ffffff');
+    root.style.setProperty('--tg-secondary-bg-color', '#f8f9fa');
+  }, []);
+
+  // Telegram BackButton: show on sub-routes, navigate back on press
+  useEffect(() => {
+    const tg = window.Telegram?.WebApp;
+    if (!tg) return;
+
+    if (hideNav) {
+      tg.BackButton?.show();
+      const handler = () => navigate(-1);
+      tg.BackButton?.onClick(handler);
+      return () => {
+        tg.BackButton?.offClick(handler);
+        tg.BackButton?.hide();
+      };
+    } else {
+      tg.BackButton?.hide();
+    }
+  }, [hideNav, navigate]);
+
+  const handleTabChange = (path: string) => {
+    if (path === activeTab) return;
     haptics.light();
-    onTabChange(tab);
+    navigate(path);
   };
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-black border-b border-gray-800 px-4 py-3">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold">Hyperliquid</h1>
-          <div className="flex items-center space-x-3">
-            {authenticated && user?.wallet?.address && (
-              <span className="text-xs text-gray-500">
-                {user.wallet.address.slice(0, 4)}...{user.wallet.address.slice(-4)}
-              </span>
-            )}
-            {authenticated ? (
-              <button
-                onClick={logout}
-                className="px-3 py-1.5 text-sm bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors"
-              >
-                Logout
-              </button>
-            ) : (
-              <button
-                onClick={login}
-                className="px-3 py-1.5 text-sm bg-indigo-600 rounded-lg hover:bg-indigo-500 transition-colors"
-              >
-                Connect
-              </button>
-            )}
-          </div>
-        </div>
-      </header>
-
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto pb-20">
+      <main className={`flex-1 overflow-y-auto ${hideNav ? '' : 'pb-20'}`}>
         {children}
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 px-4 py-2 z-50">
-        <div className="flex justify-around max-w-lg mx-auto">
-          <button
-            onClick={() => handleTabChange('trade')}
-            className={`flex flex-col items-center p-2 rounded-lg transition-colors ${
-              activeTab === 'trade'
-                ? 'text-indigo-500'
-                : 'text-gray-500 hover:text-gray-300'
-            }`}
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-            </svg>
-            <span className="text-xs mt-1 font-medium">Trade</span>
-          </button>
-          <button
-            onClick={() => handleTabChange('positions')}
-            className={`flex flex-col items-center p-2 rounded-lg transition-colors ${
-              activeTab === 'positions'
-                ? 'text-indigo-500'
-                : 'text-gray-500 hover:text-gray-300'
-            }`}
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-            <span className="text-xs mt-1 font-medium">Positions</span>
-          </button>
-          <button
-            onClick={() => handleTabChange('portfolio')}
-            className={`flex flex-col items-center p-2 rounded-lg transition-colors ${
-              activeTab === 'portfolio'
-                ? 'text-indigo-500'
-                : 'text-gray-500 hover:text-gray-300'
-            }`}
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
-            <span className="text-xs mt-1 font-medium">Portfolio</span>
-          </button>
-        </div>
-      </nav>
+      {!hideNav && (
+        <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 py-2 z-50 safe-area-bottom">
+          <div className="flex justify-around max-w-lg mx-auto">
+            {/* Home */}
+            <button
+              onClick={() => handleTabChange('/')}
+              className={`flex flex-col items-center p-2 rounded-lg transition-colors ${
+                activeTab === '/' ? 'text-primary' : 'text-muted'
+              }`}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1" />
+              </svg>
+              <span className="text-xs mt-1 font-medium">Home</span>
+            </button>
+
+            {/* Positions */}
+            <button
+              onClick={() => handleTabChange('/positions')}
+              className={`flex flex-col items-center p-2 rounded-lg transition-colors ${
+                activeTab === '/positions' ? 'text-primary' : 'text-muted'
+              }`}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              <span className="text-xs mt-1 font-medium">Positions</span>
+            </button>
+
+            {/* Points */}
+            <button
+              onClick={() => handleTabChange('/points')}
+              className={`flex flex-col items-center p-2 rounded-lg transition-colors ${
+                activeTab === '/points' ? 'text-primary' : 'text-muted'
+              }`}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+              </svg>
+              <span className="text-xs mt-1 font-medium">Points</span>
+            </button>
+
+            {/* Account */}
+            <button
+              onClick={() => handleTabChange('/account')}
+              className={`flex flex-col items-center p-2 rounded-lg transition-colors ${
+                activeTab === '/account' ? 'text-primary' : 'text-muted'
+              }`}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              <span className="text-xs mt-1 font-medium">Account</span>
+            </button>
+          </div>
+        </nav>
+      )}
     </div>
   );
 }

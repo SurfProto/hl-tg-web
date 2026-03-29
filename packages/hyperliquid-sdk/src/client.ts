@@ -1,11 +1,14 @@
 import type {
   AccountState,
+  AssetCtx,
   Fill,
+  MarketStats,
   MarketType,
   OpenOrder,
   Order,
   OrderSide,
   OrderValidationResult,
+  PortfolioHistoryPoint,
   WsMessage,
 } from '@repo/types';
 import { BUILDER_ADDRESS, BUILDER_FEE_TENTHS_BP, getBuilderConfig, isBuilderConfigured } from './builder';
@@ -101,6 +104,7 @@ export class HyperliquidClient {
   private testnet: boolean;
   private config: HyperliquidClientConfig;
   private marketCache: MarketCache | null = null;
+  private assetCtxsCache: { data: any[]; perpUniverse: any[]; timestamp: number } | null = null;
   private builderApprovalCache = new Map<string, number>();
 
   constructor(config: HyperliquidClientConfig) {
@@ -168,6 +172,15 @@ export class HyperliquidClient {
       this.postInfo<any>( { type: 'metaAndAssetCtxs' } ),
       this.postInfo<Array<{ name: string } | null>>({ type: 'perpDexs' }).catch(() => [null]),
     ]);
+
+    // Cache asset contexts (index [1]) for getMarketStats/getAssetCtx — normally discarded
+    if (metaAndCtxs[1]) {
+      this.assetCtxsCache = {
+        data: metaAndCtxs[1],
+        perpUniverse: metaAndCtxs[0].universe,
+        timestamp: Date.now(),
+      };
+    }
 
     const tokensByIndex: Record<number, any> = {};
     for (const token of spotMeta.tokens) {
@@ -554,7 +567,7 @@ export class HyperliquidClient {
       reduceOnly: order.reduceOnly,
       side: order.side,
       size: this.formatSize(rawSize, market),
-      tif: order.orderType === 'market' ? 'Ioc' : 'Gtc',
+      tif: (order.tif as 'Gtc' | 'Ioc' | 'Alo') ?? (order.orderType === 'market' ? 'Ioc' : 'Gtc'),
     };
   }
 
@@ -1047,6 +1060,87 @@ export class HyperliquidClient {
       configured: isBuilderConfigured(),
       feeTenthsBp: isBuilderConfigured() ? getBuilderConfig()?.f ?? 0 : 0,
     };
+  }
+
+  // Refresh asset contexts cache (30-second TTL, independent of market metadata)
+  private async refreshAssetCtxs(): Promise<void> {
+    const ASSET_CTX_TTL_MS = 30_000;
+    if (this.assetCtxsCache && Date.now() - this.assetCtxsCache.timestamp < ASSET_CTX_TTL_MS) {
+      return;
+    }
+    const metaAndCtxs = await this.postInfo<any>({ type: 'metaAndAssetCtxs' });
+    this.assetCtxsCache = {
+      data: metaAndCtxs[1],
+      perpUniverse: metaAndCtxs[0].universe,
+      timestamp: Date.now(),
+    };
+  }
+
+  // Get market stats for all perp assets (24h vol, price change, OI, funding)
+  async getMarketStats(): Promise<Record<string, MarketStats>> {
+    await this.refreshAssetCtxs();
+    const { data, perpUniverse } = this.assetCtxsCache!;
+    const result: Record<string, MarketStats> = {};
+
+    for (let i = 0; i < perpUniverse.length; i++) {
+      const meta = perpUniverse[i];
+      const ctx = data[i];
+      if (!ctx || meta.isDelisted) continue;
+
+      const markPx = parseFloat(ctx.markPx ?? '0');
+      const prevDayPx = parseFloat(ctx.prevDayPx ?? '0');
+      const change24h = prevDayPx > 0 ? ((markPx - prevDayPx) / prevDayPx) * 100 : 0;
+
+      result[meta.name] = {
+        coin: meta.name,
+        markPx,
+        prevDayPx,
+        dayNtlVlm: parseFloat(ctx.dayNtlVlm ?? '0'),
+        openInterest: parseFloat(ctx.openInterest ?? '0'),
+        funding: parseFloat(ctx.funding ?? '0'),
+        oraclePx: parseFloat(ctx.oraclePx ?? '0'),
+        change24h,
+      };
+    }
+
+    return result;
+  }
+
+  // Get asset context for a single coin (OI, funding, 24h vol, mark price)
+  async getAssetCtx(coin: string): Promise<AssetCtx | null> {
+    const stats = await this.getMarketStats();
+    return stats[coin] ?? null;
+  }
+
+  // Get portfolio value history for area chart
+  async getPortfolioHistory(period: '1d' | '7d' | '30d' = '7d'): Promise<PortfolioHistoryPoint[]> {
+    const client = await this.getPublicClient();
+    const portfolio = await client.portfolio({ user: this.walletAddress as `0x${string}` });
+
+    // The portfolio response may contain pnlHistory or similar time-series data.
+    // Inspect and extract what's available.
+    if (Array.isArray(portfolio)) {
+      // Portfolio returns an array of snapshots — map to {time, value}
+      const now = Date.now();
+      const periodMs = period === '1d' ? 86400000 : period === '7d' ? 604800000 : 2592000000;
+      const cutoff = now - periodMs;
+
+      return portfolio
+        .filter((point: any) => {
+          const t = point.time ?? point.t ?? point.timestamp ?? 0;
+          return t >= cutoff;
+        })
+        .map((point: any) => ({
+          time: point.time ?? point.t ?? point.timestamp ?? 0,
+          value: parseFloat(point.accountValue ?? point.value ?? point.equity ?? '0'),
+        }));
+    }
+
+    // Fallback: if portfolio is a single object or has a different shape,
+    // return current snapshot as a single point
+    const userState = await this.getUserState();
+    const accountValue = userState?.marginSummary?.accountValue ?? 0;
+    return [{ time: Date.now(), value: accountValue }];
   }
 
   // Get spot account balance (HL L1 spot)

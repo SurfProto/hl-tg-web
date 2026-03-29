@@ -51,6 +51,7 @@ export interface Order {
   reduceOnly: boolean;
   leverage?: number;
   marketType?: MarketType;
+  tif?: 'Gtc' | 'Alo' | 'Ioc' | null;
   cloid?: string;
 }
 
@@ -192,6 +193,25 @@ export type WsMessage =
   | { channel: 'userFills'; data: Fill[] }
   | { channel: 'userFundings'; data: Array<{ coin: string; fundingRate: number; premium: number; time: number }> }
   | { channel: 'userNonFundingLedgerUpdates'; data: unknown[] };
+
+// Market stats types (derived from metaAndAssetCtxs response)
+export interface MarketStats {
+  coin: string;
+  markPx: number;
+  prevDayPx: number;
+  dayNtlVlm: number;
+  openInterest: number;
+  funding: number;
+  oraclePx: number;
+  change24h: number; // computed: (markPx - prevDayPx) / prevDayPx * 100
+}
+
+export interface AssetCtx extends MarketStats {}
+
+export interface PortfolioHistoryPoint {
+  time: number;  // unix ms
+  value: number; // account value in USD
+}
 
 // Telegram types
 export interface TelegramUser {

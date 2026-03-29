@@ -7,7 +7,7 @@ import {
   approveBuilderFee as approveBuilderFeeAction,
   isBuilderConfigured,
 } from './builder';
-import type { Order, WsMessage } from '@repo/types';
+import type { AssetCtx, MarketStats, Order, PortfolioHistoryPoint, WsMessage } from '@repo/types';
 
 // Singleton client instances
 let clientInstance: HyperliquidClient | null = null;
@@ -481,17 +481,13 @@ export function useBridgeToHyperliquid() {
     mutationFn: async ({ amount }: { amount: number }) => {
       if (amount < 5) throw new Error('Minimum deposit is 5 USDC');
 
-      const { createPublicClient, encodeFunctionData, http, erc20Abi } = await import('viem');
+      const { encodeFunctionData, erc20Abi } = await import('viem');
       const { arbitrum } = await import('viem/chains');
 
       const embeddedWallet = wallets.find(w => w.walletClientType === 'privy');
       if (!embeddedWallet) throw new Error('No embedded wallet found');
-      const publicClient = createPublicClient({ chain: arbitrum, transport: http() });
       const account = embeddedWallet.address as `0x${string}`;
       const amountRaw = BigInt(Math.floor(amount * 1e6));
-
-      const { maxFeePerGas, maxPriorityFeePerGas } = await publicClient.estimateFeesPerGas();
-      const bufferedMaxFeePerGas = (maxFeePerGas * BigInt(130)) / BigInt(100);
 
       const data = encodeFunctionData({
         abi: erc20Abi,
@@ -505,8 +501,6 @@ export function useBridgeToHyperliquid() {
           data,
           value: BigInt(0),
           chainId: arbitrum.id,
-          maxFeePerGas: bufferedMaxFeePerGas,
-          maxPriorityFeePerGas,
         },
         {
           header: 'Review Hyperliquid deposit',
@@ -794,4 +788,50 @@ export function useWebSocket() {
   }, [client]);
 
   return { isConnected, connect, disconnect };
+}
+
+/**
+ * Hook to fetch market stats (24h vol, price change, OI, funding) for all perp assets.
+ * Data is extracted from the already-fetched metaAndAssetCtxs response — zero additional network cost on first call.
+ */
+export function useMarketStats() {
+  const { client } = usePublicHyperliquid();
+
+  return useQuery<Record<string, MarketStats>>({
+    queryKey: ['marketStats'],
+    queryFn: () => client.getMarketStats(),
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  });
+}
+
+/**
+ * Hook to fetch asset context for a single coin (OI, funding, 24h vol, mark price).
+ */
+export function useAssetCtx(coin: string) {
+  const { client } = usePublicHyperliquid();
+
+  return useQuery<AssetCtx | null>({
+    queryKey: ['assetCtx', coin],
+    queryFn: () => client.getAssetCtx(coin),
+    enabled: !!coin,
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Hook to fetch portfolio value history for area chart display.
+ */
+export function usePortfolioHistory(period: '1d' | '7d' | '30d' = '7d') {
+  const { client } = useHyperliquid();
+
+  return useQuery<PortfolioHistoryPoint[]>({
+    queryKey: ['portfolioHistory', period],
+    queryFn: () => {
+      if (!client) throw new Error('Client not connected');
+      return client.getPortfolioHistory(period);
+    },
+    enabled: !!client,
+    staleTime: 60_000,
+  });
 }

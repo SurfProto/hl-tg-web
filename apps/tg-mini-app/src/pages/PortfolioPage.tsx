@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { PortfolioSummary, Card } from '@repo/ui';
-import { useUserState, usePortfolio, useSpotBalance, useUsdClassTransfer, useWithdraw, useArbitrumUsdcBalance, useFundArbitrumUsdc, useBridgeToHyperliquid, useSwapUsdcUsdh, useBuilderFeeApproval, useApproveBuilderFee, BUILDER_ADDRESS, BUILDER_FEE_TENTHS_BP } from '@repo/hyperliquid-sdk';
+import { useUserState, usePortfolio, useSpotBalance, useUsdClassTransfer, useWithdraw, useArbitrumUsdcBalance, useFundArbitrumUsdc, useBridgeToHyperliquid, useSwapUsdcUsdh, useBuilderFeeApproval, useApproveBuilderFee, isBuilderConfigured, BUILDER_ADDRESS, BUILDER_FEE_TENTHS_BP } from '@repo/hyperliquid-sdk';
 import { usePrivy } from '@privy-io/react-auth';
 import { useHaptics } from '../hooks/useHaptics';
 

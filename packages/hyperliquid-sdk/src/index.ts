@@ -34,6 +34,10 @@ export {
   // Builder fee hooks
   useBuilderFeeApproval,
   useApproveBuilderFee,
+  // Market stats hooks
+  useMarketStats,
+  useAssetCtx,
+  usePortfolioHistory,
   // WebSocket hooks
   useOrderbookWs,
   useTradesWs,

@@ -7,7 +7,7 @@ import {
   approveBuilderFee as approveBuilderFeeAction,
   isBuilderConfigured,
 } from './builder';
-import type { Order, WsMessage } from '@repo/types';
+import type { AssetCtx, MarketStats, Order, PortfolioHistoryPoint, WsMessage } from '@repo/types';
 
 // Singleton client instances
 let clientInstance: HyperliquidClient | null = null;
@@ -788,4 +788,50 @@ export function useWebSocket() {
   }, [client]);
 
   return { isConnected, connect, disconnect };
+}
+
+/**
+ * Hook to fetch market stats (24h vol, price change, OI, funding) for all perp assets.
+ * Data is extracted from the already-fetched metaAndAssetCtxs response — zero additional network cost on first call.
+ */
+export function useMarketStats() {
+  const { client } = usePublicHyperliquid();
+
+  return useQuery<Record<string, MarketStats>>({
+    queryKey: ['marketStats'],
+    queryFn: () => client.getMarketStats(),
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  });
+}
+
+/**
+ * Hook to fetch asset context for a single coin (OI, funding, 24h vol, mark price).
+ */
+export function useAssetCtx(coin: string) {
+  const { client } = usePublicHyperliquid();
+
+  return useQuery<AssetCtx | null>({
+    queryKey: ['assetCtx', coin],
+    queryFn: () => client.getAssetCtx(coin),
+    enabled: !!coin,
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Hook to fetch portfolio value history for area chart display.
+ */
+export function usePortfolioHistory(period: '1d' | '7d' | '30d' = '7d') {
+  const { client } = useHyperliquid();
+
+  return useQuery<PortfolioHistoryPoint[]>({
+    queryKey: ['portfolioHistory', period],
+    queryFn: () => {
+      if (!client) throw new Error('Client not connected');
+      return client.getPortfolioHistory(period);
+    },
+    enabled: !!client,
+    staleTime: 60_000,
+  });
 }

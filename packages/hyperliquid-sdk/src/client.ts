@@ -567,7 +567,7 @@ export class HyperliquidClient {
       reduceOnly: order.reduceOnly,
       side: order.side,
       size: this.formatSize(rawSize, market),
-      tif: order.orderType === 'market' ? 'Ioc' : 'Gtc',
+      tif: (order.tif as 'Gtc' | 'Ioc' | 'Alo') ?? (order.orderType === 'market' ? 'Ioc' : 'Gtc'),
     };
   }
 

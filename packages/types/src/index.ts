@@ -51,6 +51,7 @@ export interface Order {
   reduceOnly: boolean;
   leverage?: number;
   marketType?: MarketType;
+  tif?: 'Gtc' | 'Alo' | 'Ioc' | null;
   cloid?: string;
 }
 

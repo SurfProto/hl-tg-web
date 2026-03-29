@@ -8,6 +8,8 @@ import { HomePage } from './pages/HomePage';
 import { PositionsPage } from './pages/PositionsPage';
 import { PointsPage } from './pages/PointsPage';
 import { AccountPage } from './pages/AccountPage';
+import { CoinDetailPage } from './pages/CoinDetailPage';
+import { TradePage } from './pages/TradePage';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -62,6 +64,8 @@ function AppContent() {
             <Route path="/positions" element={<PositionsPage />} />
             <Route path="/points" element={<PointsPage />} />
             <Route path="/account" element={<AccountPage />} />
+            <Route path="/coin/:symbol" element={<CoinDetailPage />} />
+            <Route path="/trade/:symbol" element={<TradePage />} />
           </Routes>
         </Layout>
       </TelegramAuthGate>

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { PositionsTable, Card, Button } from '@repo/ui';
+import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   useUserState,
   useOpenOrders,
@@ -8,11 +8,40 @@ import {
   useClosePosition,
   useMids,
 } from '@repo/hyperliquid-sdk';
+import { TokenIcon } from '../components/TokenIcon';
+import { useHaptics } from '../hooks/useHaptics';
+
+function formatUsd(value: number) {
+  return `$${Math.abs(value).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+}
+
+function PositionsEmptyState() {
+  const navigate = useNavigate();
+
+  return (
+    <div className="rounded-2xl border border-separator bg-white p-10 text-center">
+      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-surface">
+        <svg className="h-7 w-7 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2" />
+        </svg>
+      </div>
+      <p className="text-base font-semibold text-foreground">No open positions</p>
+      <p className="mt-1 text-sm text-muted">Your active trades, orders, and fills will appear here.</p>
+      <button
+        onClick={() => navigate('/')}
+        className="mt-5 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-white active:bg-primary-dark transition-colors"
+      >
+        Start trading
+      </button>
+    </div>
+  );
+}
 
 export function PositionsPage() {
+  const navigate = useNavigate();
+  const haptics = useHaptics();
   const [activeTab, setActiveTab] = useState<'positions' | 'orders' | 'fills'>('positions');
 
-  // Fetch data
   const { data: userState } = useUserState();
   const { data: openOrders } = useOpenOrders();
   const { data: fills } = useFills();
@@ -20,164 +49,182 @@ export function PositionsPage() {
   const cancelOrder = useCancelOrder();
   const closePosition = useClosePosition();
 
-  // Get positions
-  const positions = userState?.assetPositions?.map((ap: any) => ap.position) || [];
-
-  // Prepare current prices
-  const currentPrices: Record<string, string> = {};
-  if (mids) {
-    Object.entries(mids).forEach(([coin, price]) => {
-      currentPrices[coin] = String(price);
-    });
-  }
-
-  // Handle close position
-  const handleClosePosition = (coin: string) => {
-    closePosition.mutate(coin);
-  };
-
-  // Handle cancel order
-  const handleCancelOrder = (coin: string, oid: number) => {
-    cancelOrder.mutate({ coin, oid });
-  };
+  const positions = useMemo(
+    () => (userState?.assetPositions?.map((assetPosition: any) => assetPosition.position) ?? []).filter((p: any) => p.szi !== 0),
+    [userState?.assetPositions],
+  );
 
   return (
-    <div className="p-4 space-y-4">
-      {/* Tab Selector */}
-      <div className="flex space-x-2 bg-gray-900 rounded-lg p-1">
-        <button
-          onClick={() => setActiveTab('positions')}
-          className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
-            activeTab === 'positions'
-              ? 'bg-indigo-600 text-white'
-              : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          Positions ({positions.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('orders')}
-          className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
-            activeTab === 'orders'
-              ? 'bg-indigo-600 text-white'
-              : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          Orders ({openOrders?.length || 0})
-        </button>
-        <button
-          onClick={() => setActiveTab('fills')}
-          className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
-            activeTab === 'fills'
-              ? 'bg-indigo-600 text-white'
-              : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          Fills
-        </button>
+    <div className="min-h-full bg-background px-4 py-5">
+      <div className="mb-5 flex rounded-full bg-surface p-1">
+        {([
+          { key: 'positions', label: `Positions (${positions.length})` },
+          { key: 'orders', label: `Orders (${openOrders?.length ?? 0})` },
+          { key: 'fills', label: 'Fills' },
+        ] as const).map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => {
+              haptics.selection();
+              setActiveTab(key);
+            }}
+            className={`flex-1 rounded-full px-3 py-2 text-sm font-semibold transition-colors ${
+              activeTab === key ? 'bg-primary text-white' : 'text-gray-500'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
-      {/* Positions Tab */}
       {activeTab === 'positions' && (
-        <Card>
-          <PositionsTable
-            positions={positions}
-            currentPrices={currentPrices}
-            onClosePosition={handleClosePosition}
-            isLoading={cancelOrder.isPending || closePosition.isPending}
-          />
-        </Card>
+        <div className="space-y-3">
+          {positions.length === 0 ? (
+            <PositionsEmptyState />
+          ) : (
+            positions.map((position: any) => {
+              const currentPrice = mids?.[position.coin] ? parseFloat(mids[position.coin]) : position.entryPx;
+              const pnl = position.unrealizedPnl ?? 0;
+              const isPositive = pnl >= 0;
+              const isLong = position.szi > 0;
+              const displayName = position.coin.includes(':') ? position.coin.split(':')[1] : position.coin;
+
+              return (
+                <div
+                  key={position.coin}
+                  onClick={() => navigate(`/coin/${encodeURIComponent(position.coin)}`)}
+                  className="rounded-2xl border border-separator bg-white p-4 shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <TokenIcon coin={displayName.split('/')[0]} />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="truncate font-semibold text-foreground">{displayName}</p>
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${isLong ? 'bg-blue-50 text-primary' : 'bg-gray-100 text-gray-700'}`}>
+                            {isLong ? 'Long' : 'Short'}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm text-muted">
+                          {Math.abs(position.szi).toFixed(4)} @ ${position.entryPx.toFixed(4)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <p className={`text-sm font-semibold ${isPositive ? 'text-positive' : 'text-negative'}`}>
+                        {isPositive ? '+' : '-'}{formatUsd(pnl)}
+                      </p>
+                      <p className="mt-1 text-xs text-muted">
+                        Mark ${currentPrice.toFixed(4)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                    <div className="rounded-xl bg-surface px-3 py-2">
+                      <p className="text-xs text-muted">Position value</p>
+                      <p className="mt-1 font-semibold text-foreground">{formatUsd(position.positionValue ?? 0)}</p>
+                    </div>
+                    <div className="rounded-xl bg-surface px-3 py-2">
+                      <p className="text-xs text-muted">Leverage</p>
+                      <p className="mt-1 font-semibold text-foreground">
+                        {position.leverage.value}x {position.leverage.type}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex gap-3">
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        haptics.medium();
+                        closePosition.mutate(position.coin);
+                      }}
+                      className="flex-1 rounded-full bg-[#111827] px-4 py-3 text-sm font-semibold text-white active:opacity-80 transition-opacity"
+                    >
+                      {closePosition.isPending ? 'Closing...' : 'Close'}
+                    </button>
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        navigate(`/trade/${encodeURIComponent(position.coin)}?side=${isLong ? 'short' : 'long'}`);
+                      }}
+                      className="flex-1 rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white active:bg-primary-dark transition-colors"
+                    >
+                      Trade more
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
       )}
 
-      {/* Open Orders Tab */}
       {activeTab === 'orders' && (
-        <Card>
+        <div className="space-y-3">
           {!openOrders || openOrders.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-              </div>
-              <p className="text-gray-500">No open orders</p>
-            </div>
+            <PositionsEmptyState />
           ) : (
-            <div className="space-y-3">
-              {openOrders.map((order: any) => (
-                <div
-                  key={order.oid}
-                  className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg"
-                >
+            openOrders.map((order: any) => (
+              <div key={order.oid} className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="flex items-center space-x-2">
-                      <span className={`w-2 h-2 rounded-full ${order.side === 'buy' ? 'bg-green-500' : 'bg-red-500'}`} />
-                      <span className="font-medium">{order.coin}</span>
-                      <span className="text-xs text-gray-500 px-1.5 py-0.5 bg-gray-700 rounded">
-                        {order.orderType === 'limit' ? 'LIMIT' : 'MARKET'}
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-foreground">{order.coin}</p>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${order.side === 'buy' ? 'bg-blue-50 text-primary' : 'bg-gray-100 text-gray-700'}`}>
+                        {order.side === 'buy' ? 'Buy' : 'Sell'}
                       </span>
                     </div>
-                    <div className="flex items-center space-x-4 mt-1 text-sm text-gray-400">
-                      <span>{order.side === 'buy' ? 'Buy' : 'Sell'} {order.sz}</span>
-                      {order.limitPx && <span>@ ${order.limitPx}</span>}
-                    </div>
+                    <p className="mt-1 text-sm text-muted">
+                      {order.sz} {order.orderType === 'limit' ? `@ $${order.limitPx}` : 'market order'}
+                    </p>
                   </div>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    onClick={() => handleCancelOrder(order.coin, order.oid)}
-                    loading={cancelOrder.isPending}
+                  <button
+                    onClick={() => {
+                      haptics.medium();
+                      cancelOrder.mutate({ coin: order.coin, oid: order.oid });
+                    }}
+                    className="rounded-full bg-red-50 px-4 py-2 text-sm font-semibold text-negative active:bg-red-100 transition-colors"
                   >
-                    Cancel
-                  </Button>
+                    {cancelOrder.isPending ? 'Canceling...' : 'Cancel'}
+                  </button>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))
           )}
-        </Card>
+        </div>
       )}
 
-      {/* Fills Tab */}
       {activeTab === 'fills' && (
-        <Card>
+        <div className="space-y-3">
           {!fills || fills.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <p className="text-gray-500">No fills yet</p>
-            </div>
+            <PositionsEmptyState />
           ) : (
-            <div className="space-y-3">
-              {fills.slice(0, 20).map((fill: any, index: number) => (
-                <div
-                  key={`${fill.hash}-${index}`}
-                  className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg"
-                >
-                  <div>
-                    <div className="flex items-center space-x-2">
-                      <span className={`w-2 h-2 rounded-full ${fill.side === 'buy' ? 'bg-green-500' : 'bg-red-500'}`} />
-                      <span className="font-medium">{fill.coin}</span>
+            fills.slice(0, 20).map((fill: any, index: number) => {
+              const isPositive = fill.closedPnl >= 0;
+              return (
+                <div key={`${fill.hash}-${index}`} className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-foreground">{fill.coin}</p>
+                      <p className="mt-1 text-sm text-muted">
+                        {fill.side === 'buy' ? 'Bought' : 'Sold'} {fill.sz} @ ${fill.px}
+                      </p>
                     </div>
-                    <div className="flex items-center space-x-4 mt-1 text-sm text-gray-400">
-                      <span>{fill.side === 'buy' ? 'Bought' : 'Sold'} {fill.sz}</span>
-                      <span>@ ${fill.px}</span>
+                    <div className="text-right">
+                      <p className={`text-sm font-semibold ${isPositive ? 'text-positive' : 'text-negative'}`}>
+                        {isPositive ? '+' : ''}{fill.closedPnl.toFixed(2)}
+                      </p>
+                      <p className="mt-1 text-xs text-muted">Fee ${fill.fee.toFixed(4)}</p>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <p className={`text-sm font-medium ${fill.closedPnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      {fill.closedPnl >= 0 ? '+' : ''}{fill.closedPnl.toFixed(2)}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      Fee: ${fill.fee.toFixed(4)}
-                    </p>
                   </div>
                 </div>
-              ))}
-            </div>
+              );
+            })
           )}
-        </Card>
+        </div>
       )}
     </div>
   );

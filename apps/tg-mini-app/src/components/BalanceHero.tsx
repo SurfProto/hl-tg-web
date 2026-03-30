@@ -1,5 +1,7 @@
 import { useNavigate } from 'react-router-dom';
-import { useUserState, useSpotBalance } from '@repo/hyperliquid-sdk';
+import { useUserState, useSpotBalance, usePortfolioHistory } from '@repo/hyperliquid-sdk';
+import { Chart } from '@repo/ui';
+import { useState } from 'react';
 
 function formatUsd(value: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -12,8 +14,10 @@ function formatUsd(value: number): string {
 
 export function BalanceHero() {
   const navigate = useNavigate();
+  const [period, setPeriod] = useState<'1d' | '7d' | '30d'>('7d');
   const { data: userState } = useUserState();
   const { data: spotBalance } = useSpotBalance();
+  const { data: portfolioHistory } = usePortfolioHistory(period);
 
   // Perps equity
   const perpsValue = userState?.marginSummary?.accountValue ?? 0;
@@ -47,8 +51,38 @@ export function BalanceHero() {
         </span>
       </div>
 
-      {/* Placeholder for mini chart (Phase 11) */}
-      <div className="h-[1px] bg-separator mb-5" />
+      {portfolioHistory && portfolioHistory.length > 0 ? (
+        <div className="mb-5 rounded-2xl border border-separator bg-white p-3">
+          <Chart
+            candles={[]}
+            interval={period}
+            mode="area"
+            areaData={portfolioHistory}
+            heightClassName="h-[120px]"
+          />
+          <div className="mt-3 flex gap-2">
+            {([
+              { key: '1d', label: '1D' },
+              { key: '7d', label: '7D' },
+              { key: '30d', label: '1M' },
+            ] as const).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setPeriod(key)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                  period === key
+                    ? 'bg-primary text-white'
+                    : 'bg-surface text-gray-600 active:bg-gray-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="h-[1px] bg-separator mb-5" />
+      )}
 
       {/* Action buttons */}
       <div className="flex gap-3">

@@ -10,6 +10,18 @@ import { PointsPage } from './pages/PointsPage';
 import { AccountPage } from './pages/AccountPage';
 import { CoinDetailPage } from './pages/CoinDetailPage';
 import { TradePage } from './pages/TradePage';
+import { DepositPage } from './pages/account/DepositPage';
+import { WithdrawPage } from './pages/account/WithdrawPage';
+import { TransferPage } from './pages/account/TransferPage';
+import { SwapPage } from './pages/account/SwapPage';
+import { AccountSettingsMenu } from './pages/account/AccountSettingsMenu';
+import { PersonalInfoPage } from './pages/account/PersonalInfoPage';
+import { NotificationsPage } from './pages/account/NotificationsPage';
+import { PrivateKeyPage } from './pages/account/PrivateKeyPage';
+import { LanguagePage } from './pages/account/LanguagePage';
+import { SupportPage } from './pages/account/SupportPage';
+import { LegalPage } from './pages/account/LegalPage';
+import { ensureUser, getTelegramProfile } from './lib/supabase';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -25,7 +37,7 @@ const queryClient = new QueryClient({
 function TelegramAuthGate({ children }: { children: React.ReactNode }) {
   // loginWithTelegram exists in the Privy bundle but was removed from types in v1.99 — cast to access it
   const privy = usePrivy() as any;
-  const { ready, authenticated } = privy;
+  const { ready, authenticated, user } = privy;
 
   const isTMA = Boolean(window.Telegram?.WebApp?.initData);
 
@@ -42,6 +54,17 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
     if (!ready || authenticated || !isTMA) return;
     privy.loginWithTelegram();
   }, [ready, authenticated, isTMA]);
+
+  useEffect(() => {
+    if (!ready || !authenticated) return;
+
+    const telegramProfile = getTelegramProfile();
+    void ensureUser({
+      telegramId: telegramProfile?.id != null ? String(telegramProfile.id) : undefined,
+      username: telegramProfile?.username ?? user?.telegram?.username ?? user?.email?.address ?? undefined,
+      walletAddress: user?.wallet?.address,
+    });
+  }, [authenticated, ready, user]);
 
   if (!ready) {
     return (
@@ -64,6 +87,17 @@ function AppContent() {
             <Route path="/positions" element={<PositionsPage />} />
             <Route path="/points" element={<PointsPage />} />
             <Route path="/account" element={<AccountPage />} />
+            <Route path="/account/deposit" element={<DepositPage />} />
+            <Route path="/account/withdraw" element={<WithdrawPage />} />
+            <Route path="/account/transfer" element={<TransferPage />} />
+            <Route path="/account/swap" element={<SwapPage />} />
+            <Route path="/account/settings" element={<AccountSettingsMenu />} />
+            <Route path="/account/settings/personal" element={<PersonalInfoPage />} />
+            <Route path="/account/settings/notifications" element={<NotificationsPage />} />
+            <Route path="/account/settings/private-key" element={<PrivateKeyPage />} />
+            <Route path="/account/settings/language" element={<LanguagePage />} />
+            <Route path="/account/settings/support" element={<SupportPage />} />
+            <Route path="/account/settings/legal" element={<LegalPage />} />
             <Route path="/coin/:symbol" element={<CoinDetailPage />} />
             <Route path="/trade/:symbol" element={<TradePage />} />
           </Routes>

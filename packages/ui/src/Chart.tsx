@@ -9,9 +9,10 @@ interface ChartProps {
   currentPrice?: number;
   mode?: 'candlestick' | 'area';
   areaData?: { time: number; value: number }[];
+  heightClassName?: string;
 }
 
-export function Chart({ candles, interval, onIntervalChange, currentPrice, mode = 'candlestick', areaData }: ChartProps) {
+export function Chart({ candles, interval, onIntervalChange, currentPrice, mode = 'candlestick', areaData, heightClassName = 'h-[300px]' }: ChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -149,7 +150,7 @@ export function Chart({ candles, interval, onIntervalChange, currentPrice, mode 
       {/* Chart Container */}
       <div
         ref={chartContainerRef}
-        className="w-full h-[300px] bg-white rounded-lg overflow-hidden"
+        className={`w-full ${heightClassName} bg-white rounded-lg overflow-hidden`}
       >
         {!isLoaded && (
           <div className="w-full h-full flex items-center justify-center">

@@ -13,7 +13,15 @@ const TAB_ROUTES = [
   { path: '/account', label: 'Account', match: (p: string) => p.startsWith('/account') },
 ] as const;
 
-const SUB_ROUTES_HIDE_NAV = ['/coin/', '/trade/'];
+const SUB_ROUTES_HIDE_NAV = [
+  '/coin/',
+  '/trade/',
+  '/account/deposit',
+  '/account/withdraw',
+  '/account/transfer',
+  '/account/swap',
+  '/account/settings',
+];
 
 export function Layout({ children }: LayoutProps) {
   const location = useLocation();

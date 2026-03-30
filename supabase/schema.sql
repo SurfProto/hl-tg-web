@@ -2,6 +2,7 @@ create extension if not exists pgcrypto;
 
 create table if not exists users (
   id uuid primary key default gen_random_uuid(),
+  privy_user_id text unique,
   telegram_id text unique not null,
   wallet_address text unique,
   username text,
@@ -10,6 +11,9 @@ create table if not exists users (
   referred_by uuid references users(id),
   created_at timestamptz default now()
 );
+
+alter table users add column if not exists privy_user_id text;
+create unique index if not exists users_privy_user_id_key on users(privy_user_id) where privy_user_id is not null;
 
 create table if not exists notification_preferences (
   id uuid primary key default gen_random_uuid(),
@@ -69,6 +73,20 @@ create table if not exists awards (
   user_id uuid references users(id) on delete cascade,
   award_type text not null,
   unlocked_at timestamptz default now()
+);
+
+create table if not exists bridge_sponsorship_events (
+  id uuid primary key default gen_random_uuid(),
+  privy_user_id text not null,
+  wallet_address text not null,
+  amount_usdc numeric not null,
+  chain_id integer not null,
+  token_address text not null,
+  bridge_address text not null,
+  status text not null check (status in ('authorized', 'rejected')),
+  rejection_code text,
+  rejection_reason text,
+  created_at timestamptz default now()
 );
 
 alter table users enable row level security;

@@ -89,6 +89,17 @@ interface NormalizedOrderContext {
   side: OrderSide;
   tif: 'Gtc' | 'Ioc' | 'Alo';
   cloid: `0x${string}`;
+  debug?: {
+    allMidPrice: number | null;
+    bestAsk: number | null;
+    bestBid: number | null;
+    executionSource: 'book' | 'mid';
+    formattedPrice: string;
+    markPrice: number | null;
+    oraclePrice: number | null;
+    rawExecutionPrice: number;
+    referencePrice: number;
+  };
 }
 
 export interface HyperliquidClientConfig {
@@ -185,6 +196,11 @@ export class HyperliquidClient {
       });
     }
     if (this.agentWalletClientInstance) return this.agentWalletClientInstance;
+    return this.getMainWalletClient();
+  }
+
+  // Fund-movement and account-level actions must execute as the main wallet user.
+  private async getFundsClient() {
     return this.getMainWalletClient();
   }
 
@@ -453,6 +469,62 @@ export class HyperliquidClient {
     return referencePrice * slippageMultiplier;
   }
 
+  private async getMarketOrderExecutionContext(market: CachedMarket, side: OrderSide) {
+    const mids = await this.getMids().catch(() => null);
+    let allMidPrice: number | null = null;
+
+    if (mids) {
+      for (const alias of market.aliases) {
+        const mid = mids[alias];
+        if (mid != null) {
+          allMidPrice = parseFloat(mid);
+          break;
+        }
+      }
+    }
+
+    let bestBid: number | null = null;
+    let bestAsk: number | null = null;
+    try {
+      const orderbook = await this.getOrderbook(market.name);
+      bestBid = orderbook.levels.bids[0]?.px ?? null;
+      bestAsk = orderbook.levels.asks[0]?.px ?? null;
+    } catch {
+      // Best effort only — we can still fall back to mids.
+    }
+
+    let markPrice: number | null = null;
+    let oraclePrice: number | null = null;
+    try {
+      const assetCtx = await this.getAssetCtx(market.baseCoin);
+      markPrice = assetCtx?.markPx ?? null;
+      oraclePrice = assetCtx?.oraclePx ?? null;
+    } catch {
+      // Asset context is not guaranteed for every market class.
+    }
+
+    const bookAnchor = side === 'buy' ? bestAsk : bestBid;
+    const referencePrice = bookAnchor ?? allMidPrice;
+    if (!referencePrice || !Number.isFinite(referencePrice) || referencePrice <= 0) {
+      throw new Error(`No executable market price available for ${market.name}`);
+    }
+
+    const rawExecutionPrice = bookAnchor != null
+      ? referencePrice
+      : this.getAggressiveMarketPrice(referencePrice, side);
+
+    return {
+      allMidPrice,
+      bestAsk,
+      bestBid,
+      executionSource: bookAnchor != null ? 'book' as const : 'mid' as const,
+      markPrice,
+      oraclePrice,
+      rawExecutionPrice,
+      referencePrice,
+    };
+  }
+
   private async ensureBuilderApproval(): Promise<ReturnType<typeof getBuilderConfig>> {
     const builder = getBuilderConfig();
     if (!builder) return undefined;
@@ -471,6 +543,16 @@ export class HyperliquidClient {
     console.error(`[HL] ${action} failed`, context, error);
 
     if (error instanceof Error) {
+      const lowerMessage = error.message.toLowerCase();
+      if (action === 'usdClassTransfer' && lowerMessage.includes('must deposit before performing actions')) {
+        throw new Error('Transfer unavailable until your main Hyperliquid account has a deposit. Deposit funds first, then try again.');
+      }
+      if (
+        (action === 'placeOrder' || action === 'placeSpotOrder') &&
+        lowerMessage.includes('order price cannot be more than 95% away from the reference price')
+      ) {
+        throw new Error('Market too illiquid for a market order right now. Try a limit order.');
+      }
       throw new Error(error.message);
     }
     throw new Error(`${action} failed`);
@@ -533,9 +615,12 @@ export class HyperliquidClient {
 
   private async normalizeOrder(order: Order): Promise<NormalizedOrderContext> {
     const market = await this.resolveMarket(order.coin, order.marketType);
+    const executionContext = order.orderType === 'market'
+      ? await this.getMarketOrderExecutionContext(market, order.side)
+      : null;
     const referencePrice = order.orderType === 'limit'
       ? order.limitPx
-      : await this.getReferencePrice(market);
+      : executionContext?.referencePrice ?? await this.getReferencePrice(market);
 
     if (!referencePrice || !Number.isFinite(referencePrice) || referencePrice <= 0) {
       throw new Error(`Missing reference price for ${market.name}`);
@@ -547,14 +632,19 @@ export class HyperliquidClient {
     }
 
     const rawPrice = order.orderType === 'market'
-      ? this.getAggressiveMarketPrice(referencePrice, order.side)
+      ? executionContext?.rawExecutionPrice ?? this.getAggressiveMarketPrice(referencePrice, order.side)
       : referencePrice;
     const rawSize = order.sizeUsd / referencePrice;
+    const formattedPrice = this.formatPrice(rawPrice, market);
 
     return {
       cloid: (order.cloid as `0x${string}` | undefined) ?? this.generateCloid(),
+      debug: executionContext ? {
+        ...executionContext,
+        formattedPrice,
+      } : undefined,
       market,
-      price: this.formatPrice(rawPrice, market),
+      price: formattedPrice,
       reduceOnly: order.reduceOnly,
       side: order.side,
       size: this.formatSize(rawSize, market),
@@ -775,9 +865,10 @@ export class HyperliquidClient {
   }
 
   async placeOrder(order: Order) {
+    let normalized: NormalizedOrderContext | undefined;
     try {
       const client = await this.getTradingClient();
-      const normalized = await this.normalizeOrder({
+      normalized = await this.normalizeOrder({
         ...order,
         marketType: order.marketType ?? 'perp',
       });
@@ -810,6 +901,7 @@ export class HyperliquidClient {
         orderType: order.orderType,
         reduceOnly: order.reduceOnly,
         sizeUsd: order.sizeUsd,
+        pricing: normalized?.debug,
       }, error);
     }
   }
@@ -990,9 +1082,10 @@ export class HyperliquidClient {
 
   // Place a spot order (also used for USDC-USDH swap)
   async placeSpotOrder(order: Order) {
+    let normalized: NormalizedOrderContext | undefined;
     try {
       const client = await this.getTradingClient();
-      const normalized = await this.normalizeOrder({
+      normalized = await this.normalizeOrder({
         ...order,
         marketType: 'spot',
       });
@@ -1016,6 +1109,7 @@ export class HyperliquidClient {
         coin: order.coin,
         orderType: order.orderType,
         sizeUsd: order.sizeUsd,
+        pricing: normalized?.debug,
       }, error);
     }
   }
@@ -1155,13 +1249,13 @@ export class HyperliquidClient {
 
   // Transfer USDC between Perps and Spot accounts on HL L1
   async usdClassTransfer(amount: string, toPerp: boolean) {
-    const client = await this.getTradingClient();
+    const client = await this.getFundsClient();
     return client.usdClassTransfer({ amount, toPerp });
   }
 
   // Withdraw USDC from HL L1 to Arbitrum address (must be signed by main wallet, not agent)
   async withdraw(destination: string, amount: string) {
-    const client = await this.getMainWalletClient();
+    const client = await this.getFundsClient();
     return client.withdraw3({ destination: destination as `0x${string}`, amount });
   }
 }

@@ -29,7 +29,7 @@ export type AnyMarket = SpotMarket | PerpMarket;
 
 // Market classification types
 export type MarketCategory = 'all' | 'perps' | 'spot' | 'crypto' | 'tradfi' | 'hip3' | 'trending' | 'prelaunch';
-export type MarketTag = 'PERP' | 'SPOT' | 'xyz' | 'cash' | 'HIP-3';
+export type MarketTag = 'PERP' | 'SPOT' | 'TRADFI' | 'CASH' | 'HIP-3';
 
 export interface EnrichedMarket {
   market: AnyMarket;

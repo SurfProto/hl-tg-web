@@ -84,6 +84,11 @@ export {
   CATEGORY_LABELS,
   CATEGORY_ORDER,
 } from './market-categories';
+export {
+  getMarketDisplayName,
+  getMarketBaseAsset,
+  getMarketSearchTerms,
+} from './market-display';
 
 // WebSocket manager
 export { WebSocketManager } from './ws';

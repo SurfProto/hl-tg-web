@@ -7,6 +7,8 @@ import {
   enrichMarkets,
   CATEGORY_ORDER,
   CATEGORY_LABELS,
+  getMarketBaseAsset,
+  getMarketDisplayName,
 } from '@repo/hyperliquid-sdk';
 import type { AnyMarket } from '@repo/types';
 import { BalanceHero } from '../components/BalanceHero';
@@ -93,6 +95,8 @@ export function HomePage() {
           <div className="divide-y divide-separator">
             {filtered.slice(0, 6).map(({ market }) => {
               const coin = market.name;
+              const displayName = getMarketDisplayName(market);
+              const iconCoin = getMarketBaseAsset(market);
               const price = mids?.[coin] ? parseFloat(mids[coin]) : null;
               const stats = marketStats?.[coin];
 
@@ -100,6 +104,8 @@ export function HomePage() {
                 <MarketListItem
                   key={coin}
                   coin={coin}
+                  displayName={displayName}
+                  iconCoin={iconCoin}
                   marketType={market.type}
                   price={price != null ? formatPrice(price) : '—'}
                   change24h={stats?.change24h ?? 0}

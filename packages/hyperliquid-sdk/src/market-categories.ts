@@ -1,4 +1,5 @@
 import type { AnyMarket, MarketCategory, MarketTag, EnrichedMarket } from '@repo/types';
+import { getMarketBaseAsset } from './market-display';
 
 // Known TradFi symbols on Hyperliquid (commodities, indices, FX, stocks)
 const TRADFI_SYMBOLS = new Set([
@@ -26,9 +27,9 @@ export function classifyMarket(market: AnyMarket, spotTokenNames?: Set<string>):
   // Perp markets
   categories.push('perps');
 
-  const name = market.name;
+  const baseAsset = getMarketBaseAsset(market);
 
-  if (TRADFI_SYMBOLS.has(name.toUpperCase())) {
+  if (TRADFI_SYMBOLS.has(baseAsset.toUpperCase())) {
     categories.push('tradfi');
   } else {
     categories.push('crypto');
@@ -43,6 +44,7 @@ export function classifyMarket(market: AnyMarket, spotTokenNames?: Set<string>):
 
 export function getMarketTags(market: AnyMarket, spotTokenNames?: Set<string>): MarketTag[] {
   const tags: MarketTag[] = [];
+  const baseAsset = getMarketBaseAsset(market);
 
   if (market.type === 'spot') {
     tags.push('SPOT');
@@ -51,12 +53,11 @@ export function getMarketTags(market: AnyMarket, spotTokenNames?: Set<string>): 
     if (market.isHip3) {
       tags.push('HIP-3');
     }
-    const name = market.name;
-    if (TRADFI_SYMBOLS.has(name.toUpperCase())) {
-      tags.push('xyz');
+    if (TRADFI_SYMBOLS.has(baseAsset.toUpperCase())) {
+      tags.push('TRADFI');
     }
-    if (!market.isHip3 && spotTokenNames && spotTokenNames.has(name)) {
-      tags.push('cash');
+    if (!market.isHip3 && spotTokenNames && spotTokenNames.has(baseAsset)) {
+      tags.push('CASH');
     }
   }
 

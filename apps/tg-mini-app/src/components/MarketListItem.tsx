@@ -2,6 +2,8 @@ import { TokenIcon } from './TokenIcon';
 
 interface MarketListItemProps {
   coin: string;
+  displayName: string;
+  iconCoin: string;
   marketType: 'perp' | 'spot';
   price: string;
   change24h: number;
@@ -13,6 +15,8 @@ interface MarketListItemProps {
 
 export function MarketListItem({
   coin,
+  displayName,
+  iconCoin,
   marketType,
   price,
   change24h,
@@ -24,14 +28,12 @@ export function MarketListItem({
   const isPositive = change24h >= 0;
   const changeText = `${isPositive ? '+' : ''}${change24h.toFixed(2)}%`;
 
-  const displayName = coin.includes(':') ? coin.split(':')[1] : coin;
-
   return (
     <button
       onClick={onClick}
       className="w-full flex items-center gap-3 px-4 py-3 bg-white active:bg-gray-50 transition-colors text-left"
     >
-      <TokenIcon coin={displayName} size={36} />
+      <TokenIcon coin={iconCoin} size={36} />
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">

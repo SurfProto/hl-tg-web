@@ -238,8 +238,8 @@ function TagBadges({ tags, maxLeverage }: { tags: string[]; maxLeverage: number 
       {tags.map((tag) => {
         let colors = 'bg-gray-700 text-gray-400';
         if (tag === 'SPOT') colors = 'bg-emerald-900/50 text-emerald-400';
-        if (tag === 'xyz') colors = 'bg-yellow-900/50 text-yellow-400';
-        if (tag === 'cash') colors = 'bg-green-900/50 text-green-400';
+        if (tag === 'TRADFI') colors = 'bg-yellow-900/50 text-yellow-400';
+        if (tag === 'CASH') colors = 'bg-green-900/50 text-green-400';
         if (tag === 'HIP-3') colors = 'bg-cyan-900/50 text-cyan-400';
 
         return (

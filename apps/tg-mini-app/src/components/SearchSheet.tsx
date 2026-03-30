@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useMarketData, useMids, useMarketStats, enrichMarkets } from '@repo/hyperliquid-sdk';
+import {
+  enrichMarkets,
+  getMarketBaseAsset,
+  getMarketDisplayName,
+  getMarketSearchTerms,
+  useMarketData,
+  useMids,
+  useMarketStats,
+} from '@repo/hyperliquid-sdk';
 import type { AnyMarket } from '@repo/types';
 import { MarketListItem } from './MarketListItem';
 
@@ -17,10 +25,9 @@ export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
   const { data: mids } = useMids();
   const { data: marketStats } = useMarketStats();
 
-  // Build AnyMarket[] matching the pattern used in TradePage
   const allMarkets: AnyMarket[] = useMemo(() => [
-    ...(markets?.spot ?? []).map((m: any) => ({ ...m, type: 'spot' as const })),
-    ...(markets?.perp ?? []).map((m: any) => ({ ...m, type: 'perp' as const })),
+    ...(markets?.spot ?? []).map((market: any) => ({ ...market, type: 'spot' as const })),
+    ...(markets?.perp ?? []).map((market: any) => ({ ...market, type: 'perp' as const })),
   ], [markets]);
 
   const priceChanges: Record<string, number> = useMemo(() => {
@@ -38,13 +45,11 @@ export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
   const filtered = useMemo(() => {
     if (!query.trim()) return enriched.slice(0, 50);
     const q = query.toLowerCase();
-    return enriched.filter(({ market }) =>
-      market.name.toLowerCase().includes(q) ||
-      (market.type === 'spot' && (market as any).baseName?.toLowerCase().includes(q))
-    ).slice(0, 50);
+    return enriched
+      .filter(({ market }) => getMarketSearchTerms(market).some((term) => term.toLowerCase().includes(q)))
+      .slice(0, 50);
   }, [enriched, query]);
 
-  // Auto-focus input when sheet opens
   useEffect(() => {
     if (isOpen) {
       setQuery('');
@@ -56,23 +61,16 @@ export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/40"
-        onClick={onClose}
-      />
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
-      {/* Sheet panel */}
-      <div className="relative mt-auto bg-white rounded-t-2xl max-h-[85vh] flex flex-col animate-slide-up">
-        {/* Drag handle */}
+      <div className="relative mt-auto max-h-[85vh] flex flex-col rounded-t-2xl bg-white animate-slide-up">
         <div className="flex justify-center pt-3 pb-1">
-          <div className="w-10 h-1 rounded-full bg-gray-300" />
+          <div className="h-1 w-10 rounded-full bg-gray-300" />
         </div>
 
-        {/* Search input */}
         <div className="px-4 py-3">
-          <div className="flex items-center gap-2 bg-surface rounded-xl px-3 py-2.5">
-            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2.5">
+            <svg className="h-4 w-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0" />
             </svg>
             <input
@@ -81,11 +79,11 @@ export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search markets..."
-              className="flex-1 bg-transparent text-sm text-foreground placeholder-gray-400 outline-none"
+              className="flex-1 bg-transparent text-sm text-foreground outline-none placeholder-gray-400"
             />
             {query && (
               <button onClick={() => setQuery('')} className="text-gray-400">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -93,14 +91,14 @@ export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
           </div>
         </div>
 
-        {/* Results */}
-        <div className="overflow-y-auto flex-1 divide-y divide-separator">
+        <div className="flex-1 divide-y divide-separator overflow-y-auto">
           {filtered.length === 0 ? (
-            <div className="py-12 text-center text-gray-400 text-sm">No markets found</div>
+            <div className="py-12 text-center text-sm text-gray-400">No markets found</div>
           ) : (
             filtered.map(({ market }) => {
               const coin = market.name;
-              const displayCoin = coin.includes(':') ? coin.split(':')[1] : coin;
+              const displayName = getMarketDisplayName(market);
+              const iconCoin = getMarketBaseAsset(market);
               const price = mids?.[coin] ? parseFloat(mids[coin]) : null;
               const stats = marketStats?.[coin];
 
@@ -108,8 +106,10 @@ export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
                 <MarketListItem
                   key={coin}
                   coin={coin}
+                  displayName={displayName}
+                  iconCoin={iconCoin}
                   marketType={market.type}
-                  price={price != null ? `$${price.toLocaleString('en-US', { maximumFractionDigits: 4 })}` : '—'}
+                  price={price != null ? `$${price.toLocaleString('en-US', { maximumFractionDigits: 4 })}` : '-'}
                   change24h={stats?.change24h ?? 0}
                   maxLeverage={market.type === 'perp' ? market.maxLeverage : undefined}
                   isHip3={market.isHip3}

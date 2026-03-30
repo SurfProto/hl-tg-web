@@ -6,7 +6,10 @@ import {
   useAssetCtx,
   useCandles,
   useSpotBalance,
+  getMarketBaseAsset,
+  getMarketDisplayName,
 } from '@repo/hyperliquid-sdk';
+import type { AnyMarket } from '@repo/types';
 import { Chart } from '@repo/ui';
 import { TokenIcon } from '../components/TokenIcon';
 import { StatRow } from '../components/StatRow';
@@ -50,10 +53,15 @@ export function CoinDetailPage() {
     [markets, symbol],
   );
 
-  // Display name strips the "@N:" prefix used on some spot markets
-  const displayName = symbol.includes(':') ? symbol.split(':')[1] : symbol;
-  // Base token for spot holdings lookup (e.g. "PURR" from "PURR/USDC")
-  const baseToken = displayName.includes('/') ? displayName.split('/')[0] : displayName;
+  const selectedMarket = useMemo<AnyMarket | null>(() => {
+    const spotMatch = (markets?.spot ?? []).find((market: { name: string }) => market.name === symbol);
+    if (spotMatch) return { ...spotMatch, type: 'spot' as const };
+    const perpMatch = (markets?.perp ?? []).find((market: { name: string }) => market.name === symbol);
+    return perpMatch ? { ...perpMatch, type: 'perp' as const } : null;
+  }, [markets, symbol]);
+
+  const displayName = selectedMarket ? getMarketDisplayName(selectedMarket) : getMarketDisplayName(symbol);
+  const baseToken = selectedMarket ? getMarketBaseAsset(selectedMarket) : getMarketBaseAsset(symbol);
 
   const price = mids?.[symbol] ? parseFloat(mids[symbol]) : null;
   const change24h = assetCtx?.change24h ?? 0;

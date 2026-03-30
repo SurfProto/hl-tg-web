@@ -10,8 +10,10 @@ import {
   useSpotBalance,
   useUserState,
   validateOrderInput,
+  getMarketBaseAsset,
+  getMarketDisplayName,
 } from '@repo/hyperliquid-sdk';
-import type { Order } from '@repo/types';
+import type { AnyMarket, Order } from '@repo/types';
 import { NumPad } from '../components/NumPad';
 import { TokenIcon } from '../components/TokenIcon';
 import { TradingSetupSheet } from '../components/TradingSetupSheet';
@@ -63,16 +65,6 @@ export function TradePage() {
   const placeOrder = usePlaceOrder();
   const placeSpotOrder = usePlaceSpotOrder();
 
-  const displayName = useMemo(() => {
-    const withoutDex = symbol.includes(':') ? symbol.split(':')[1] : symbol;
-    return withoutDex.includes('/') ? withoutDex.split('/')[0] : withoutDex;
-  }, [symbol]);
-
-  const baseToken = useMemo(
-    () => (displayName.includes('/') ? displayName.split('/')[0] : displayName),
-    [displayName],
-  );
-
   const selectedPerpMarket = useMemo(
     () => (markets?.perp as Array<any> | undefined)?.find((market) => market.name === symbol) ?? null,
     [markets, symbol],
@@ -85,6 +77,21 @@ export function TradePage() {
 
   const isPerp = selectedPerpMarket != null;
   const selectedMarket = isPerp ? selectedPerpMarket : selectedSpotMarket;
+  const selectedMarketForDisplay = useMemo<AnyMarket | null>(() => {
+    if (selectedSpotMarket) return { ...selectedSpotMarket, type: 'spot' as const };
+    if (selectedPerpMarket) return { ...selectedPerpMarket, type: 'perp' as const };
+    return null;
+  }, [selectedPerpMarket, selectedSpotMarket]);
+
+  const displayName = useMemo(
+    () => selectedMarketForDisplay ? getMarketDisplayName(selectedMarketForDisplay) : getMarketDisplayName(symbol),
+    [selectedMarketForDisplay, symbol],
+  );
+
+  const baseToken = useMemo(
+    () => selectedMarketForDisplay ? getMarketBaseAsset(selectedMarketForDisplay) : getMarketBaseAsset(symbol),
+    [selectedMarketForDisplay, symbol],
+  );
 
   const maxLeverage = useMemo(
     () => selectedPerpMarket?.maxLeverage ?? 50,

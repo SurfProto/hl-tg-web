@@ -40,6 +40,8 @@ export {
   // Builder fee hooks
   useBuilderFeeApproval,
   useApproveBuilderFee,
+  // Agent wallet / 1-click trading
+  useSetupTrading,
   // Market stats hooks
   useMarketStats,
   useAssetCtx,
@@ -52,6 +54,15 @@ export {
   useMidsWs,
   useWebSocket,
 } from './hooks';
+
+// Agent wallet helpers
+export {
+  generateAgentKey,
+  getAgentAddress,
+  getStoredAgentKey,
+  storeAgentKey,
+  clearAgentKey,
+} from './agent';
 
 // Builder code
 export {

@@ -1,12 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useFundWallet, usePrivy, useSendTransaction, useWallets } from '@privy-io/react-auth';
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { HyperliquidClient } from './client';
 import {
   BUILDER_ADDRESS,
   approveBuilderFee as approveBuilderFeeAction,
   isBuilderConfigured,
 } from './builder';
+import {
+  generateAgentKey,
+  getAgentAddress,
+  getStoredAgentKey,
+  storeAgentKey,
+} from './agent';
 import type { AssetCtx, MarketStats, Order, PortfolioHistoryPoint, WsMessage } from '@repo/types';
 
 // Singleton client instances
@@ -59,6 +65,13 @@ export function useHyperliquid() {
   }
 
   const client = getClient(user.wallet.address, provider ?? undefined, testnet);
+
+  // Restore agent key from localStorage so trading actions sign silently
+  const storedKey = getStoredAgentKey(user.wallet.address);
+  if (storedKey && !client.hasAgentKey()) {
+    client.setAgentKey(storedKey);
+  }
+
   return { client, isConnected: true };
 }
 
@@ -586,6 +599,41 @@ export function useApproveBuilderFee() {
       queryClient.invalidateQueries({ queryKey: ['openOrders'] });
     },
   });
+}
+
+/**
+ * Hook to set up 1-click trading via an agent wallet.
+ * On first use, signs two Privy prompts (approveAgent + approveBuilderFee).
+ * After setup, all trading actions are signed silently by the local agent key.
+ */
+export function useSetupTrading() {
+  const { client } = useHyperliquid();
+  const { user } = usePrivy();
+  const queryClient = useQueryClient();
+
+  const isReady = useMemo(() => {
+    if (!user?.wallet?.address) return false;
+    return getStoredAgentKey(user.wallet.address) !== null;
+  }, [user?.wallet?.address]);
+
+  const setup = useMutation({
+    mutationFn: async () => {
+      if (!client || !user?.wallet?.address) throw new Error('Not connected');
+      const privateKey = generateAgentKey();
+      const agentAddress = getAgentAddress(privateKey);
+      await client.approveAgent(agentAddress);
+      if (isBuilderConfigured()) {
+        await approveBuilderFeeAction(client);
+      }
+      storeAgentKey(user.wallet.address, privateKey);
+      client.setAgentKey(privateKey);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['builderFeeApproval'] });
+    },
+  });
+
+  return { isReady, setup };
 }
 
 // WebSocket Hooks

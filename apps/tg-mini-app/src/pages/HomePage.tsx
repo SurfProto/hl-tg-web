@@ -12,6 +12,8 @@ import type { AnyMarket } from '@repo/types';
 import { BalanceHero } from '../components/BalanceHero';
 import { CategoryPills } from '../components/CategoryPills';
 import { MarketListItem } from '../components/MarketListItem';
+import { AllMarketsSheet } from '../components/AllMarketsSheet';
+import { MarketListItemSkeleton } from '../components/MarketListItemSkeleton';
 import { SearchSheet } from '../components/SearchSheet';
 
 function formatPrice(price: number): string {
@@ -35,10 +37,12 @@ export function HomePage() {
   const navigate = useNavigate();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchOpen, setSearchOpen] = useState(false);
+  const [allMarketsOpen, setAllMarketsOpen] = useState(false);
 
-  const { data: markets } = useMarketData();
-  const { data: mids } = useMids();
+  const { data: markets, isLoading: marketsLoading } = useMarketData();
+  const { data: mids, isLoading: midsLoading } = useMids();
   const { data: marketStats } = useMarketStats();
+  const isLoading = marketsLoading || midsLoading;
 
   const allMarkets: AnyMarket[] = useMemo(() => [
     ...(markets?.spot ?? []).map((m: any) => ({ ...m, type: 'spot' as const })),
@@ -79,11 +83,15 @@ export function HomePage() {
 
       {/* Market list */}
       <div className="bg-white border-t border-separator">
-        {filtered.length === 0 ? (
+        {isLoading ? (
+          <div className="divide-y divide-separator">
+            {Array.from({ length: 6 }, (_, i) => <MarketListItemSkeleton key={i} />)}
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="py-16 text-center text-gray-400 text-sm">No markets</div>
         ) : (
           <div className="divide-y divide-separator">
-            {filtered.map(({ market }) => {
+            {filtered.slice(0, 6).map(({ market }) => {
               const coin = market.name;
               const price = mids?.[coin] ? parseFloat(mids[coin]) : null;
               const stats = marketStats?.[coin];
@@ -102,6 +110,17 @@ export function HomePage() {
                 />
               );
             })}
+            {filtered.length > 6 && (
+              <button
+                onClick={() => setAllMarketsOpen(true)}
+                className="w-full flex items-center justify-between px-4 py-3.5 bg-white active:bg-gray-50 transition-colors"
+              >
+                <span className="text-sm font-medium text-primary">See all {filtered.length} markets</span>
+                <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -122,6 +141,16 @@ export function HomePage() {
         isOpen={searchOpen}
         onClose={() => setSearchOpen(false)}
         onSelect={(coin) => navigate(`/coin/${encodeURIComponent(coin)}`)}
+      />
+
+      {/* All markets sheet */}
+      <AllMarketsSheet
+        isOpen={allMarketsOpen}
+        onClose={() => setAllMarketsOpen(false)}
+        markets={filtered}
+        mids={mids}
+        marketStats={marketStats}
+        onSelect={(coin) => { setAllMarketsOpen(false); navigate(`/coin/${encodeURIComponent(coin)}`); }}
       />
     </div>
   );

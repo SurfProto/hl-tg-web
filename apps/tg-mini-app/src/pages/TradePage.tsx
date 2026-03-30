@@ -2,9 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { usePrivy } from '@privy-io/react-auth';
 import {
-  isBuilderConfigured,
-  useApproveBuilderFee,
-  useBuilderFeeApproval,
+  useSetupTrading,
   useMarketData,
   useMids,
   usePlaceOrder,
@@ -16,6 +14,7 @@ import {
 import type { Order } from '@repo/types';
 import { NumPad } from '../components/NumPad';
 import { TokenIcon } from '../components/TokenIcon';
+import { TradingSetupSheet } from '../components/TradingSetupSheet';
 import { useHaptics } from '../hooks/useHaptics';
 
 function formatPrice(price: number): string {
@@ -58,8 +57,7 @@ export function TradePage() {
   const { data: mids } = useMids();
   const { data: userState } = useUserState();
   const { data: spotBalance } = useSpotBalance();
-  const { data: maxBuilderFee, isLoading: isApprovalLoading } = useBuilderFeeApproval();
-  const approveBuilder = useApproveBuilderFee();
+  const { isReady: tradingReady, setup: tradingSetup } = useSetupTrading();
   const placeOrder = usePlaceOrder();
   const placeSpotOrder = usePlaceSpotOrder();
 
@@ -231,9 +229,7 @@ export function TradePage() {
       : currentPrice * (1 + 1 / leverage);
   }, [amountNum, currentPrice, isPerp, leverage, side]);
 
-  const builderConfigured = isBuilderConfigured();
-  const isBuilderApproved = (maxBuilderFee ?? 0) > 0;
-  const needsApproval = authenticated && builderConfigured && !isApprovalLoading && !isBuilderApproved;
+  const needsSetup = authenticated && !tradingReady;
 
   const ctaLabel = isPerp
     ? side === 'buy' ? `Long ${displayName}` : `Short ${displayName}`
@@ -274,17 +270,6 @@ export function TradePage() {
 
   const handlePrimaryAction = async () => {
     setSubmitError(null);
-
-    if (needsApproval) {
-      try {
-        haptics.medium();
-        await approveBuilder.mutateAsync();
-        haptics.success();
-      } catch {
-        haptics.error();
-      }
-      return;
-    }
 
     if (!validation.isValid) {
       haptics.error();
@@ -452,15 +437,7 @@ export function TradePage() {
       </div>
 
       <div className="flex-none px-4 pt-2 pb-4 safe-area-bottom bg-white border-t border-separator">
-        {needsApproval ? (
-          <button
-            onPointerDown={handlePrimaryAction}
-            disabled={approveBuilder.isPending}
-            className="w-full py-4 rounded-xl font-semibold text-sm bg-amber-500 text-white disabled:opacity-50 active:opacity-80 transition-opacity"
-          >
-            {approveBuilder.isPending ? 'Approving...' : 'Approve Builder Fee to Trade'}
-          </button>
-        ) : orderType === 'limit' && step === 'amount' ? (
+        {orderType === 'limit' && step === 'amount' ? (
           <button
             onPointerDown={handlePrimaryAction}
             disabled={isSubmitDisabled}
@@ -546,6 +523,9 @@ export function TradePage() {
           </div>
         </div>
       )}
+
+      {/* 1-click trading setup — shown on first use */}
+      <TradingSetupSheet isOpen={needsSetup} setup={tradingSetup} />
     </div>
   );
 }

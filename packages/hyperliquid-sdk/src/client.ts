@@ -1,3 +1,5 @@
+import { createWalletClient, http } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
 import type {
   AccountState,
   AssetCtx,
@@ -100,6 +102,8 @@ const MIN_ORDER_NOTIONAL_USD = 10;
 export class HyperliquidClient {
   private publicClientInstance: any = null;
   private walletClientInstance: any = null;
+  private agentWalletClientInstance: any = null;
+  private agentPrivateKey: `0x${string}` | null = null;
   private wsManager: WebSocketManager;
   private walletAddress: string;
   private testnet: boolean;
@@ -148,7 +152,8 @@ export class HyperliquidClient {
     return this.publicClientInstance;
   }
 
-  private async getWalletClient() {
+  // Main wallet client — uses the Privy signer. Only for setup actions (approveAgent, approveBuilderFee).
+  private async getMainWalletClient() {
     if (!this.walletClientInstance) {
       if (!this.config.customSigner) throw new Error('Wallet not connected');
       const SDK = await loadHyperliquidSDK();
@@ -162,6 +167,34 @@ export class HyperliquidClient {
       });
     }
     return this.walletClientInstance;
+  }
+
+  // Trading client — uses agent wallet when available, otherwise falls back to main.
+  private async getTradingClient() {
+    if (this.agentPrivateKey && !this.agentWalletClientInstance) {
+      const SDK = await loadHyperliquidSDK();
+      const account = privateKeyToAccount(this.agentPrivateKey);
+      const apiUrl = this.getHttpApiUrl();
+      const viemWallet = createWalletClient({ account, transport: http(apiUrl) });
+      const transport = new SDK.HttpTransport({ url: apiUrl });
+      this.agentWalletClientInstance = new SDK.WalletClient({
+        transport,
+        wallet: viemWallet,
+        isTestnet: this.testnet,
+      });
+    }
+    if (this.agentWalletClientInstance) return this.agentWalletClientInstance;
+    return this.getMainWalletClient();
+  }
+
+  // Set an agent private key so all trading actions sign silently without Privy prompts.
+  setAgentKey(privateKey: `0x${string}`) {
+    this.agentPrivateKey = privateKey;
+    this.agentWalletClientInstance = null; // recreated lazily on next getTradingClient call
+  }
+
+  hasAgentKey(): boolean {
+    return this.agentPrivateKey !== null;
   }
 
   private async ensureMarketCache(): Promise<MarketCache> {
@@ -456,21 +489,23 @@ export class HyperliquidClient {
     return response;
   }
 
-  private async ensurePerpLeverage(coin: string, leverage?: number, reduceOnly?: boolean): Promise<void> {
+  private async ensurePerpLeverage(market: CachedMarket, leverage?: number, reduceOnly?: boolean): Promise<void> {
     if (!leverage || leverage <= 0 || reduceOnly) return;
 
+    const isCross = !market.onlyIsolated;
+
     const userState = await this.getUserState();
-    const existingPosition = userState.assetPositions.find((assetPosition) => assetPosition.position.coin === coin)?.position;
+    const existingPosition = userState.assetPositions.find((assetPosition) => assetPosition.position.coin === market.name)?.position;
 
     if (
       existingPosition &&
-      existingPosition.leverage.type === 'cross' &&
+      existingPosition.leverage.type === (isCross ? 'cross' : 'isolated') &&
       existingPosition.leverage.value === leverage
     ) {
       return;
     }
 
-    await this.updateLeverage(coin, leverage, true);
+    await this.updateLeverage(market.name, leverage, isCross);
   }
 
   private async normalizeOrder(order: Order): Promise<NormalizedOrderContext> {
@@ -718,7 +753,7 @@ export class HyperliquidClient {
 
   async placeOrder(order: Order) {
     try {
-      const client = await this.getWalletClient();
+      const client = await this.getTradingClient();
       const normalized = await this.normalizeOrder({
         ...order,
         marketType: order.marketType ?? 'perp',
@@ -728,7 +763,7 @@ export class HyperliquidClient {
         throw new Error(`Use spot order flow for ${normalized.market.name}`);
       }
 
-      await this.ensurePerpLeverage(normalized.market.name, order.leverage, order.reduceOnly);
+      await this.ensurePerpLeverage(normalized.market, order.leverage, order.reduceOnly);
       const builder = await this.ensureBuilderApproval();
 
       return this.unwrapStatuses(await client.order({
@@ -758,7 +793,7 @@ export class HyperliquidClient {
 
   async closePosition(coin: string) {
     try {
-      const client = await this.getWalletClient();
+      const client = await this.getTradingClient();
       const market = await this.resolveMarket(coin, 'perp');
       const userState = await this.getUserState();
       const position = userState.assetPositions.find((assetPosition) => assetPosition.position.coin === market.name)?.position;
@@ -793,7 +828,7 @@ export class HyperliquidClient {
   // Cancel order
   async cancelOrder(coin: string, oid: number) {
     try {
-      const client = await this.getWalletClient();
+      const client = await this.getTradingClient();
       const market = await this.resolveMarket(coin);
       return this.unwrapStatuses(await client.cancel({
         cancels: [{ a: market.asset, o: oid }],
@@ -806,7 +841,7 @@ export class HyperliquidClient {
   // Cancel all orders (optionally for a specific coin)
   async cancelAllOrders(coin?: string) {
     try {
-      const client = await this.getWalletClient();
+      const client = await this.getTradingClient();
       const openOrders = await this.getOpenOrders();
       const toCancel = coin
         ? openOrders.filter((openOrder) => openOrder.coin === coin)
@@ -833,7 +868,7 @@ export class HyperliquidClient {
   // Modify order
   async modifyOrder(oid: number, order: Order) {
     try {
-      const client = await this.getWalletClient();
+      const client = await this.getTradingClient();
       const normalized = await this.normalizeOrder(order);
       return this.unwrapStatuses(await client.modify({
         oid,
@@ -860,7 +895,7 @@ export class HyperliquidClient {
   // Update leverage
   async updateLeverage(coin: string, leverage: number, isCross: boolean = true) {
     try {
-      const client = await this.getWalletClient();
+      const client = await this.getTradingClient();
       const market = await this.resolveMarket(coin, 'perp');
       return client.updateLeverage({
         asset: market.asset,
@@ -875,7 +910,7 @@ export class HyperliquidClient {
   // Update isolated margin
   async updateIsolatedMargin(coin: string, amount: number) {
     try {
-      const client = await this.getWalletClient();
+      const client = await this.getTradingClient();
       const market = await this.resolveMarket(coin, 'perp');
       return client.updateIsolatedMargin({
         asset: market.asset,
@@ -933,7 +968,7 @@ export class HyperliquidClient {
   // Place a spot order (also used for USDC-USDH swap)
   async placeSpotOrder(order: Order) {
     try {
-      const client = await this.getWalletClient();
+      const client = await this.getTradingClient();
       const normalized = await this.normalizeOrder({
         ...order,
         marketType: 'spot',
@@ -962,10 +997,23 @@ export class HyperliquidClient {
     }
   }
 
+  // Approve agent wallet to act on behalf of this user
+  async approveAgent(agentAddress: string) {
+    try {
+      const client = await this.getMainWalletClient();
+      return client.approveAgent({
+        agentAddress: agentAddress as `0x${string}`,
+        agentName: 'HL TG App',
+      });
+    } catch (error) {
+      this.normalizeExchangeError('approveAgent', { agentAddress }, error);
+    }
+  }
+
   // Approve builder fee for this user
   async approveBuilderFee(builder: string, maxFeeRate: string) {
     try {
-      const client = await this.getWalletClient();
+      const client = await this.getMainWalletClient();
       const response = await client.approveBuilderFee({
         builder: builder as `0x${string}`,
         maxFeeRate: maxFeeRate as `${string}%`,
@@ -1084,13 +1132,13 @@ export class HyperliquidClient {
 
   // Transfer USDC between Perps and Spot accounts on HL L1
   async usdClassTransfer(amount: string, toPerp: boolean) {
-    const client = await this.getWalletClient();
+    const client = await this.getTradingClient();
     return client.usdClassTransfer({ amount, toPerp });
   }
 
-  // Withdraw USDC from HL L1 to Arbitrum address
+  // Withdraw USDC from HL L1 to Arbitrum address (must be signed by main wallet, not agent)
   async withdraw(destination: string, amount: string) {
-    const client = await this.getWalletClient();
+    const client = await this.getMainWalletClient();
     return client.withdraw3({ destination: destination as `0x${string}`, amount });
   }
 }

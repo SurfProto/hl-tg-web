@@ -12,6 +12,7 @@ import type {
   WsMessage,
 } from '@repo/types';
 import { BUILDER_ADDRESS, BUILDER_FEE_TENTHS_BP, getBuilderConfig, isBuilderConfigured } from './builder';
+import { formatOrderSize, validateOrderInput } from './order-validation';
 import { WebSocketManager } from './ws';
 
 // Dynamic import for Hyperliquid SDK
@@ -379,14 +380,7 @@ export class HyperliquidClient {
   }
 
   private formatSize(rawSize: number, market: CachedMarket): string {
-    if (!Number.isFinite(rawSize) || rawSize <= 0) {
-      throw new Error(`Invalid size for ${market.name}`);
-    }
-    const formatted = this.truncateToDecimals(rawSize, market.szDecimals);
-    if (Number(formatted) <= 0) {
-      throw new Error(`Order size is too small for ${market.name}`);
-    }
-    return formatted;
+    return formatOrderSize(rawSize, market);
   }
 
   private getOrderValidation(
@@ -395,68 +389,7 @@ export class HyperliquidClient {
     referencePrice: number,
     availableBalance?: number,
   ): OrderValidationResult {
-    const minSizeUsd = market.minNotionalUsd;
-    const leverage = market.marketType === 'spot' ? 1 : Math.max(order.leverage ?? 1, 1);
-    const minMarginUsd = market.marketType === 'spot'
-      ? minSizeUsd
-      : minSizeUsd / leverage;
-
-    if (!Number.isFinite(order.sizeUsd) || order.sizeUsd <= 0) {
-      return {
-        isValid: false,
-        minMarginUsd,
-        minSizeUsd,
-        reason: 'Enter an order size greater than 0.',
-      };
-    }
-
-    if (order.sizeUsd < minSizeUsd) {
-      return {
-        isValid: false,
-        minMarginUsd,
-        minSizeUsd,
-        reason: `Minimum order value is $${minSizeUsd.toFixed(2)}.`,
-      };
-    }
-
-    if (Number.isFinite(availableBalance) && availableBalance != null) {
-      const requiredBalance = market.marketType === 'spot' ? order.sizeUsd : order.sizeUsd / leverage;
-      if (requiredBalance > availableBalance) {
-        return {
-          isValid: false,
-          minMarginUsd,
-          minSizeUsd,
-          reason: 'Insufficient balance for this order size.',
-        };
-      }
-    }
-
-    const rawSize = order.sizeUsd / referencePrice;
-    if (rawSize < market.minBaseSize) {
-      return {
-        isValid: false,
-        minMarginUsd,
-        minSizeUsd,
-        reason: `Order size is below the minimum lot size for ${market.name}.`,
-      };
-    }
-
-    try {
-      this.formatSize(rawSize, market);
-    } catch (error) {
-      return {
-        isValid: false,
-        minMarginUsd,
-        minSizeUsd,
-        reason: error instanceof Error ? error.message : 'Order size is too small.',
-      };
-    }
-
-    return {
-      isValid: true,
-      minMarginUsd,
-      minSizeUsd,
-    };
+    return validateOrderInput(order, market, referencePrice, availableBalance);
   }
 
   private generateCloid(): `0x${string}` {

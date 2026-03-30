@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { inferSzDecimalsFromMinBaseSize, validateOrderInput } from '../../hyperliquid-sdk/src/order-validation';
 import { Button } from './Button';
 import { Input } from './Input';
 import { Select } from './Select';
@@ -11,6 +12,7 @@ interface OrderFormProps {
   availableBalance?: number;
   minNotionalUsd?: number;
   minBaseSize?: number;
+  szDecimals?: number;
   isSpot?: boolean;
   onlyIsolated?: boolean;
   onPlaceOrder: (order: {
@@ -32,6 +34,7 @@ export function OrderForm({
   availableBalance = 0,
   minNotionalUsd = 10,
   minBaseSize = 0,
+  szDecimals,
   isSpot = false,
   onlyIsolated = false,
   onPlaceOrder,
@@ -66,36 +69,49 @@ export function OrderForm({
     return orderValue / currentPrice;
   }, [currentPrice, orderValue]);
 
+  const resolvedSzDecimals = useMemo(
+    () => szDecimals ?? inferSzDecimalsFromMinBaseSize(minBaseSize),
+    [minBaseSize, szDecimals],
+  );
+
   const validation = useMemo(() => {
+    const minMarginUsd = isSpot ? minNotionalUsd : minNotionalUsd / Math.max(leverage, 1);
+
     if (!size) {
-      return { isValid: false, reason: undefined };
-    }
-
-    if (orderValue <= 0) {
-      return { isValid: false, reason: 'Enter an order size greater than 0.' };
-    }
-
-    if (orderValue < minNotionalUsd) {
-      return { isValid: false, reason: `Minimum order value is $${minNotionalUsd.toFixed(2)}.` };
-    }
-
-    if (!isSpot && marginRequired > availableBalance) {
-      return { isValid: false, reason: 'Insufficient balance for this margin requirement.' };
-    }
-
-    if (isSpot && orderValue > availableBalance) {
-      return { isValid: false, reason: 'Insufficient balance for this spot order.' };
-    }
-
-    if (currentPrice && minBaseSize > 0 && baseSize < minBaseSize) {
       return {
         isValid: false,
-        reason: `Order size is below the minimum lot size (${minBaseSize.toFixed(6)} ${coin}).`,
+        minMarginUsd,
+        minSizeUsd: minNotionalUsd,
+        reason: undefined,
       };
     }
 
-    return { isValid: true, reason: undefined };
-  }, [availableBalance, baseSize, coin, currentPrice, isSpot, marginRequired, minBaseSize, minNotionalUsd, orderValue, size]);
+    const referencePrice = orderType === 'limit'
+      ? parseFloat(price) || currentPrice || 0
+      : currentPrice || 0;
+
+    return validateOrderInput(
+      {
+        coin,
+        side,
+        sizeUsd: orderValue,
+        limitPx: orderType === 'limit' ? parseFloat(price) || undefined : undefined,
+        orderType,
+        reduceOnly,
+        leverage,
+        marketType: isSpot ? 'spot' : 'perp',
+      },
+      {
+        name: coin,
+        marketType: isSpot ? 'spot' : 'perp',
+        minNotionalUsd,
+        minBaseSize,
+        szDecimals: resolvedSzDecimals,
+      },
+      referencePrice,
+      availableBalance,
+    );
+  }, [availableBalance, coin, currentPrice, isSpot, leverage, minBaseSize, minNotionalUsd, orderType, orderValue, price, reduceOnly, resolvedSzDecimals, side, size]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -178,7 +194,9 @@ export function OrderForm({
             Size (USD)
           </label>
           <span className="text-xs text-gray-500">
-            Available: ${availableBalance.toFixed(2)}
+            {isSpot
+              ? `Available: $${availableBalance.toFixed(2)}`
+              : `Available Margin: $${availableBalance.toFixed(2)} | Max Size: $${(availableBalance * leverage).toFixed(2)}`}
           </span>
         </div>
         <Input

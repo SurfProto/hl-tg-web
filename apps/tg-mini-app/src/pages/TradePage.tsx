@@ -1,17 +1,17 @@
-import { useMemo, useState } from 'react';
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { usePrivy } from '@privy-io/react-auth';
 import {
-  useMids,
+  isBuilderConfigured,
+  useApproveBuilderFee,
+  useBuilderFeeApproval,
   useMarketData,
-  useUserState,
-  useSpotBalance,
+  useMids,
   usePlaceOrder,
   usePlaceSpotOrder,
-  useUpdateLeverage,
-  useBuilderFeeApproval,
-  useApproveBuilderFee,
-  isBuilderConfigured,
+  useSpotBalance,
+  useUserState,
+  validateOrderInput,
 } from '@repo/hyperliquid-sdk';
 import type { Order } from '@repo/types';
 import { NumPad } from '../components/NumPad';
@@ -22,6 +22,12 @@ function formatPrice(price: number): string {
   if (price >= 1000) return `$${price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
   if (price >= 1) return `$${price.toFixed(4)}`;
   return `$${price.toFixed(6)}`;
+}
+
+function formatUsdInput(value: number): string {
+  const truncated = Math.floor(value * 100) / 100;
+  if (Number.isNaN(truncated) || truncated <= 0) return '0';
+  return truncated.toFixed(2).replace(/\.00$/u, '').replace(/(\.\d)0$/u, '$1');
 }
 
 const LEVERAGE_OPTIONS = [1, 2, 3, 5, 10, 20, 25, 50];
@@ -44,8 +50,8 @@ export function TradePage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const side: 'buy' | 'sell' = useMemo(() => {
-    const s = searchParams.get('side');
-    return s === 'long' || s === 'buy' ? 'buy' : 'sell';
+    const requestedSide = searchParams.get('side');
+    return requestedSide === 'long' || requestedSide === 'buy' ? 'buy' : 'sell';
   }, [searchParams]);
 
   const { data: markets } = useMarketData();
@@ -56,9 +62,7 @@ export function TradePage() {
   const approveBuilder = useApproveBuilderFee();
   const placeOrder = usePlaceOrder();
   const placeSpotOrder = usePlaceSpotOrder();
-  const updateLeverage = useUpdateLeverage();
 
-  // Display name helpers
   const displayName = useMemo(() => {
     const withoutDex = symbol.includes(':') ? symbol.split(':')[1] : symbol;
     return withoutDex.includes('/') ? withoutDex.split('/')[0] : withoutDex;
@@ -69,50 +73,163 @@ export function TradePage() {
     [displayName],
   );
 
-  const isPerp = useMemo(
-    () => markets?.perp?.some((m: any) => m.name === symbol) ?? false,
+  const selectedPerpMarket = useMemo(
+    () => (markets?.perp as Array<any> | undefined)?.find((market) => market.name === symbol) ?? null,
     [markets, symbol],
   );
 
-  const maxLeverage = useMemo(
-    () => (markets?.perp as any[])?.find((m) => m.name === symbol)?.maxLeverage ?? 50,
+  const selectedSpotMarket = useMemo(
+    () => (markets?.spot as Array<any> | undefined)?.find((market) => market.name === symbol) ?? null,
     [markets, symbol],
+  );
+
+  const isPerp = selectedPerpMarket != null;
+  const selectedMarket = isPerp ? selectedPerpMarket : selectedSpotMarket;
+
+  const maxLeverage = useMemo(
+    () => selectedPerpMarket?.maxLeverage ?? 50,
+    [selectedPerpMarket],
   );
 
   const leverageOptions = useMemo(
-    () => LEVERAGE_OPTIONS.filter((lv) => lv <= maxLeverage),
+    () => LEVERAGE_OPTIONS.filter((value) => value <= maxLeverage),
     [maxLeverage],
   );
 
   const currentPrice = mids?.[symbol] ? parseFloat(mids[symbol]) : null;
+  const amountNum = parseFloat(amount) || 0;
+  const limitPriceNum = parseFloat(limitPrice) || 0;
 
   const spotUsdcBalance = useMemo(() => {
     const entry = (spotBalance?.balances as Array<{ coin: string; total: string }> | undefined)
-      ?.find((b) => b.coin === 'USDC');
+      ?.find((balance) => balance.coin === 'USDC');
     return entry ? parseFloat(entry.total) : 0;
   }, [spotBalance]);
 
   const spotCoinBalance = useMemo(() => {
     const entry = (spotBalance?.balances as Array<{ coin: string; total: string }> | undefined)
-      ?.find((b) => b.coin === baseToken);
+      ?.find((balance) => balance.coin === baseToken);
     return entry ? parseFloat(entry.total) : 0;
-  }, [spotBalance, baseToken]);
+  }, [baseToken, spotBalance]);
 
-  const availableUsd = useMemo(() => {
-    if (isPerp) return (userState as any)?.withdrawable ?? 0;
+  const availableMarginUsd = useMemo(
+    () => (isPerp ? userState?.withdrawable ?? 0 : 0),
+    [isPerp, userState?.withdrawable],
+  );
+
+  const spotAvailableUsd = useMemo(() => {
     if (side === 'buy') return spotUsdcBalance;
     return spotCoinBalance * (currentPrice ?? 0);
-  }, [isPerp, side, userState, spotUsdcBalance, spotCoinBalance, currentPrice]);
+  }, [currentPrice, side, spotCoinBalance, spotUsdcBalance]);
 
-  const amountNum = parseFloat(amount) || 0;
-  const limitPriceNum = parseFloat(limitPrice) || 0;
+  const maxPositionUsd = useMemo(
+    () => (isPerp ? availableMarginUsd * leverage : spotAvailableUsd),
+    [availableMarginUsd, isPerp, leverage, spotAvailableUsd],
+  );
+
+  const currentPositionLeverage = useMemo(() => {
+    if (!isPerp) return null;
+    const position = (userState?.assetPositions ?? [])
+      .find((assetPosition) => assetPosition.position.coin === symbol)
+      ?.position;
+    return position?.leverage.value ?? null;
+  }, [isPerp, symbol, userState?.assetPositions]);
+
+  const leverageSourceRef = useRef<{ symbol: string; positionLeverage: number | null }>({
+    symbol: '',
+    positionLeverage: null,
+  });
+
+  useEffect(() => {
+    if (!isPerp) return;
+
+    const nextPositionLeverage = currentPositionLeverage ?? null;
+    const leverageSourceChanged =
+      leverageSourceRef.current.symbol !== symbol
+      || leverageSourceRef.current.positionLeverage !== nextPositionLeverage;
+
+    if (leverageSourceChanged) {
+      leverageSourceRef.current = {
+        symbol,
+        positionLeverage: nextPositionLeverage,
+      };
+      setLeverage(Math.min(Math.max(nextPositionLeverage ?? 1, 1), maxLeverage));
+      return;
+    }
+
+    if (leverage > maxLeverage) {
+      setLeverage(maxLeverage);
+    }
+  }, [currentPositionLeverage, isPerp, leverage, maxLeverage, symbol]);
+
+  const validationReferencePrice = orderType === 'limit'
+    ? limitPriceNum || currentPrice || 0
+    : currentPrice || 0;
+  const validationAvailableBalance = isPerp ? availableMarginUsd : spotAvailableUsd;
+
+  const validation = useMemo(() => {
+    const minSizeUsd = selectedMarket?.minNotionalUsd ?? 10;
+    const minMarginUsd = isPerp ? minSizeUsd / Math.max(leverage, 1) : minSizeUsd;
+
+    if (!amount) {
+      return {
+        isValid: false,
+        minMarginUsd,
+        minSizeUsd,
+        reason: undefined,
+      };
+    }
+
+    if (!selectedMarket) {
+      return {
+        isValid: false,
+        minMarginUsd,
+        minSizeUsd,
+        reason: 'Market metadata unavailable.',
+      };
+    }
+
+    return validateOrderInput(
+      {
+        coin: symbol,
+        side,
+        sizeUsd: amountNum,
+        limitPx: orderType === 'limit' && limitPriceNum > 0 ? limitPriceNum : undefined,
+        orderType,
+        reduceOnly: false,
+        leverage,
+        marketType: isPerp ? 'perp' : 'spot',
+      },
+      {
+        name: selectedMarket.name,
+        marketType: isPerp ? 'perp' : 'spot',
+        minNotionalUsd: selectedMarket.minNotionalUsd,
+        minBaseSize: selectedMarket.minBaseSize,
+        szDecimals: selectedMarket.szDecimals,
+      },
+      validationReferencePrice,
+      validationAvailableBalance,
+    );
+  }, [
+    amount,
+    amountNum,
+    isPerp,
+    leverage,
+    limitPriceNum,
+    orderType,
+    selectedMarket,
+    side,
+    symbol,
+    validationAvailableBalance,
+    validationReferencePrice,
+  ]);
 
   const liquidationPx = useMemo(() => {
     if (!isPerp || amountNum === 0 || !currentPrice || leverage <= 1) return null;
     return side === 'buy'
       ? currentPrice * (1 - 1 / leverage)
       : currentPrice * (1 + 1 / leverage);
-  }, [isPerp, amountNum, currentPrice, leverage, side]);
+  }, [amountNum, currentPrice, isPerp, leverage, side]);
 
   const builderConfigured = isBuilderConfigured();
   const isBuilderApproved = (maxBuilderFee ?? 0) > 0;
@@ -123,24 +240,35 @@ export function TradePage() {
     : side === 'buy' ? `Buy ${displayName}` : `Sell ${displayName}`;
 
   const isPending = placeOrder.isPending || placeSpotOrder.isPending;
-  const isSubmitDisabled = amountNum === 0 || isPending;
+  const isSubmitDisabled = amountNum === 0 || isPending || !validation.isValid;
 
-  // ── Event handlers ──────────────────────────────────
+  const handleAmountChange = (value: string) => {
+    setSubmitError(null);
+    setAmount(value);
+  };
+
+  const handleLimitPriceChange = (value: string) => {
+    setSubmitError(null);
+    setLimitPrice(value);
+  };
 
   const handleQuickFill = (pct: number) => {
     haptics.light();
-    setAmount(String(Math.floor(availableUsd * pct * 100) / 100));
+    setSubmitError(null);
+    const availableSizeUsd = isPerp ? maxPositionUsd : spotAvailableUsd;
+    setAmount(formatUsdInput(availableSizeUsd * pct));
   };
 
-  const handleLeveragePill = (lv: number) => {
+  const handleLeveragePill = (value: number) => {
     haptics.selection();
-    setLeverage(lv);
-    updateLeverage.mutate({ coin: symbol, leverage: lv });
+    setSubmitError(null);
+    setLeverage(value);
   };
 
-  const handleOrderTypeToggle = (type: 'market' | 'limit') => {
+  const handleOrderTypeToggle = (value: 'market' | 'limit') => {
     haptics.light();
-    setOrderType(type);
+    setSubmitError(null);
+    setOrderType(value);
     setStep('amount');
   };
 
@@ -155,6 +283,12 @@ export function TradePage() {
       } catch {
         haptics.error();
       }
+      return;
+    }
+
+    if (!validation.isValid) {
+      haptics.error();
+      setSubmitError(validation.reason ?? 'Check your order details and try again.');
       return;
     }
 
@@ -179,22 +313,20 @@ export function TradePage() {
 
     const mutation = isPerp ? placeOrder : placeSpotOrder;
     mutation.mutate(order, {
-      onSuccess: () => { haptics.success(); navigate(-1); },
-      onError: (err) => {
+      onSuccess: () => {
+        haptics.success();
+        navigate(-1);
+      },
+      onError: (error) => {
         haptics.error();
-        setSubmitError(err instanceof Error ? err.message : 'Order failed — please try again');
+        setSubmitError(error instanceof Error ? error.message : 'Order failed. Please try again.');
       },
     });
   };
 
-  // ── Render ───────────────────────────────────────────
-
   return (
     <div className="h-full flex flex-col bg-background">
-
-      {/* ── Header ── */}
       <header className="flex-none px-4 py-3 flex items-center justify-between border-b border-separator bg-white">
-        {/* Token identity */}
         <div className="flex items-center gap-2.5">
           <TokenIcon coin={baseToken} size={32} />
           <div>
@@ -208,61 +340,75 @@ export function TradePage() {
           )}
         </div>
 
-        {/* Market / Limit toggle */}
         <div className="flex bg-surface rounded-lg p-0.5 gap-0.5">
-          {(['market', 'limit'] as const).map((type) => (
+          {(['market', 'limit'] as const).map((value) => (
             <button
-              key={type}
-              onPointerDown={() => handleOrderTypeToggle(type)}
+              key={value}
+              onPointerDown={() => handleOrderTypeToggle(value)}
               className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all capitalize ${
-                orderType === type ? 'bg-white shadow text-foreground' : 'text-gray-500'
+                orderType === value ? 'bg-white shadow text-foreground' : 'text-gray-500'
               }`}
             >
-              {type.charAt(0).toUpperCase() + type.slice(1)}
+              {value.charAt(0).toUpperCase() + value.slice(1)}
             </button>
           ))}
         </div>
 
-        {/* Gear / settings */}
         <button
           onPointerDown={() => setSettingsOpen(true)}
           className="p-2 rounded-lg text-gray-500 active:bg-gray-100 transition-colors"
           aria-label="Order settings"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+            />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
         </button>
       </header>
 
-      {/* ── Scrollable middle ── */}
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-6 flex flex-col items-center gap-5">
-
-        {/* Amount / price display */}
         <div className="flex flex-col items-center">
           <div className="text-6xl font-bold text-foreground tabular-nums tracking-tight">
             {step === 'amount'
               ? `$${amountNum === 0 ? '0' : amount}`
               : limitPriceNum === 0 ? '$0' : `$${limitPrice}`}
           </div>
-          <div className="text-sm text-gray-400 mt-2">
-            {step === 'amount'
-              ? `Available $${availableUsd.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
-              : 'Limit price'}
-          </div>
+          {step === 'amount' ? (
+            <div className="mt-2 text-center text-sm text-gray-400">
+              {isPerp ? (
+                <>
+                  <div>
+                    Available margin ${availableMarginUsd.toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                  </div>
+                  <div>
+                    Max size ${maxPositionUsd.toLocaleString('en-US', { maximumFractionDigits: 2 })} at {leverage}x
+                  </div>
+                </>
+              ) : (
+                `Available $${spotAvailableUsd.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+              )}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-400 mt-2">Limit price</div>
+          )}
           {step === 'price' && (
             <button
-              onPointerDown={() => setStep('amount')}
+              onPointerDown={() => {
+                setSubmitError(null);
+                setStep('amount');
+              }}
               className="text-sm text-primary mt-2 active:opacity-60"
             >
-              ← Edit amount
+              &larr; Edit amount
             </button>
           )}
         </div>
 
-        {/* Quick fill pills — amount step only */}
         {step === 'amount' && (
           <div className="flex gap-2">
             {[{ label: '10%', pct: 0.1 }, { label: '25%', pct: 0.25 }, { label: '50%', pct: 0.5 }, { label: 'Max', pct: 1 }].map(({ label, pct }) => (
@@ -277,20 +423,19 @@ export function TradePage() {
           </div>
         )}
 
-        {/* Leverage picker — perps, amount step only */}
         {isPerp && step === 'amount' && (
           <div className="w-full">
             <div className="text-xs text-gray-400 mb-2 font-medium">Leverage</div>
             <div className="flex flex-wrap gap-2">
-              {leverageOptions.map((lv) => (
+              {leverageOptions.map((value) => (
                 <button
-                  key={lv}
-                  onPointerDown={() => handleLeveragePill(lv)}
+                  key={value}
+                  onPointerDown={() => handleLeveragePill(value)}
                   className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
-                    leverage === lv ? 'bg-primary text-white' : 'bg-surface text-gray-600 active:bg-gray-200'
+                    leverage === value ? 'bg-primary text-white' : 'bg-surface text-gray-600 active:bg-gray-200'
                   }`}
                 >
-                  {lv}x
+                  {value}x
                 </button>
               ))}
             </div>
@@ -298,16 +443,14 @@ export function TradePage() {
         )}
       </div>
 
-      {/* ── NumPad ── */}
       <div className="flex-none pb-1">
         <NumPad
           value={step === 'amount' ? amount : limitPrice}
-          onChange={step === 'amount' ? setAmount : setLimitPrice}
+          onChange={step === 'amount' ? handleAmountChange : handleLimitPriceChange}
           maxDecimals={step === 'amount' ? 2 : 8}
         />
       </div>
 
-      {/* ── Submit CTA ── */}
       <div className="flex-none px-4 pt-2 pb-4 safe-area-bottom bg-white border-t border-separator">
         {needsApproval ? (
           <button
@@ -320,10 +463,10 @@ export function TradePage() {
         ) : orderType === 'limit' && step === 'amount' ? (
           <button
             onPointerDown={handlePrimaryAction}
-            disabled={amountNum === 0}
+            disabled={isSubmitDisabled}
             className="w-full py-4 rounded-xl font-semibold text-sm bg-primary text-white disabled:opacity-40 active:opacity-80 transition-opacity"
           >
-            Set Price →
+            {'Set Price ->'}
           </button>
         ) : (
           <button
@@ -342,12 +485,14 @@ export function TradePage() {
             Liquidation at {formatPrice(liquidationPx)}
           </p>
         )}
+        {validation.reason && !submitError && (
+          <p className="text-xs text-center text-amber-600 mt-1.5">{validation.reason}</p>
+        )}
         {submitError && (
           <p className="text-xs text-center text-negative mt-1.5">{submitError}</p>
         )}
       </div>
 
-      {/* ── Settings sheet ── */}
       {settingsOpen && (
         <div className="fixed inset-0 z-50 flex flex-col">
           <div
@@ -355,7 +500,6 @@ export function TradePage() {
             onPointerDown={() => setSettingsOpen(false)}
           />
           <div className="relative mt-auto bg-white rounded-t-2xl px-4 pt-4 pb-8 animate-slide-up">
-            {/* Drag handle */}
             <div className="flex justify-center mb-5">
               <div className="w-10 h-1 rounded-full bg-gray-300" />
             </div>
@@ -371,7 +515,11 @@ export function TradePage() {
               ] as const).map(({ key, label, desc }) => (
                 <button
                   key={key}
-                  onPointerDown={() => { setTif(key); haptics.selection(); }}
+                  onPointerDown={() => {
+                    setSubmitError(null);
+                    setTif(key);
+                    haptics.selection();
+                  }}
                   className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
                     tif === key
                       ? 'bg-primary text-white border-primary'
@@ -387,7 +535,10 @@ export function TradePage() {
             </div>
 
             <button
-              onPointerDown={() => { setSettingsOpen(false); haptics.light(); }}
+              onPointerDown={() => {
+                setSettingsOpen(false);
+                haptics.light();
+              }}
               className="w-full py-3.5 rounded-xl bg-primary text-white font-semibold text-sm active:opacity-80 transition-opacity"
             >
               Apply to trade

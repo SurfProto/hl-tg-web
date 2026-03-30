@@ -1,6 +1,12 @@
 // Main exports
 export { HyperliquidClient } from './client';
 export type { HyperliquidClientConfig } from './client';
+export {
+  formatOrderSize,
+  inferSzDecimalsFromMinBaseSize,
+  validateOrderInput,
+} from './order-validation';
+export type { OrderValidationMarket } from './order-validation';
 
 // Hooks
 export {

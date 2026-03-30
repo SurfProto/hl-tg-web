@@ -111,6 +111,7 @@ export class HyperliquidClient {
   private marketCache: MarketCache | null = null;
   private assetCtxsCache: { data: any[]; perpUniverse: any[]; timestamp: number } | null = null;
   private builderApprovalCache = new Map<string, number>();
+  private leverageTypeCache = new Map<string, boolean>();
 
   constructor(config: HyperliquidClientConfig) {
     this.walletAddress = config.walletAddress ?? '';
@@ -489,23 +490,45 @@ export class HyperliquidClient {
     return response;
   }
 
+  private isRetryableLeverageError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
+    const message = error.message.toLowerCase();
+    return message.includes('invalid leverage value')
+      || (message.includes('leverage') && message.includes('invalid'))
+      || (message.includes('margin') && (message.includes('cross') || message.includes('isolated')));
+  }
+
   private async ensurePerpLeverage(market: CachedMarket, leverage?: number, reduceOnly?: boolean): Promise<void> {
     if (!leverage || leverage <= 0 || reduceOnly) return;
 
-    const isCross = !market.onlyIsolated;
-
     const userState = await this.getUserState();
     const existingPosition = userState.assetPositions.find((assetPosition) => assetPosition.position.coin === market.name)?.position;
+    const cachedLeverageType = this.leverageTypeCache.get(market.name);
+    const isCross = existingPosition
+      ? existingPosition.leverage.type === 'cross'
+      : cachedLeverageType ?? true;
 
     if (
       existingPosition &&
       existingPosition.leverage.type === (isCross ? 'cross' : 'isolated') &&
       existingPosition.leverage.value === leverage
     ) {
+      this.leverageTypeCache.set(market.name, isCross);
       return;
     }
 
-    await this.updateLeverage(market.name, leverage, isCross);
+    try {
+      await this.updateLeverage(market.name, leverage, isCross);
+      this.leverageTypeCache.set(market.name, isCross);
+    } catch (error) {
+      if (!this.isRetryableLeverageError(error) || existingPosition) {
+        throw error;
+      }
+
+      const fallbackIsCross = !isCross;
+      await this.updateLeverage(market.name, leverage, fallbackIsCross);
+      this.leverageTypeCache.set(market.name, fallbackIsCross);
+    }
   }
 
   private async normalizeOrder(order: Order): Promise<NormalizedOrderContext> {

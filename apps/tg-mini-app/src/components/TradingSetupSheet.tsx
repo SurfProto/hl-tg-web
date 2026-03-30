@@ -1,35 +1,44 @@
+import { useEffect } from 'react';
 import type { UseMutationResult } from '@tanstack/react-query';
 
 interface TradingSetupSheetProps {
   isOpen: boolean;
+  onClose: () => void;
   setup: UseMutationResult<void, Error, void, unknown>;
 }
 
-export function TradingSetupSheet({ isOpen, setup }: TradingSetupSheetProps) {
-  if (!isOpen) return null;
-
+export function TradingSetupSheet({ isOpen, onClose, setup }: TradingSetupSheetProps) {
   const isPending = setup.isPending;
+  const isSuccess = setup.isSuccess;
   const error = setup.error;
 
+  useEffect(() => {
+    if (!isOpen || !isSuccess) return;
+
+    const timeout = window.setTimeout(() => {
+      onClose();
+    }, 1500);
+
+    return () => window.clearTimeout(timeout);
+  }, [isOpen, isSuccess, onClose]);
+
+  if (!isOpen) return null;
+
   const statusLabel = (() => {
+    if (isSuccess) return 'Starting trading...';
     if (!isPending) return 'Enable 1-click trading';
-    // Approximate step from error state; mutations run sequentially
     return 'Setting up...';
   })();
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col">
-      {/* Backdrop (non-dismissable — user must complete setup) */}
       <div className="absolute inset-0 bg-black/40" />
 
-      {/* Sheet panel */}
       <div className="relative mt-auto bg-white rounded-t-2xl px-4 pt-4 pb-8 animate-slide-up">
-        {/* Drag handle */}
         <div className="flex justify-center mb-5">
           <div className="w-10 h-1 rounded-full bg-gray-300" />
         </div>
 
-        {/* Icon */}
         <div className="flex justify-center mb-4">
           <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
             <svg className="w-7 h-7 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -40,37 +49,50 @@ export function TradingSetupSheet({ isOpen, setup }: TradingSetupSheetProps) {
 
         <h2 className="text-lg font-bold text-foreground text-center mb-2">1-click trading</h2>
         <p className="text-sm text-gray-500 text-center mb-6 leading-relaxed">
-          Authorize a local trading key once. All orders will sign instantly — no confirmations on every trade.
+          Authorize a local trading key once. All orders will sign instantly - no confirmations on every trade.
         </p>
 
-        {/* Steps */}
-        <div className="space-y-2.5 mb-6">
-          <div className="flex items-center gap-3 px-3 py-2.5 bg-surface rounded-xl">
-            <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <span className="text-xs font-bold text-primary">1</span>
+        {isSuccess ? (
+          <div className="flex flex-col items-center py-4 mb-6">
+            <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mb-3">
+              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+              </svg>
             </div>
-            <span className="text-sm text-foreground">Authorize trading key</span>
+            <p className="text-base font-bold text-foreground">All set!</p>
+            <p className="text-sm text-gray-500 mt-1">You can now trade anything instantly.</p>
           </div>
-          <div className="flex items-center gap-3 px-3 py-2.5 bg-surface rounded-xl">
-            <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <span className="text-xs font-bold text-primary">2</span>
+        ) : (
+          <div className="space-y-2.5 mb-6">
+            <div className="flex items-center gap-3 px-3 py-2.5 bg-surface rounded-xl">
+              <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <span className="text-xs font-bold text-primary">1</span>
+              </div>
+              <span className="text-sm text-foreground">Authorize trading key</span>
             </div>
-            <span className="text-sm text-foreground">Enable builder fee</span>
+            <div className="flex items-center gap-3 px-3 py-2.5 bg-surface rounded-xl">
+              <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <span className="text-xs font-bold text-primary">2</span>
+              </div>
+              <span className="text-sm text-foreground">Enable builder fee</span>
+            </div>
           </div>
-        </div>
+        )}
 
-        {error && (
+        {error && !isSuccess && (
           <p className="text-xs text-center text-negative mb-3">
             {error.message ?? 'Setup failed. Please try again.'}
           </p>
         )}
 
         <button
-          onPointerDown={() => setup.mutate()}
-          disabled={isPending}
+          onPointerDown={() => {
+            if (!isSuccess) setup.mutate();
+          }}
+          disabled={isPending || isSuccess}
           className="w-full py-4 rounded-xl font-semibold text-sm bg-primary text-white disabled:opacity-50 active:opacity-80 transition-opacity"
         >
-          {isPending ? statusLabel : error ? 'Retry' : 'Enable Trading'}
+          {isPending ? statusLabel : isSuccess ? statusLabel : error ? 'Retry' : 'Enable Trading'}
         </button>
       </div>
     </div>

@@ -610,25 +610,35 @@ export function useSetupTrading() {
   const { client } = useHyperliquid();
   const { user } = usePrivy();
   const queryClient = useQueryClient();
+  const walletAddress = user?.wallet?.address;
+  const [isReady, setIsReady] = useState(() => {
+    if (!walletAddress) return false;
+    return getStoredAgentKey(walletAddress) !== null;
+  });
 
-  const isReady = useMemo(() => {
-    if (!user?.wallet?.address) return false;
-    return getStoredAgentKey(user.wallet.address) !== null;
-  }, [user?.wallet?.address]);
+  useEffect(() => {
+    if (!walletAddress) {
+      setIsReady(false);
+      return;
+    }
+
+    setIsReady(getStoredAgentKey(walletAddress) !== null);
+  }, [walletAddress]);
 
   const setup = useMutation({
     mutationFn: async () => {
-      if (!client || !user?.wallet?.address) throw new Error('Not connected');
+      if (!client || !walletAddress) throw new Error('Not connected');
       const privateKey = generateAgentKey();
       const agentAddress = getAgentAddress(privateKey);
       await client.approveAgent(agentAddress);
       if (isBuilderConfigured()) {
         await approveBuilderFeeAction(client);
       }
-      storeAgentKey(user.wallet.address, privateKey);
+      storeAgentKey(walletAddress, privateKey);
       client.setAgentKey(privateKey);
     },
     onSuccess: () => {
+      setIsReady(true);
       queryClient.invalidateQueries({ queryKey: ['builderFeeApproval'] });
     },
   });

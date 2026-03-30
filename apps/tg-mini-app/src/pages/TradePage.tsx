@@ -37,7 +37,7 @@ export function TradePage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const haptics = useHaptics();
-  const { authenticated } = usePrivy();
+  const { authenticated, user } = usePrivy();
 
   const [amount, setAmount] = useState('');
   const [limitPrice, setLimitPrice] = useState('');
@@ -47,6 +47,8 @@ export function TradePage() {
   const [tif, setTif] = useState<'Gtc' | 'Alo' | 'Ioc'>('Gtc');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [setupVisible, setSetupVisible] = useState(false);
+  const setupWalletRef = useRef<string | null>(null);
 
   const side: 'buy' | 'sell' = useMemo(() => {
     const requestedSide = searchParams.get('side');
@@ -230,6 +232,30 @@ export function TradePage() {
   }, [amountNum, currentPrice, isPerp, leverage, side]);
 
   const needsSetup = authenticated && !tradingReady;
+
+  useEffect(() => {
+    const walletAddress = user?.wallet?.address ?? null;
+
+    if (needsSetup) {
+      if (setupWalletRef.current !== walletAddress || !setupVisible) {
+        tradingSetup.reset();
+      }
+      setupWalletRef.current = walletAddress;
+      setSetupVisible(true);
+      return;
+    }
+
+    if (!authenticated) {
+      setupWalletRef.current = null;
+      tradingSetup.reset();
+      setSetupVisible(false);
+      return;
+    }
+
+    if (!tradingSetup.isSuccess) {
+      setSetupVisible(false);
+    }
+  }, [authenticated, needsSetup, setupVisible, tradingSetup, tradingSetup.isSuccess, user?.wallet?.address]);
 
   const ctaLabel = isPerp
     ? side === 'buy' ? `Long ${displayName}` : `Short ${displayName}`
@@ -525,7 +551,11 @@ export function TradePage() {
       )}
 
       {/* 1-click trading setup — shown on first use */}
-      <TradingSetupSheet isOpen={needsSetup} setup={tradingSetup} />
+      <TradingSetupSheet
+        isOpen={setupVisible}
+        onClose={() => setSetupVisible(false)}
+        setup={tradingSetup}
+      />
     </div>
   );
 }

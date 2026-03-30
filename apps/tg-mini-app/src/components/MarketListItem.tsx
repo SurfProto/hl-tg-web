@@ -39,9 +39,14 @@ export function MarketListItem({
         <div className="flex items-center gap-1.5">
           <span className="font-semibold text-foreground text-sm truncate">{displayName}</span>
           {isHip3 && (
-            <span className="flex-shrink-0 text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">
-              HIP-3
-            </span>
+            <>
+              <span className="flex-shrink-0 text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">
+                HIP-3
+              </span>
+              <span className="flex-shrink-0 text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">
+                View only
+              </span>
+            </>
           )}
           {!isHip3 && (
             <span className="flex-shrink-0 text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-medium">

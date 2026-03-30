@@ -62,6 +62,7 @@ export function CoinDetailPage() {
 
   const displayName = selectedMarket ? getMarketDisplayName(selectedMarket) : getMarketDisplayName(symbol);
   const baseToken = selectedMarket ? getMarketBaseAsset(selectedMarket) : getMarketBaseAsset(symbol);
+  const isTradingSupported = !selectedMarket?.isHip3;
 
   const price = mids?.[symbol] ? parseFloat(mids[symbol]) : null;
   const change24h = assetCtx?.change24h ?? 0;
@@ -85,6 +86,11 @@ export function CoinDetailPage() {
           <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-medium">
             {isPerp ? 'PERP' : 'SPOT'}
           </span>
+          {!isTradingSupported && (
+            <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">
+              View only
+            </span>
+          )}
         </div>
       </div>
 
@@ -150,9 +156,24 @@ export function CoinDetailPage() {
         </div>
       </div>
 
+      {!isTradingSupported && (
+        <div className="px-4 pb-4">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            HIP-3 markets are view-only in the Telegram app for now. Trading will be enabled after abstraction support is implemented.
+          </div>
+        </div>
+      )}
+
       {/* Fixed bottom action bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-separator px-4 py-3 flex gap-3">
-        {isPerp ? (
+        {!isTradingSupported ? (
+          <button
+            disabled
+            className="flex-1 py-3.5 rounded-xl font-semibold text-white bg-gray-400 opacity-70"
+          >
+            Trading unavailable
+          </button>
+        ) : isPerp ? (
           <>
             <button
               onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=short`)}

@@ -24,6 +24,7 @@ function getClient(walletAddress: string, customSigner?: unknown, testnet?: bool
   const signerChanged = clientInstance?.['config']?.customSigner !== customSigner;
   if (!clientInstance || addressChanged || (signerChanged && customSigner)) {
     clientInstance = new HyperliquidClient({
+      masterAccountAddress: walletAddress,
       walletAddress,
       customSigner,
       testnet,

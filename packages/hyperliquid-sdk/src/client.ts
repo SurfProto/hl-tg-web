@@ -104,6 +104,7 @@ interface NormalizedOrderContext {
 
 export interface HyperliquidClientConfig {
   walletAddress?: string;
+  masterAccountAddress?: string;
   customSigner?: unknown;
   testnet?: boolean;
 }
@@ -125,9 +126,12 @@ export class HyperliquidClient {
   private leverageTypeCache = new Map<string, boolean>();
 
   constructor(config: HyperliquidClientConfig) {
-    this.walletAddress = config.walletAddress ?? '';
+    this.walletAddress = config.masterAccountAddress ?? config.walletAddress ?? '';
     this.testnet = config.testnet ?? false;
-    this.config = config;
+    this.config = {
+      ...config,
+      masterAccountAddress: config.masterAccountAddress ?? config.walletAddress,
+    };
     this.wsManager = new WebSocketManager(this.testnet);
   }
 
@@ -190,6 +194,7 @@ export class HyperliquidClient {
       const viemWallet = createWalletClient({ account, transport: http(apiUrl) });
       const transport = new SDK.HttpTransport({ url: apiUrl });
       this.agentWalletClientInstance = new SDK.WalletClient({
+        defaultVaultAddress: this.walletAddress ? this.walletAddress as `0x${string}` : undefined,
         transport,
         wallet: viemWallet,
         isTestnet: this.testnet,
@@ -544,11 +549,25 @@ export class HyperliquidClient {
 
     if (error instanceof Error) {
       const lowerMessage = error.message.toLowerCase();
+      const isTradingAction = [
+        'cancelAllOrders',
+        'cancelOrder',
+        'closePosition',
+        'modifyOrder',
+        'placeOrder',
+        'placeSpotOrder',
+        'updateIsolatedMargin',
+        'updateLeverage',
+      ].includes(action);
+
+      if (isTradingAction && lowerMessage.includes('must deposit before performing actions')) {
+        throw new Error('Trading agent is not linked to a funded Hyperliquid account. Re-run trading setup or deposit funds into your main account.');
+      }
       if (action === 'usdClassTransfer' && lowerMessage.includes('must deposit before performing actions')) {
         throw new Error('Transfer unavailable until your main Hyperliquid account has a deposit. Deposit funds first, then try again.');
       }
       if (
-        (action === 'placeOrder' || action === 'placeSpotOrder') &&
+        (action === 'placeOrder' || action === 'placeSpotOrder' || action === 'closePosition') &&
         lowerMessage.includes('order price cannot be more than 95% away from the reference price')
       ) {
         throw new Error('Market too illiquid for a market order right now. Try a limit order.');
@@ -907,6 +926,7 @@ export class HyperliquidClient {
   }
 
   async closePosition(coin: string) {
+    let executionContext: NormalizedOrderContext['debug'] | undefined;
     try {
       const client = await this.getTradingClient();
       const market = await this.resolveMarket(coin, 'perp');
@@ -917,16 +937,20 @@ export class HyperliquidClient {
         throw new Error(`No open position for ${coin}`);
       }
 
-      const referencePrice = await this.getReferencePrice(market).catch(() => position.entryPx);
       const side: OrderSide = position.szi > 0 ? 'sell' : 'buy';
-      const rawPrice = this.getAggressiveMarketPrice(referencePrice, side);
+      const marketExecution = await this.getMarketOrderExecutionContext(market, side);
+      const formattedPrice = this.formatPrice(marketExecution.rawExecutionPrice, market);
+      executionContext = {
+        ...marketExecution,
+        formattedPrice,
+      };
       const builder = await this.ensureBuilderApproval();
 
       return this.unwrapStatuses(await client.order({
         orders: [{
           a: market.asset,
           b: side === 'buy',
-          p: this.formatPrice(rawPrice, market),
+          p: formattedPrice,
           s: this.formatSize(Math.abs(position.szi), market),
           r: true,
           t: { limit: { tif: 'Ioc' } },
@@ -936,7 +960,10 @@ export class HyperliquidClient {
         builder,
       }));
     } catch (error) {
-      this.normalizeExchangeError('closePosition', { coin }, error);
+      this.normalizeExchangeError('closePosition', {
+        coin,
+        pricing: executionContext,
+      }, error);
     }
   }
 

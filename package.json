@@ -9,7 +9,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\""
   },
   "dependencies": {
-    "@privy-io/server-auth": "^1.0.0"
+    "@privy-io/node": "^0.12.0"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",

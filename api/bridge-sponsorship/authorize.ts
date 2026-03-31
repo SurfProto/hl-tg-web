@@ -1,4 +1,4 @@
-import { PrivyClient } from '@privy-io/server-auth';
+import { PrivyClient } from '@privy-io/node';
 
 // These must match packages/hyperliquid-sdk/src/constants.ts
 const ARBITRUM_CHAIN_ID = 42161;

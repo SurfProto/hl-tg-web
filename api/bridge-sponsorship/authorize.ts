@@ -1,5 +1,6 @@
-import { createPublicKey, createVerify, KeyObject } from 'node:crypto';
+import { PrivyClient } from '@privy-io/server-auth';
 
+// These must match packages/hyperliquid-sdk/src/constants.ts
 const ARBITRUM_CHAIN_ID = 42161;
 const USDC_ARBITRUM = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
 const HL_BRIDGE_ARBITRUM = '0x2Df1c51E09aECF9cacB7bc98cB1742757f163dF7';
@@ -14,15 +15,6 @@ type BridgeRequestBody = {
   bridgeAddress?: string;
   data?: `0x${string}`;
 };
-
-type JwtPayload = {
-  sub?: string;
-  aud?: string | string[];
-  iss?: string;
-  exp?: number;
-};
-
-let cachedVerificationKey: KeyObject | null = null;
 
 function getRequiredEnv(name: string) {
   const value = process.env[name];
@@ -39,16 +31,19 @@ function getEnvNumber(name: string, fallback: number) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-async function getVerificationKey() {
-  if (cachedVerificationKey) return cachedVerificationKey;
-  cachedVerificationKey = createPublicKey(getRequiredEnv('PRIVY_VERIFICATION_KEY'));
-  return cachedVerificationKey;
+let cachedPrivyClient: PrivyClient | null = null;
+
+function getPrivyClient(): PrivyClient {
+  if (cachedPrivyClient) return cachedPrivyClient;
+  const appId = getRequiredEnv('PRIVY_APP_ID');
+  const appSecret = getRequiredEnv('PRIVY_APP_SECRET');
+  cachedPrivyClient = new PrivyClient(appId, appSecret);
+  return cachedPrivyClient;
 }
 
-function decodeBase64Url(input: string) {
-  const normalized = input.replace(/-/g, '+').replace(/_/g, '/');
-  const padding = normalized.length % 4 === 0 ? '' : '='.repeat(4 - (normalized.length % 4));
-  return Buffer.from(`${normalized}${padding}`, 'base64');
+async function verifyAccessToken(token: string): Promise<string> {
+  const claims = await getPrivyClient().verifyAuthToken(token);
+  return claims.userId;
 }
 
 function normalizeAddress(address: string) {

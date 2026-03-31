@@ -2,14 +2,20 @@ import type { WsMessage, OrderbookLevel, Candle } from '@repo/types';
 
 type WsCallback = (data: WsMessage) => void;
 
+type StatusCallback = (connected: boolean) => void;
+
 export class WebSocketManager {
   private ws: WebSocket | null = null;
   private subscriptions: Map<string, Set<WsCallback>> = new Map();
+  private statusListeners: Set<StatusCallback> = new Set();
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
   private isConnecting = false;
   private testnet: boolean;
+  // Timestamp when the connection last reached OPEN state; used to detect rapid disconnects
+  private connectedAt = 0;
+  private readonly MIN_STABLE_DURATION_MS = 2000;
 
   constructor(testnet: boolean = false) {
     this.testnet = testnet;
@@ -27,11 +33,15 @@ export class WebSocketManager {
     }
 
     if (this.isConnecting) {
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
+        const deadline = Date.now() + 10_000;
         const checkConnection = setInterval(() => {
           if (this.ws?.readyState === WebSocket.OPEN) {
             clearInterval(checkConnection);
             resolve();
+          } else if (Date.now() > deadline) {
+            clearInterval(checkConnection);
+            reject(new Error('[WS] Timed out waiting for in-progress connection'));
           }
         }, 100);
       });
@@ -46,8 +56,9 @@ export class WebSocketManager {
         this.ws.onopen = () => {
           console.log('[WS] Connected');
           this.isConnecting = false;
-          this.reconnectAttempts = 0;
+          this.connectedAt = Date.now();
           this.resubscribeAll();
+          this.statusListeners.forEach(cb => cb(true));
           resolve();
         };
 
@@ -63,6 +74,14 @@ export class WebSocketManager {
         this.ws.onclose = (event) => {
           console.log('[WS] Disconnected:', event.code, event.reason);
           this.isConnecting = false;
+          // If the connection dropped within MIN_STABLE_DURATION_MS of opening, don't reset
+          // the reconnect counter — this prevents rapid-cycling from burning through all retries.
+          const stableDuration = this.connectedAt > 0 ? Date.now() - this.connectedAt : 0;
+          if (stableDuration >= this.MIN_STABLE_DURATION_MS) {
+            this.reconnectAttempts = 0;
+          }
+          this.connectedAt = 0;
+          this.statusListeners.forEach(cb => cb(false));
           this.handleReconnect();
         };
 
@@ -92,6 +111,8 @@ export class WebSocketManager {
     setTimeout(() => {
       this.connect().catch((error) => {
         console.error('[WS] Reconnection failed:', error);
+        // Continue the retry chain so exponential backoff keeps running
+        this.handleReconnect();
       });
     }, delay);
   }
@@ -207,5 +228,15 @@ export class WebSocketManager {
 
   isConnected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  /**
+   * Subscribe to connection status changes. Returns an unsubscribe function.
+   * The callback is called immediately with the current status, then on every change.
+   */
+  onStatusChange(cb: StatusCallback): () => void {
+    cb(this.isConnected());
+    this.statusListeners.add(cb);
+    return () => this.statusListeners.delete(cb);
   }
 }

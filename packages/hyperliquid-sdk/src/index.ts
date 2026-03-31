@@ -10,6 +10,7 @@ export type { OrderValidationMarket } from './order-validation';
 
 // Hooks
 export {
+  HyperliquidProvider,
   useHyperliquid,
   useMarketData,
   useMids,
@@ -63,6 +64,9 @@ export {
   storeAgentKey,
   clearAgentKey,
 } from './agent';
+
+// Shared contract constants
+export { ARBITRUM_CHAIN_ID, USDC_ARBITRUM, HL_BRIDGE_ARBITRUM } from './constants';
 
 // Builder code
 export {

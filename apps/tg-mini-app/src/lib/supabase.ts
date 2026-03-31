@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
 type EnsureUserInput = {
-  privyUserId?: string;
   telegramId?: string;
   username?: string;
   walletAddress?: string;
@@ -24,7 +23,6 @@ export async function ensureUser(input: EnsureUserInput) {
   if (!input.telegramId && !input.walletAddress) return null;
 
   const payload = {
-    privy_user_id: input.privyUserId ?? null,
     telegram_id: input.telegramId ?? `wallet:${input.walletAddress}`,
     wallet_address: input.walletAddress ?? null,
     username: input.username ?? null,

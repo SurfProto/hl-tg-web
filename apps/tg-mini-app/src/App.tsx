@@ -60,7 +60,6 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
 
     const telegramProfile = getTelegramProfile();
     void ensureUser({
-      privyUserId: user?.id,
       telegramId: telegramProfile?.id != null ? String(telegramProfile.id) : undefined,
       username: telegramProfile?.username ?? user?.telegram?.username ?? user?.email?.address ?? undefined,
       walletAddress: user?.wallet?.address,

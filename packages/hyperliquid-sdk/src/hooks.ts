@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useFundWallet, usePrivy, useSendTransaction, useToken, useWallets } from '@privy-io/react-auth';
+import { useFundWallet, usePrivy, useSendTransaction, useWallets } from '@privy-io/react-auth';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { HyperliquidClient } from './client';
 import {
@@ -489,7 +489,6 @@ export function useFundArbitrumUsdc() {
 export function useBridgeToHyperliquid() {
   const { wallets } = useWallets();
   const { sendTransaction } = useSendTransaction();
-  const { getAccessToken } = useToken();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -510,67 +509,7 @@ export function useBridgeToHyperliquid() {
         args: [HL_BRIDGE_ARBITRUM, amountRaw],
       });
 
-      const accessToken = await getAccessToken();
-      if (!accessToken) {
-        throw new Error('Authentication expired. Please reconnect and try again.');
-      }
-
-      const sponsorshipResponse = await fetch('/api/bridge-sponsorship/authorize', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          amount,
-          walletAddress: account,
-          chainId: arbitrum.id,
-          tokenAddress: USDC_ARBITRUM,
-          bridgeAddress: HL_BRIDGE_ARBITRUM,
-          data,
-        }),
-      });
-
-      const sponsorshipPayload = await sponsorshipResponse.json().catch(() => null) as
-        | { authorized?: boolean; reason?: string }
-        | null;
-
-      if (!sponsorshipResponse.ok || !sponsorshipPayload?.authorized) {
-        if (sponsorshipPayload?.reason) {
-          throw new Error(sponsorshipPayload.reason);
-        }
-        throw new Error('Gas sponsorship unavailable for this bridge transaction. You may need Arbitrum ETH for gas.');
-      }
-
-      const uiOptions = {
-        header: 'Review Hyperliquid deposit',
-        description: `Bridge ${amount.toFixed(2)} USDC from Arbitrum into your Hyperliquid trading balance. Gas sponsored by Tsunami.`,
-        buttonText: 'Confirm deposit',
-        successHeader: 'Deposit submitted',
-        successDescription: 'Your USDC transfer to Hyperliquid is on the way.',
-        transactionInfo: {
-          title: 'Deposit details',
-          action: 'Bridge USDC',
-          contractInfo: {
-            name: 'Hyperliquid bridge',
-            url: 'https://arbiscan.io/token/0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
-          },
-        },
-      };
-
-      await (sendTransaction as unknown as (
-        transaction: {
-          to: `0x${string}`;
-          data: `0x${string}`;
-          value: bigint;
-          chainId: number;
-        },
-        options?: {
-          sponsor?: boolean;
-          uiOptions?: typeof uiOptions;
-          address?: `0x${string}`;
-        }
-      ) => Promise<unknown>)(
+      await sendTransaction(
         {
           to: USDC_ARBITRUM,
           data,
@@ -578,10 +517,22 @@ export function useBridgeToHyperliquid() {
           chainId: arbitrum.id,
         },
         {
-          sponsor: true,
-          uiOptions,
-          address: account,
+          header: 'Review Hyperliquid deposit',
+          description: `Bridge ${amount.toFixed(2)} USDC from Arbitrum into your Hyperliquid trading balance. Sponsored by Tsunami with love.`,
+          buttonText: 'Confirm deposit',
+          successHeader: 'Deposit submitted',
+          successDescription: 'Your USDC transfer to Hyperliquid is on the way.',
+          transactionInfo: {
+            title: 'Deposit details',
+            action: 'Bridge USDC',
+            contractInfo: {
+              name: 'Sponsored by Tsunami with love',
+              url: 'https://arbiscan.io/token/0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+            },
+          },
         },
+        undefined,
+        account,
       );
     },
     onSuccess: () => {

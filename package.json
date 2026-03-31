@@ -8,9 +8,6 @@
     "lint": "turbo lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\""
   },
-  "dependencies": {
-    "@privy-io/server-auth": "^1.0.0"
-  },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
     "prettier": "^3.2.5",

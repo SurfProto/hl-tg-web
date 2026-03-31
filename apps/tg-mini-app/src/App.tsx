@@ -1,9 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PrivyProvider, usePrivy } from '@privy-io/react-auth';
-import { HyperliquidProvider } from '@repo/hyperliquid-sdk';
-import { ErrorBoundary } from './components/ErrorBoundary';
 import { arbitrum } from 'viem/chains';
 import { Layout } from './components/Layout';
 import { HomePage } from './pages/HomePage';
@@ -38,16 +36,10 @@ const queryClient = new QueryClient({
 // Seamless Telegram auth component
 function TelegramAuthGate({ children }: { children: React.ReactNode }) {
   // loginWithTelegram exists in the Privy bundle but was removed from types in v1.99 — cast to access it
-  const privy = usePrivy() as unknown as {
-    ready: boolean;
-    authenticated: boolean;
-    user: ReturnType<typeof usePrivy>['user'];
-    loginWithTelegram: () => Promise<void>;
-  };
+  const privy = usePrivy() as any;
   const { ready, authenticated, user } = privy;
 
   const isTMA = Boolean(window.Telegram?.WebApp?.initData);
-  const [authError, setAuthError] = useState<string | null>(null);
 
   // TMA lifecycle: dismiss loading indicator + expand to full height (once)
   useEffect(() => {
@@ -60,11 +52,7 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
   // Seamless auto-login using TMA initData — no modal shown
   useEffect(() => {
     if (!ready || authenticated || !isTMA) return;
-    setAuthError(null);
-    privy.loginWithTelegram().catch((err: unknown) => {
-      console.error('[TMA] loginWithTelegram failed:', err);
-      setAuthError('Login failed. Please tap Retry or restart the app.');
-    });
+    privy.loginWithTelegram();
   }, [ready, authenticated, isTMA]);
 
   useEffect(() => {
@@ -78,26 +66,6 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
       walletAddress: user?.wallet?.address,
     });
   }, [authenticated, ready, user]);
-
-  if (authError) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4 px-6 text-center">
-        <p className="text-destructive text-sm">{authError}</p>
-        <button
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm"
-          onClick={() => {
-            setAuthError(null);
-            privy.loginWithTelegram().catch((err: unknown) => {
-              console.error('[TMA] loginWithTelegram retry failed:', err);
-              setAuthError('Login failed. Please restart the app.');
-            });
-          }}
-        >
-          Retry
-        </button>
-      </div>
-    );
-  }
 
   if (!ready) {
     return (
@@ -120,7 +88,7 @@ function AppContent() {
             <Route path="/positions" element={<PositionsPage />} />
             <Route path="/points" element={<PointsPage />} />
             <Route path="/account" element={<AccountPage />} />
-            <Route path="/account/deposit" element={<ErrorBoundary><DepositPage /></ErrorBoundary>} />
+            <Route path="/account/deposit" element={<DepositPage />} />
             <Route path="/account/withdraw" element={<WithdrawPage />} />
             <Route path="/account/transfer" element={<TransferPage />} />
             <Route path="/account/swap" element={<SwapPage />} />
@@ -132,18 +100,13 @@ function AppContent() {
             <Route path="/account/settings/support" element={<SupportPage />} />
             <Route path="/account/settings/legal" element={<LegalPage />} />
             <Route path="/coin/:symbol" element={<CoinDetailPage />} />
-            <Route path="/trade/:symbol" element={<ErrorBoundary><TradePage /></ErrorBoundary>} />
+            <Route path="/trade/:symbol" element={<TradePage />} />
           </Routes>
         </Layout>
       </TelegramAuthGate>
     </HashRouter>
   );
 }
-
-// OAuth-based login methods that require browser popups — incompatible with Telegram WebView
-const POPUP_LOGIN_METHODS = new Set([
-  'google', 'apple', 'twitter', 'discord', 'github', 'linkedin', 'spotify', 'tiktok', 'instagram',
-]);
 
 function App() {
   const appId = import.meta.env.VITE_PRIVY_APP_ID;
@@ -156,16 +119,6 @@ function App() {
     );
   }
 
-  const isTMA = Boolean(window.Telegram?.WebApp?.initData);
-
-  // VITE_PRIVY_LOGIN_METHODS (comma-separated) mirrors your Privy dashboard config.
-  // In TMA context, popup-based OAuth methods are stripped automatically.
-  // If unset in TMA, only explicitly non-popup methods are allowed.
-  const rawMethods = import.meta.env.VITE_PRIVY_LOGIN_METHODS as string | undefined;
-  const loginMethods = isTMA && rawMethods
-    ? (rawMethods.split(',').map(m => m.trim()).filter(m => !POPUP_LOGIN_METHODS.has(m)) as any[])
-    : undefined;
-
   return (
     <React.StrictMode>
       <PrivyProvider
@@ -173,7 +126,6 @@ function App() {
         config={{
           defaultChain: arbitrum,
           supportedChains: [arbitrum],
-          loginMethods,
           appearance: {
             theme: 'light',
             accentColor: '#3b82f6',
@@ -190,11 +142,7 @@ function App() {
         }}
       >
         <QueryClientProvider client={queryClient}>
-          <HyperliquidProvider>
-            <ErrorBoundary>
-              <AppContent />
-            </ErrorBoundary>
-          </HyperliquidProvider>
+          <AppContent />
         </QueryClientProvider>
       </PrivyProvider>
     </React.StrictMode>

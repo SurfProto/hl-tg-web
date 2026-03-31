@@ -25,21 +25,16 @@ export async function ensureUser(input: EnsureUserInput) {
 
   const payload = {
     privy_user_id: input.privyUserId ?? null,
-    telegram_id: input.telegramId ?? null,
+    telegram_id: input.telegramId ?? `wallet:${input.walletAddress}`,
     wallet_address: input.walletAddress ?? null,
     username: input.username ?? null,
     language: input.language ?? 'en',
   };
 
-  // Conflict target depends on which identifier is present:
-  // - Telegram users are keyed by telegram_id (partial unique index WHERE NOT NULL)
-  // - Wallet-only users are keyed by wallet_address
-  const onConflict = input.telegramId ? 'telegram_id' : 'wallet_address';
-
   try {
     const { data, error } = await supabase
       .from('users')
-      .upsert(payload, { onConflict })
+      .upsert(payload, { onConflict: 'telegram_id' })
       .select()
       .maybeSingle();
 

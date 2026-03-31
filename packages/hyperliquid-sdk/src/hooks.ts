@@ -1,7 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useFundWallet, usePrivy, useSendTransaction, useToken, useWallets } from '@privy-io/react-auth';
-import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import type { ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { HyperliquidClient } from './client';
 import {
   BUILDER_ADDRESS,
@@ -15,112 +14,66 @@ import {
   storeAgentKey,
 } from './agent';
 import type { AssetCtx, MarketStats, Order, PortfolioHistoryPoint, WsMessage } from '@repo/types';
-import { USDC_ARBITRUM, HL_BRIDGE_ARBITRUM } from './constants';
 
-// ---------------------------------------------------------------------------
-// Context — replaces module-level singletons to prevent cross-session leaks
-// ---------------------------------------------------------------------------
+// Singleton client instances
+let clientInstance: HyperliquidClient | null = null;
+let publicClientInstance: HyperliquidClient | null = null;
 
-interface HyperliquidContextValue {
-  client: HyperliquidClient | null;
-  publicClient: HyperliquidClient;
-  isConnected: boolean;
+function getClient(walletAddress: string, customSigner?: unknown, testnet?: boolean): HyperliquidClient {
+  const addressChanged = clientInstance?.['walletAddress'] !== walletAddress;
+  const signerChanged = clientInstance?.['config']?.customSigner !== customSigner;
+  if (!clientInstance || addressChanged || (signerChanged && customSigner)) {
+    clientInstance = new HyperliquidClient({
+      masterAccountAddress: walletAddress,
+      walletAddress,
+      customSigner,
+      testnet,
+    });
+  }
+  return clientInstance;
 }
 
-const HyperliquidContext = createContext<HyperliquidContextValue | null>(null);
+/**
+ * Hook to get a public Hyperliquid client instance (no wallet required)
+ * Use for market data: prices, orderbook, candles, etc.
+ */
+function usePublicHyperliquid() {
+  const testnet = import.meta.env.VITE_HYPERLIQUID_TESTNET === 'true';
+  if (!publicClientInstance) {
+    publicClientInstance = new HyperliquidClient({ testnet });
+  }
+  return { client: publicClientInstance };
+}
 
 /**
- * Provider that owns the Hyperliquid client lifecycle.
- * Mount inside <PrivyProvider> so Privy hooks are available.
- * Clients are torn down when the user logs out.
+ * Hook to get the Hyperliquid client instance
  */
-export function HyperliquidProvider({ children }: { children: ReactNode }) {
-  const { user, authenticated } = usePrivy();
+export function useHyperliquid() {
+  const { user } = usePrivy();
   const { wallets } = useWallets();
   const [provider, setProvider] = useState<unknown>(null);
   const testnet = import.meta.env.VITE_HYPERLIQUID_TESTNET === 'true';
 
-  // Resolve the Privy embedded wallet provider once per wallet change
+  // getEthereumProvider() is async on ConnectedWallet — resolve it once and store
   const embeddedWallet = wallets.find(w => w.walletClientType === 'privy');
   useEffect(() => {
-    if (!embeddedWallet) {
-      setProvider(null);
-      return;
-    }
+    if (!embeddedWallet) return;
     embeddedWallet.getEthereumProvider().then(setProvider);
   }, [embeddedWallet]);
 
-  // Authenticated client — recreated only when address or provider changes
-  const walletAddress = user?.wallet?.address;
-  const prevClientRef = useRef<HyperliquidClient | null>(null);
+  if (!user?.wallet?.address) {
+    return { client: null, isConnected: false };
+  }
 
-  const client = useMemo<HyperliquidClient | null>(() => {
-    if (!authenticated || !walletAddress) {
-      prevClientRef.current = null;
-      return null;
-    }
-    const prev = prevClientRef.current;
-    const sameAddress = prev?.['walletAddress'] === walletAddress;
-    const sameSigner = prev?.['config']?.customSigner === (provider ?? undefined);
-    if (prev && sameAddress && sameSigner) return prev;
-    const next = new HyperliquidClient({
-      masterAccountAddress: walletAddress,
-      walletAddress,
-      customSigner: provider ?? undefined,
-      testnet,
-    });
-    prevClientRef.current = next;
-    return next;
-  }, [authenticated, walletAddress, provider, testnet]);
+  const client = getClient(user.wallet.address, provider ?? undefined, testnet);
 
-  // Clear client ref on logout
-  useEffect(() => {
-    if (!authenticated) {
-      prevClientRef.current = null;
-    }
-  }, [authenticated]);
+  // Restore agent key from localStorage so trading actions sign silently
+  const storedKey = getStoredAgentKey(user.wallet.address);
+  if (storedKey && !client.hasAgentKey()) {
+    client.setAgentKey(storedKey);
+  }
 
-  // Restore agent key from localStorage (once per address change, not on every render)
-  useEffect(() => {
-    if (!client || !walletAddress) return;
-    const storedKey = getStoredAgentKey(walletAddress);
-    if (storedKey && !client.hasAgentKey()) {
-      client.setAgentKey(storedKey);
-    }
-  }, [client, walletAddress]);
-
-  // Public client (no auth) — stable for the lifetime of the provider
-  const publicClient = useMemo(
-    () => new HyperliquidClient({ testnet }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [testnet]
-  );
-
-  const value = useMemo<HyperliquidContextValue>(
-    () => ({ client, publicClient, isConnected: !!client }),
-    [client, publicClient]
-  );
-
-  return <HyperliquidContext.Provider value={value}>{children}</HyperliquidContext.Provider>;
-}
-
-/**
- * Hook to get the Hyperliquid client instance (requires HyperliquidProvider)
- */
-export function useHyperliquid() {
-  const ctx = useContext(HyperliquidContext);
-  if (!ctx) throw new Error('useHyperliquid must be called inside <HyperliquidProvider>');
-  return { client: ctx.client, isConnected: ctx.isConnected };
-}
-
-/**
- * Hook to get a public Hyperliquid client instance (no wallet required).
- * Use for market data: prices, orderbook, candles, etc.
- */
-function usePublicHyperliquid() {
-  const ctx = useContext(HyperliquidContext);
-  if (!ctx) throw new Error('usePublicHyperliquid must be called inside <HyperliquidProvider>');
-  return { client: ctx.publicClient };
+  return { client, isConnected: true };
 }
 
 /**
@@ -507,6 +460,8 @@ export function useArbitrumUsdcBalance(address: string | undefined) {
   });
 }
 
+const USDC_ARBITRUM = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as const;
+const HL_BRIDGE_ARBITRUM = '0x2Df1c51E09aECF9cacB7bc98cB1742757f163dF7' as const;
 
 export function useFundArbitrumUsdc() {
   const { user } = usePrivy();
@@ -541,27 +496,13 @@ export function useBridgeToHyperliquid() {
     mutationFn: async ({ amount }: { amount: number }) => {
       if (amount < 5) throw new Error('Minimum deposit is 5 USDC');
 
-      const { encodeFunctionData, erc20Abi, createPublicClient, http } = await import('viem');
+      const { encodeFunctionData, erc20Abi } = await import('viem');
       const { arbitrum } = await import('viem/chains');
 
       const embeddedWallet = wallets.find(w => w.walletClientType === 'privy');
       if (!embeddedWallet) throw new Error('No embedded wallet found');
       const account = embeddedWallet.address as `0x${string}`;
       const amountRaw = BigInt(Math.floor(amount * 1e6));
-
-      // Pre-flight: verify the wallet has enough USDC before any on-chain or auth calls
-
-      const usdcPublicClient = createPublicClient({ chain: arbitrum, transport: http() });
-      const usdcBalance = await usdcPublicClient.readContract({
-        address: USDC_ARBITRUM,
-        abi: erc20Abi,
-        functionName: 'balanceOf',
-        args: [account],
-      }) as bigint;
-      if (usdcBalance < amountRaw) {
-        const have = (Number(usdcBalance) / 1e6).toFixed(2);
-        throw new Error(`Insufficient USDC balance: you have ${have} USDC but are trying to bridge ${amount.toFixed(2)} USDC.`);
-      }
 
       const data = encodeFunctionData({
         abi: erc20Abi,
@@ -617,15 +558,19 @@ export function useBridgeToHyperliquid() {
         },
       };
 
-      // Privy's useSendTransaction hook doesn't yet expose `sponsor` in its public types.
-      // Narrow the cast to only the specific options we use rather than casting to `any`.
-      type SendTxFn = (
-        transaction: { to: `0x${string}`; data: `0x${string}`; value: bigint; chainId: number },
-        options?: { sponsor?: boolean; uiOptions?: typeof uiOptions; address?: `0x${string}` }
-      ) => Promise<{ hash: string }>;
-      const sponsoredSend = sendTransaction as unknown as SendTxFn;
-
-      const result = await sponsoredSend(
+      await (sendTransaction as unknown as (
+        transaction: {
+          to: `0x${string}`;
+          data: `0x${string}`;
+          value: bigint;
+          chainId: number;
+        },
+        options?: {
+          sponsor?: boolean;
+          uiOptions?: typeof uiOptions;
+          address?: `0x${string}`;
+        }
+      ) => Promise<unknown>)(
         {
           to: USDC_ARBITRUM,
           data,
@@ -638,9 +583,6 @@ export function useBridgeToHyperliquid() {
           address: account,
         },
       );
-      if (!result?.hash) {
-        console.warn('[bridge] sendTransaction resolved without a tx hash — gas sponsorship may not have applied');
-      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['userState'] });
@@ -731,8 +673,6 @@ export function useSetupTrading() {
     }
 
     setIsReady(getStoredAgentKey(walletAddress) !== null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    // getStoredAgentKey is a stable module-level function with no closures
   }, [walletAddress]);
 
   const setup = useMutation({
@@ -928,9 +868,17 @@ export function useWebSocket() {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    // Subscribe to status events instead of polling
-    const unsubscribe = client.onWsStatusChange(setIsConnected);
-    return unsubscribe;
+
+    const checkConnection = () => {
+      setIsConnected(client.isWsConnected());
+    };
+
+    // Check connection status periodically
+    const interval = setInterval(checkConnection, 1000);
+
+    return () => {
+      clearInterval(interval);
+    };
   }, [client]);
 
   const connect = useCallback(async () => {

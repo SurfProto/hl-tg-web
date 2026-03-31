@@ -684,10 +684,6 @@ export class HyperliquidClient {
     return this.wsManager.isConnected();
   }
 
-  onWsStatusChange(cb: (connected: boolean) => void): () => void {
-    return this.wsManager.onStatusChange(cb);
-  }
-
   subscribeToOrderbook(coin: string, callback: (data: WsMessage) => void): () => void {
     return this.wsManager.subscribe(`l2Book:${coin}`, callback);
   }

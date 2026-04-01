@@ -66,14 +66,14 @@ export {
 
 // Builder code
 export {
+  configureBuilder,
   approveBuilderFee,
   getBuilderConfig,
+  getBuilderAddress,
+  getBuilderFeeTenthsBp,
   isBuilderFeeApproved,
   isBuilderConfigured,
   feeToPercentString,
-  BUILDER_ADDRESS,
-  BUILDER_FEE_TENTHS_BP,
-  ZERO_ADDRESS,
 } from './builder';
 
 // Market classification

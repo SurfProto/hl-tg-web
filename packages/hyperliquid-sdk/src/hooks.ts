@@ -3,7 +3,7 @@ import { useFundWallet, usePrivy, useSendTransaction, useWallets } from '@privy-
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { HyperliquidClient } from './client';
 import {
-  BUILDER_ADDRESS,
+  getBuilderAddress,
   approveBuilderFee as approveBuilderFeeAction,
   isBuilderConfigured,
 } from './builder';
@@ -586,8 +586,8 @@ export function useBuilderFeeApproval() {
   const { client } = useHyperliquid();
 
   return useQuery({
-    queryKey: ['builderFeeApproval', BUILDER_ADDRESS],
-    queryFn: () => client!.getMaxBuilderFee(BUILDER_ADDRESS),
+    queryKey: ['builderFeeApproval', getBuilderAddress()],
+    queryFn: () => client!.getMaxBuilderFee(getBuilderAddress()),
     enabled: !!client && isBuilderConfigured(),
     staleTime: 1000 * 60 * 5, // 5 minutes - approval doesn't change often
   });

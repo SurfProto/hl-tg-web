@@ -8,8 +8,8 @@ import {
   useMids,
   useSpotBalance,
   useUserState,
-  BUILDER_ADDRESS,
-  BUILDER_FEE_TENTHS_BP,
+  getBuilderAddress,
+  getBuilderFeeTenthsBp,
   isBuilderConfigured,
 } from '@repo/hyperliquid-sdk';
 import { useHaptics } from '../hooks/useHaptics';
@@ -152,7 +152,7 @@ export function AccountPage() {
           <div>
             <p className="text-sm font-semibold text-foreground">Builder code</p>
             <p className="mt-1 text-xs text-muted">
-              {BUILDER_ADDRESS.slice(0, 6)}...{BUILDER_ADDRESS.slice(-4)} at {(BUILDER_FEE_TENTHS_BP / 10).toFixed(1)} bp
+              {getBuilderAddress().slice(0, 6)}...{getBuilderAddress().slice(-4)} at {(getBuilderFeeTenthsBp() / 10).toFixed(1)} bp
             </p>
           </div>
           <span className={`rounded-full px-3 py-1 text-xs font-semibold ${builderApproved ? 'bg-green-50 text-positive' : 'bg-yellow-50 text-amber-600'}`}>

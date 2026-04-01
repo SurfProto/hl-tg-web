@@ -1,18 +1,57 @@
 import type { HyperliquidClient } from './client';
 
-// Builder code configuration
-export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
-export const BUILDER_ADDRESS = import.meta.env.VITE_BUILDER_ADDRESS || '0x0000000000000000000000000000000000000000';
-export const BUILDER_FEE_TENTHS_BP = parseInt(import.meta.env.VITE_BUILDER_FEE || '50', 10); // 50 = 5bp
+// Internal builder config — populated by configureBuilder() at app startup.
+// Using a mutable object so the shared package has zero Vite/import.meta.env references.
+const _config = {
+  address: '0x0000000000000000000000000000000000000000' as string,
+  feeTenthsBp: 50, // default 5bp
+};
+
+// ZERO_ADDRESS is intentionally unexported — only used internally for the "not configured" check.
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+/**
+ * Call this once at app startup (before any rendering) to inject builder config
+ * from the host app's environment variables.
+ *
+ * @example
+ * // apps/tg-mini-app/src/main.tsx
+ * configureBuilder(import.meta.env.VITE_BUILDER_ADDRESS, Number(import.meta.env.VITE_BUILDER_FEE));
+ */
+export function configureBuilder(address: string | undefined, feeTenthsBp?: number): void {
+  if (address) _config.address = address;
+  if (feeTenthsBp != null && !Number.isNaN(feeTenthsBp)) _config.feeTenthsBp = feeTenthsBp;
+}
+
+export const BUILDER_ADDRESS = {
+  get current(): string {
+    return _config.address;
+  },
+} as unknown as string;
+
+// Re-export as a plain getter function so hooks.ts can read the live value
+export function getBuilderAddress(): string {
+  return _config.address;
+}
+
+export function getBuilderFeeTenthsBp(): number {
+  return _config.feeTenthsBp;
+}
 
 /**
  * Convert tenths of basis points to percentage string for SDK.
  * 10 tenths = 1bp = 0.01% → "0.01%"
- * 1 tenth = 0.1bp = 0.001% → "0.001%"
  */
 export function feeToPercentString(tenthsBp: number): `${string}%` {
-  const percent = tenthsBp / 1000; // 10 tenths / 1000 = 0.01
+  const percent = tenthsBp / 1000;
   return `${percent}%` as `${string}%`;
+}
+
+/**
+ * Returns true when builder configuration should be applied to trading actions.
+ */
+export function isBuilderConfigured(): boolean {
+  return _config.address.toLowerCase() !== ZERO_ADDRESS;
 }
 
 /**
@@ -21,25 +60,17 @@ export function feeToPercentString(tenthsBp: number): `${string}%` {
  */
 export async function approveBuilderFee(client: HyperliquidClient): Promise<void> {
   if (!isBuilderConfigured()) return;
-  const maxFeeRate = feeToPercentString(BUILDER_FEE_TENTHS_BP);
-  await client.approveBuilderFee(BUILDER_ADDRESS, maxFeeRate);
+  const maxFeeRate = feeToPercentString(_config.feeTenthsBp);
+  await client.approveBuilderFee(_config.address, maxFeeRate);
 }
 
 /**
  * Check if builder fee is approved for the user.
- * Returns the max approved fee rate (0 = not approved).
  */
 export async function isBuilderFeeApproved(client: HyperliquidClient): Promise<boolean> {
   if (!isBuilderConfigured()) return true;
-  const maxFee = await client.getMaxBuilderFee(BUILDER_ADDRESS);
+  const maxFee = await client.getMaxBuilderFee(_config.address);
   return maxFee > 0;
-}
-
-/**
- * Returns true when builder configuration should be applied to trading actions.
- */
-export function isBuilderConfigured(): boolean {
-  return BUILDER_ADDRESS.toLowerCase() !== ZERO_ADDRESS;
 }
 
 /**
@@ -48,7 +79,7 @@ export function isBuilderConfigured(): boolean {
 export function getBuilderConfig() {
   if (!isBuilderConfigured()) return undefined;
   return {
-    b: BUILDER_ADDRESS as `0x${string}`,
-    f: BUILDER_FEE_TENTHS_BP,
+    b: _config.address as `0x${string}`,
+    f: _config.feeTenthsBp,
   };
 }

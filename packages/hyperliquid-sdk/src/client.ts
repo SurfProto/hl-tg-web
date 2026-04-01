@@ -13,7 +13,7 @@ import type {
   PortfolioHistoryPoint,
   WsMessage,
 } from '@repo/types';
-import { BUILDER_ADDRESS, BUILDER_FEE_TENTHS_BP, getBuilderConfig, isBuilderConfigured } from './builder';
+import { getBuilderAddress, getBuilderFeeTenthsBp, getBuilderConfig, isBuilderConfigured } from './builder';
 import { formatOrderSize, validateOrderInput } from './order-validation';
 import { WebSocketManager } from './ws';
 
@@ -534,10 +534,10 @@ export class HyperliquidClient {
     const builder = getBuilderConfig();
     if (!builder) return undefined;
 
-    const cachedMaxFee = this.builderApprovalCache.get(BUILDER_ADDRESS.toLowerCase());
+    const cachedMaxFee = this.builderApprovalCache.get(getBuilderAddress().toLowerCase());
     if ((cachedMaxFee ?? 0) > 0) return builder;
 
-    const maxFee = await this.getMaxBuilderFee(BUILDER_ADDRESS);
+    const maxFee = await this.getMaxBuilderFee(getBuilderAddress());
     if (maxFee <= 0) {
       throw new Error('Builder fee approval is required before trading.');
     }
@@ -1162,7 +1162,7 @@ export class HyperliquidClient {
         builder: builder as `0x${string}`,
         maxFeeRate: maxFeeRate as `${string}%`,
       });
-      this.builderApprovalCache.set(builder.toLowerCase(), BUILDER_FEE_TENTHS_BP);
+      this.builderApprovalCache.set(builder.toLowerCase(), getBuilderFeeTenthsBp());
       return response;
     } catch (error) {
       this.normalizeExchangeError('approveBuilderFee', { builder, maxFeeRate }, error);

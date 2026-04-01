@@ -1,11 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 
-type EnsureUserInput = {
+interface EnsureUserInput {
   telegramId?: string;
+  privyUserId?: string;
   username?: string;
   walletAddress?: string;
   language?: string;
-};
+}
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -22,24 +23,41 @@ export async function ensureUser(input: EnsureUserInput) {
   if (!supabase) return null;
   if (!input.telegramId && !input.walletAddress) return null;
 
-  const payload = {
-    telegram_id: input.telegramId ?? `wallet:${input.walletAddress}`,
-    wallet_address: input.walletAddress ?? null,
-    username: input.username ?? null,
-    language: input.language ?? 'en',
-  };
-
   try {
-    const { data, error } = await supabase
-      .from('users')
-      .upsert(payload, { onConflict: 'telegram_id' })
-      .select()
-      .maybeSingle();
-
-    if (error) throw error;
-    return data;
-  } catch (error) {
-    console.warn('[supabase] ensureUser failed', error);
+    if (input.telegramId) {
+      // Telegram user: upsert on telegram_id (the natural unique key)
+      const payload = {
+        telegram_id: input.telegramId,
+        wallet_address: input.walletAddress ?? null,
+        privy_user_id: input.privyUserId ?? null,
+        username: input.username ?? null,
+        language: input.language ?? 'en',
+      };
+      const { data, error } = await supabase
+        .from('users')
+        .upsert(payload, { onConflict: 'telegram_id' })
+        .select()
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    } else {
+      // Wallet-only user: upsert on wallet_address, telegram_id stays NULL
+      const payload = {
+        wallet_address: input.walletAddress!,
+        privy_user_id: input.privyUserId ?? null,
+        username: input.username ?? null,
+        language: input.language ?? 'en',
+      };
+      const { data, error } = await supabase
+        .from('users')
+        .upsert(payload, { onConflict: 'wallet_address' })
+        .select()
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    }
+  } catch (err) {
+    console.warn('[supabase] ensureUser failed', err);
     return null;
   }
 }
@@ -56,8 +74,8 @@ export async function getCurrentUserRecord(walletAddress?: string) {
 
     if (error) throw error;
     return data;
-  } catch (error) {
-    console.warn('[supabase] getCurrentUserRecord failed', error);
+  } catch (err) {
+    console.warn('[supabase] getCurrentUserRecord failed', err);
     return null;
   }
 }

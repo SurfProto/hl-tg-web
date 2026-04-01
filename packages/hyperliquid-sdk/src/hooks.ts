@@ -15,44 +15,29 @@ import {
 } from './agent';
 import type { AssetCtx, MarketStats, Order, PortfolioHistoryPoint, WsMessage } from '@repo/types';
 
-// Singleton client instances
-let clientInstance: HyperliquidClient | null = null;
-let publicClientInstance: HyperliquidClient | null = null;
-
-function getClient(walletAddress: string, customSigner?: unknown, testnet?: boolean): HyperliquidClient {
-  const addressChanged = clientInstance?.['walletAddress'] !== walletAddress;
-  const signerChanged = clientInstance?.['config']?.customSigner !== customSigner;
-  if (!clientInstance || addressChanged || (signerChanged && customSigner)) {
-    clientInstance = new HyperliquidClient({
-      masterAccountAddress: walletAddress,
-      walletAddress,
-      customSigner,
-      testnet,
-    });
-  }
-  return clientInstance;
-}
-
 /**
- * Hook to get a public Hyperliquid client instance (no wallet required)
+ * Hook to get a public Hyperliquid client instance (no wallet required).
  * Use for market data: prices, orderbook, candles, etc.
+ * Instance is memoized per testnet flag — recreated only when it changes.
  */
 function usePublicHyperliquid() {
   const testnet = import.meta.env.VITE_HYPERLIQUID_TESTNET === 'true';
-  if (!publicClientInstance) {
-    publicClientInstance = new HyperliquidClient({ testnet });
-  }
-  return { client: publicClientInstance };
+  const client = useMemo(() => new HyperliquidClient({ testnet }), [testnet]);
+  return { client };
 }
 
 /**
- * Hook to get the Hyperliquid client instance
+ * Hook to get the Hyperliquid client instance.
+ * Instance is memoized by (walletAddress, provider, testnet) — a new client is
+ * created only when one of those changes (e.g. logout → login as a different user).
+ * Agent key restoration is deferred to a useEffect so it never runs during render.
  */
 export function useHyperliquid() {
   const { user } = usePrivy();
   const { wallets } = useWallets();
   const [provider, setProvider] = useState<unknown>(null);
   const testnet = import.meta.env.VITE_HYPERLIQUID_TESTNET === 'true';
+  const walletAddress = user?.wallet?.address ?? null;
 
   // getEthereumProvider() is async on ConnectedWallet — resolve it once and store
   const embeddedWallet = wallets.find(w => w.walletClientType === 'privy');
@@ -61,19 +46,26 @@ export function useHyperliquid() {
     embeddedWallet.getEthereumProvider().then(setProvider);
   }, [embeddedWallet]);
 
-  if (!user?.wallet?.address) {
-    return { client: null, isConnected: false };
-  }
+  const client = useMemo(() => {
+    if (!walletAddress) return null;
+    return new HyperliquidClient({
+      masterAccountAddress: walletAddress,
+      walletAddress,
+      customSigner: provider ?? undefined,
+      testnet,
+    });
+  }, [walletAddress, provider, testnet]);
 
-  const client = getClient(user.wallet.address, provider ?? undefined, testnet);
+  // Restore agent key from localStorage — runs once per wallet address change, not on every render
+  useEffect(() => {
+    if (!client || !walletAddress) return;
+    const storedKey = getStoredAgentKey(walletAddress);
+    if (storedKey && !client.hasAgentKey()) {
+      client.setAgentKey(storedKey);
+    }
+  }, [client, walletAddress]);
 
-  // Restore agent key from localStorage so trading actions sign silently
-  const storedKey = getStoredAgentKey(user.wallet.address);
-  if (storedKey && !client.hasAgentKey()) {
-    client.setAgentKey(storedKey);
-  }
-
-  return { client, isConnected: true };
+  return { client, isConnected: Boolean(client) };
 }
 
 /**

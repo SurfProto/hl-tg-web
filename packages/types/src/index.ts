@@ -30,11 +30,16 @@ export type AnyMarket = SpotMarket | PerpMarket;
 // Market classification types
 export type MarketCategory = 'all' | 'perps' | 'spot' | 'crypto' | 'tradfi' | 'hip3' | 'trending' | 'prelaunch';
 export type MarketTag = 'PERP' | 'SPOT' | 'TRADFI' | 'CASH' | 'HIP-3';
+export type MarketSubCategory =
+  | 'stocks' | 'indices' | 'commodities' | 'fx'
+  | 'ai' | 'defi' | 'gaming' | 'layer1' | 'layer2' | 'meme'
+  | 'usdc' | 'usdh' | 'usdt';
 
 export interface EnrichedMarket {
   market: AnyMarket;
   categories: MarketCategory[];
   tags: MarketTag[];
+  subCategory?: MarketSubCategory;
 }
 
 // Order types

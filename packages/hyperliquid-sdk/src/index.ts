@@ -83,10 +83,14 @@ export {
 export {
   classifyMarket,
   getMarketTags,
+  getMarketSubCategory,
   enrichMarkets,
   CATEGORY_LABELS,
   CATEGORY_ORDER,
+  COIN_SUBCATEGORY_MAP,
+  SUB_FILTERS,
 } from './market-categories';
+export type { SubFilterConfig } from './market-categories';
 export {
   getMarketDisplayName,
   getMarketBaseAsset,

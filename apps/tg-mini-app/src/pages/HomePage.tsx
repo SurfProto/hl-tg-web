@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   useMarketData,
@@ -7,26 +7,18 @@ import {
   enrichMarkets,
   CATEGORY_ORDER,
   CATEGORY_LABELS,
+  SUB_FILTERS,
   getMarketBaseAsset,
   getMarketDisplayName,
 } from '@repo/hyperliquid-sdk';
-import type { AnyMarket } from '@repo/types';
+import type { AnyMarket, MarketCategory, MarketSubCategory } from '@repo/types';
+import { formatPrice } from '../utils/format';
 import { BalanceHero } from '../components/BalanceHero';
 import { CategoryPills } from '../components/CategoryPills';
 import { MarketListItem } from '../components/MarketListItem';
 import { AllMarketsSheet } from '../components/AllMarketsSheet';
 import { MarketListItemSkeleton } from '../components/MarketListItemSkeleton';
 import { SearchSheet } from '../components/SearchSheet';
-
-function formatPrice(price: number): string {
-  if (price >= 1000) {
-    return `$${price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
-  }
-  if (price >= 1) {
-    return `$${price.toFixed(4)}`;
-  }
-  return `$${price.toFixed(6)}`;
-}
 
 function formatVolume(vol: number): string {
   if (vol >= 1_000_000_000) return `$${(vol / 1_000_000_000).toFixed(1)}B`;
@@ -38,6 +30,7 @@ function formatVolume(vol: number): string {
 export function HomePage() {
   const navigate = useNavigate();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedSubCategory, setSelectedSubCategory] = useState<MarketSubCategory | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [allMarketsOpen, setAllMarketsOpen] = useState(false);
 
@@ -45,6 +38,12 @@ export function HomePage() {
   const { data: mids, isLoading: midsLoading } = useMids();
   const { data: marketStats } = useMarketStats();
   const isLoading = marketsLoading || midsLoading;
+
+  const subFilters = SUB_FILTERS[selectedCategory as MarketCategory] ?? null;
+
+  useEffect(() => {
+    setSelectedSubCategory(null);
+  }, [selectedCategory]);
 
   const allMarkets: AnyMarket[] = useMemo(() => [
     ...(markets?.spot ?? []).map((m: any) => ({ ...m, type: 'spot' as const })),
@@ -64,9 +63,13 @@ export function HomePage() {
   );
 
   const filtered = useMemo(() => {
-    if (selectedCategory === 'all') return enriched;
-    return enriched.filter(({ categories }) => categories.includes(selectedCategory as any));
-  }, [enriched, selectedCategory]);
+    let result = selectedCategory === 'all' ? enriched
+      : enriched.filter(({ categories }) => categories.includes(selectedCategory as MarketCategory));
+    if (selectedSubCategory) {
+      result = result.filter(({ subCategory }) => subCategory === selectedSubCategory);
+    }
+    return result;
+  }, [enriched, selectedCategory, selectedSubCategory]);
 
   return (
     <div className="min-h-full bg-background">
@@ -74,7 +77,7 @@ export function HomePage() {
       <BalanceHero />
 
       {/* Category pills */}
-      <div className="px-4 mb-3">
+      <div className="px-4 mb-2">
         <CategoryPills
           categories={CATEGORY_ORDER}
           labels={CATEGORY_LABELS}
@@ -82,6 +85,35 @@ export function HomePage() {
           onChange={setSelectedCategory}
         />
       </div>
+
+      {/* Sub-filter pills */}
+      {subFilters && (
+        <div className="px-4 mb-3 flex gap-2 overflow-x-auto no-scrollbar">
+          <button
+            onPointerDown={() => setSelectedSubCategory(null)}
+            className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              selectedSubCategory === null
+                ? 'bg-foreground text-white'
+                : 'bg-surface text-gray-500'
+            }`}
+          >
+            All
+          </button>
+          {subFilters.map(({ key, label }) => (
+            <button
+              key={key}
+              onPointerDown={() => setSelectedSubCategory(key)}
+              className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                selectedSubCategory === key
+                  ? 'bg-foreground text-white'
+                  : 'bg-surface text-gray-500'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Market list */}
       <div className="bg-white border-t border-separator">
@@ -112,6 +144,7 @@ export function HomePage() {
                   volume={stats ? formatVolume(stats.dayNtlVlm) : undefined}
                   maxLeverage={market.type === 'perp' ? market.maxLeverage : undefined}
                   isHip3={market.isHip3}
+                  dex={market.type === 'perp' && market.isHip3 ? market.dex : undefined}
                   onClick={() => navigate(`/coin/${encodeURIComponent(coin)}`)}
                 />
               );

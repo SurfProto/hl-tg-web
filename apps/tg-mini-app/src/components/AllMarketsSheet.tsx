@@ -2,12 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { getMarketBaseAsset, getMarketDisplayName, getMarketSearchTerms } from '@repo/hyperliquid-sdk';
 import type { EnrichedMarket, MarketStats } from '@repo/types';
 import { MarketListItem } from './MarketListItem';
-
-function formatPrice(price: number): string {
-  if (price >= 1000) return `$${price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
-  if (price >= 1) return `$${price.toFixed(4)}`;
-  return `$${price.toFixed(6)}`;
-}
+import { formatPrice } from '../utils/format';
 
 function formatVolume(vol: number): string {
   if (vol >= 1_000_000_000) return `$${(vol / 1_000_000_000).toFixed(1)}B`;
@@ -106,6 +101,7 @@ export function AllMarketsSheet({ isOpen, onClose, markets, mids, marketStats, o
                   volume={stats ? formatVolume(stats.dayNtlVlm) : undefined}
                   maxLeverage={market.type === 'perp' ? market.maxLeverage : undefined}
                   isHip3={market.isHip3}
+                  dex={market.type === 'perp' && market.isHip3 ? market.dex : undefined}
                   onClick={() => onSelect(coin)}
                 />
               );

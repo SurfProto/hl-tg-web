@@ -1,8 +1,17 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { PrivyProvider, usePrivy } from '@privy-io/react-auth';
+import { PrivyProvider, usePrivy, type User } from '@privy-io/react-auth';
 import { arbitrum } from 'viem/chains';
+
+// loginWithTelegram was removed from Privy public types in v1.99 but remains in the bundle.
+// This interface narrows the cast to only the extra method we need, avoiding `as any`.
+interface PrivyWithTelegram {
+  ready: boolean;
+  authenticated: boolean;
+  user: User | null;
+  loginWithTelegram: () => Promise<void>;
+}
 import { Layout } from './components/Layout';
 import { HomePage } from './pages/HomePage';
 import { PositionsPage } from './pages/PositionsPage';
@@ -35,9 +44,10 @@ const queryClient = new QueryClient({
 
 // Seamless Telegram auth component
 function TelegramAuthGate({ children }: { children: React.ReactNode }) {
-  // loginWithTelegram exists in the Privy bundle but was removed from types in v1.99 — cast to access it
-  const privy = usePrivy() as any;
+  // Narrow cast: only exposes loginWithTelegram, not the full `any` escape hatch
+  const privy = usePrivy() as unknown as PrivyWithTelegram;
   const { ready, authenticated, user } = privy;
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   const isTMA = Boolean(window.Telegram?.WebApp?.initData);
 
@@ -52,7 +62,11 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
   // Seamless auto-login using TMA initData — no modal shown
   useEffect(() => {
     if (!ready || authenticated || !isTMA) return;
-    privy.loginWithTelegram();
+    setLoginError(null);
+    privy.loginWithTelegram().catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : 'Login failed. Please try again.';
+      setLoginError(message);
+    });
   }, [ready, authenticated, isTMA]);
 
   useEffect(() => {
@@ -70,6 +84,26 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto"></div>
+      </div>
+    );
+  }
+
+  if (loginError) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4 px-6 text-center">
+        <p className="text-red-500 text-sm">{loginError}</p>
+        <button
+          className="px-6 py-2 bg-blue-500 text-white rounded-full text-sm font-medium"
+          onClick={() => {
+            setLoginError(null);
+            privy.loginWithTelegram().catch((err: unknown) => {
+              const message = err instanceof Error ? err.message : 'Login failed. Please try again.';
+              setLoginError(message);
+            });
+          }}
+        >
+          Retry
+        </button>
       </div>
     );
   }
@@ -125,6 +159,8 @@ function App() {
         config={{
           defaultChain: arbitrum,
           supportedChains: [arbitrum],
+          // Restrict login methods to prevent Google OAuth popup in Telegram WebView
+          loginMethods: ['email', 'sms', 'telegram'],
           appearance: {
             theme: 'light',
             accentColor: '#3b82f6',

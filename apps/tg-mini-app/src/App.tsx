@@ -32,6 +32,7 @@ import { SupportPage } from './pages/account/SupportPage';
 import { LegalPage } from './pages/account/LegalPage';
 import { ensureUser, getTelegramProfile } from './lib/supabase';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { ToastProvider } from './components/Toast';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -180,7 +181,9 @@ function App() {
         }}
       >
         <QueryClientProvider client={queryClient}>
-          <AppContent />
+          <ToastProvider>
+            <AppContent />
+          </ToastProvider>
         </QueryClientProvider>
       </PrivyProvider>
       </ErrorBoundary>

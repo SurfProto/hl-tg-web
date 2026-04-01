@@ -18,6 +18,7 @@ import { NumPad } from '../components/NumPad';
 import { TokenIcon } from '../components/TokenIcon';
 import { TradingSetupSheet } from '../components/TradingSetupSheet';
 import { useHaptics } from '../hooks/useHaptics';
+import { useToast } from '../hooks/useToast';
 
 function formatPrice(price: number): string {
   if (price >= 1000) return `$${price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
@@ -39,6 +40,7 @@ export function TradePage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const haptics = useHaptics();
+  const toast = useToast();
   const { authenticated, user } = usePrivy();
 
   const [amount, setAmount] = useState('');
@@ -334,11 +336,12 @@ export function TradePage() {
     mutation.mutate(order, {
       onSuccess: () => {
         haptics.success();
+        toast.success(`${side === 'buy' ? 'Long' : 'Short'} ${displayName} order placed`);
         navigate(-1);
       },
       onError: (error) => {
         haptics.error();
-        setSubmitError(error instanceof Error ? error.message : 'Order failed. Please try again.');
+        toast.error(error instanceof Error ? error.message : 'Order failed. Please try again.');
       },
     });
   };

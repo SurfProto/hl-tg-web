@@ -10,6 +10,7 @@ import {
 } from '@repo/hyperliquid-sdk';
 import { TokenIcon } from '../components/TokenIcon';
 import { useHaptics } from '../hooks/useHaptics';
+import { useToast } from '../hooks/useToast';
 
 function formatUsd(value: number) {
   return `$${Math.abs(value).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
@@ -40,6 +41,7 @@ function PositionsEmptyState() {
 export function PositionsPage() {
   const navigate = useNavigate();
   const haptics = useHaptics();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<'positions' | 'orders' | 'fills'>('positions');
 
   const { data: userState } = useUserState();
@@ -139,7 +141,16 @@ export function PositionsPage() {
                       onClick={(event) => {
                         event.stopPropagation();
                         haptics.medium();
-                        closePosition.mutate(position.coin);
+                        closePosition.mutate(position.coin, {
+                          onSuccess: () => {
+                            haptics.success();
+                            toast.success(`${displayName} position closed`);
+                          },
+                          onError: (e) => {
+                            haptics.error();
+                            toast.error(e instanceof Error ? e.message : 'Close failed. Please try again.');
+                          },
+                        });
                       }}
                       className="flex-1 rounded-full bg-[#111827] px-4 py-3 text-sm font-semibold text-white active:opacity-80 transition-opacity"
                     >
@@ -184,7 +195,16 @@ export function PositionsPage() {
                   <button
                     onClick={() => {
                       haptics.medium();
-                      cancelOrder.mutate({ coin: order.coin, oid: order.oid });
+                      cancelOrder.mutate({ coin: order.coin, oid: order.oid }, {
+                        onSuccess: () => {
+                          haptics.success();
+                          toast.success('Order cancelled');
+                        },
+                        onError: (e) => {
+                          haptics.error();
+                          toast.error(e instanceof Error ? e.message : 'Cancel failed. Please try again.');
+                        },
+                      });
                     }}
                     className="rounded-full bg-red-50 px-4 py-2 text-sm font-semibold text-negative active:bg-red-100 transition-colors"
                   >

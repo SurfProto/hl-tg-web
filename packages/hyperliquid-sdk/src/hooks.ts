@@ -12,6 +12,8 @@ import {
   getAgentAddress,
   getStoredAgentKey,
   storeAgentKey,
+  storeAgentExpiry,
+  isAgentKeyExpired,
 } from './agent';
 import type { AssetCtx, MarketStats, Order, PortfolioHistoryPoint, WsMessage } from '@repo/types';
 import { USDC_ARBITRUM, HL_BRIDGE_ARBITRUM } from './constants';
@@ -621,18 +623,31 @@ export function useSetupTrading() {
   const { user } = usePrivy();
   const queryClient = useQueryClient();
   const walletAddress = user?.wallet?.address;
+  const isKeyValid = (address: string) =>
+    getStoredAgentKey(address) !== null && !isAgentKeyExpired(address);
+
+  const isKeyExpired = (address: string) =>
+    getStoredAgentKey(address) !== null && isAgentKeyExpired(address);
+
   const [isReady, setIsReady] = useState(() => {
     if (!walletAddress) return false;
-    return getStoredAgentKey(walletAddress) !== null;
+    return isKeyValid(walletAddress);
+  });
+
+  const [isExpired, setIsExpired] = useState(() => {
+    if (!walletAddress) return false;
+    return isKeyExpired(walletAddress);
   });
 
   useEffect(() => {
     if (!walletAddress) {
       setIsReady(false);
+      setIsExpired(false);
       return;
     }
 
-    setIsReady(getStoredAgentKey(walletAddress) !== null);
+    setIsReady(isKeyValid(walletAddress));
+    setIsExpired(isKeyExpired(walletAddress));
   }, [walletAddress]);
 
   const setup = useMutation({
@@ -640,20 +655,22 @@ export function useSetupTrading() {
       if (!client || !walletAddress) throw new Error('Not connected');
       const privateKey = generateAgentKey();
       const agentAddress = getAgentAddress(privateKey);
-      await client.approveAgent(agentAddress);
+      const { expiryMs } = await client.approveAgent(agentAddress);
       if (isBuilderConfigured()) {
         await approveBuilderFeeAction(client);
       }
+      storeAgentExpiry(walletAddress, expiryMs);
       storeAgentKey(walletAddress, privateKey);
       client.setAgentKey(privateKey);
     },
     onSuccess: () => {
       setIsReady(true);
+      setIsExpired(false);
       queryClient.invalidateQueries({ queryKey: ['builderFeeApproval'] });
     },
   });
 
-  return { isReady, setup };
+  return { isReady, isExpired, setup };
 }
 
 // WebSocket Hooks

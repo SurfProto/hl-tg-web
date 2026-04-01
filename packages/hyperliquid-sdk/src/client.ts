@@ -1133,15 +1133,19 @@ export class HyperliquidClient {
   }
 
   // Approve agent wallet to act on behalf of this user
-  async approveAgent(agentAddress: string) {
+  async approveAgent(agentAddress: string): Promise<{ expiryMs: number }> {
+    const expiryMs = Date.now() + 180 * 24 * 60 * 60 * 1000; // 180 days
     try {
       const client = await this.getMainWalletClient();
-      return client.approveAgent({
+      await client.approveAgent({
         agentAddress: agentAddress as `0x${string}`,
-        agentName: 'HL TG App',
+        agentName: `tsnm-trade-agent valid_until ${expiryMs}`,
       });
+      return { expiryMs };
     } catch (error) {
       this.normalizeExchangeError('approveAgent', { agentAddress }, error);
+      // normalizeExchangeError always throws, but TypeScript needs this
+      throw error;
     }
   }
 

@@ -58,7 +58,7 @@ export function TradePage() {
   const { data: mids } = useMids();
   const { data: userState } = useUserState();
   const { data: spotBalance } = useSpotBalance();
-  const { isReady: tradingReady, setup: tradingSetup } = useSetupTrading();
+  const { isReady: tradingReady, isExpired: tradingExpired, setup: tradingSetup } = useSetupTrading();
   const placeOrder = usePlaceOrder();
   const placeSpotOrder = usePlaceSpotOrder();
 
@@ -236,7 +236,7 @@ export function TradePage() {
       : currentPrice * (1 + 1 / leverage);
   }, [amountNum, currentPrice, isPerp, leverage, side]);
 
-  const needsSetup = authenticated && !tradingReady;
+  const needsSetup = authenticated && (!tradingReady || tradingExpired);
 
   useEffect(() => {
     const walletAddress = user?.wallet?.address ?? null;
@@ -600,6 +600,7 @@ export function TradePage() {
         isOpen={setupVisible}
         onClose={() => setSetupVisible(false)}
         setup={tradingSetup}
+        isExpired={tradingExpired}
       />
     </div>
   );

@@ -5,9 +5,10 @@ interface TradingSetupSheetProps {
   isOpen: boolean;
   onClose: () => void;
   setup: UseMutationResult<void, Error, void, unknown>;
+  isExpired?: boolean;
 }
 
-export function TradingSetupSheet({ isOpen, onClose, setup }: TradingSetupSheetProps) {
+export function TradingSetupSheet({ isOpen, onClose, setup, isExpired = false }: TradingSetupSheetProps) {
   const isPending = setup.isPending;
   const isSuccess = setup.isSuccess;
   const error = setup.error;
@@ -47,9 +48,13 @@ export function TradingSetupSheet({ isOpen, onClose, setup }: TradingSetupSheetP
           </div>
         </div>
 
-        <h2 className="text-lg font-bold text-foreground text-center mb-2">1-click trading</h2>
+        <h2 className="text-lg font-bold text-foreground text-center mb-2">
+          {isExpired ? 'Reauthorize trading' : '1-click trading'}
+        </h2>
         <p className="text-sm text-gray-500 text-center mb-6 leading-relaxed">
-          Authorize a local trading key once. All orders will sign instantly - no confirmations on every trade.
+          {isExpired
+            ? 'Your trading key has expired. Reauthorize to continue trading instantly.'
+            : 'Authorize a local trading key once. All orders will sign instantly - no confirmations on every trade.'}
         </p>
 
         {isSuccess ? (
@@ -68,14 +73,18 @@ export function TradingSetupSheet({ isOpen, onClose, setup }: TradingSetupSheetP
               <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                 <span className="text-xs font-bold text-primary">1</span>
               </div>
-              <span className="text-sm text-foreground">Authorize trading key</span>
+              <span className="text-sm text-foreground">
+                {isExpired ? 'Reauthorize trading key' : 'Authorize trading key'}
+              </span>
             </div>
-            <div className="flex items-center gap-3 px-3 py-2.5 bg-surface rounded-xl">
-              <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <span className="text-xs font-bold text-primary">2</span>
+            {!isExpired && (
+              <div className="flex items-center gap-3 px-3 py-2.5 bg-surface rounded-xl">
+                <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <span className="text-xs font-bold text-primary">2</span>
+                </div>
+                <span className="text-sm text-foreground">Enable builder fee</span>
               </div>
-              <span className="text-sm text-foreground">Enable builder fee</span>
-            </div>
+            )}
           </div>
         )}
 
@@ -92,7 +101,7 @@ export function TradingSetupSheet({ isOpen, onClose, setup }: TradingSetupSheetP
           disabled={isPending || isSuccess}
           className="w-full py-4 rounded-xl font-semibold text-sm bg-primary text-white disabled:opacity-50 active:opacity-80 transition-opacity"
         >
-          {isPending ? statusLabel : isSuccess ? statusLabel : error ? 'Retry' : 'Enable Trading'}
+          {isPending ? statusLabel : isSuccess ? statusLabel : error ? 'Retry' : isExpired ? 'Reauthorize' : 'Enable Trading'}
         </button>
       </div>
     </div>

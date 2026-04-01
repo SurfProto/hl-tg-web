@@ -194,7 +194,6 @@ export class HyperliquidClient {
       const viemWallet = createWalletClient({ account, transport: http(apiUrl) });
       const transport = new SDK.HttpTransport({ url: apiUrl });
       this.agentWalletClientInstance = new SDK.WalletClient({
-        defaultVaultAddress: this.walletAddress ? this.walletAddress as `0x${string}` : undefined,
         transport,
         wallet: viemWallet,
         isTestnet: this.testnet,

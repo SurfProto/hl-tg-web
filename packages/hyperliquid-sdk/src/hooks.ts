@@ -91,7 +91,7 @@ export function useMids() {
   return useQuery({
     queryKey: ['mids'],
     queryFn: () => client.getMids(),
-    refetchInterval: 2000, // Refetch every 2 seconds
+    refetchInterval: 4000, // Refetch every 4 seconds
   });
 }
 
@@ -105,7 +105,7 @@ export function useOrderbook(coin: string) {
     queryKey: ['orderbook', coin],
     queryFn: () => client.getOrderbook(coin),
     enabled: !!coin,
-    refetchInterval: 1000, // Refetch every second
+    refetchInterval: 2000, // Refetch every 2 seconds
   });
 }
 

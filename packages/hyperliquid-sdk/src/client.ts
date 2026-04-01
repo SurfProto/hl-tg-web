@@ -90,13 +90,8 @@ interface NormalizedOrderContext {
   tif: 'Gtc' | 'Ioc' | 'Alo';
   cloid: `0x${string}`;
   debug?: {
-    allMidPrice: number | null;
-    bestAsk: number | null;
-    bestBid: number | null;
-    executionSource: 'book' | 'mid';
+    executionSource: 'mid';
     formattedPrice: string;
-    markPrice: number | null;
-    oraclePrice: number | null;
     rawExecutionPrice: number;
     referencePrice: number;
   };
@@ -142,19 +137,28 @@ export class HyperliquidClient {
   }
 
   private async postInfo<T>(body: Record<string, unknown>): Promise<T> {
-    const response = await fetch(`${this.getHttpApiUrl()}/info`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
+    const maxRetries = 3;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const response = await fetch(`${this.getHttpApiUrl()}/info`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
 
-    if (!response.ok) {
-      throw new Error(`Info request failed with status ${response.status}`);
+      if (response.status === 429 && attempt < maxRetries) {
+        await new Promise((res) => setTimeout(res, 500 * 2 ** attempt)); // 500ms, 1s, 2s
+        continue;
+      }
+
+      if (!response.ok) {
+        throw new Error(`Info request failed with status ${response.status}`);
+      }
+
+      return response.json() as Promise<T>;
     }
-
-    return response.json() as Promise<T>;
+    throw new Error('Info request failed after retries');
   }
 
   private async getPublicClient() {
@@ -249,8 +253,10 @@ export class HyperliquidClient {
       .filter(Boolean) as Array<{ dex: string; dexIndex: number }>;
 
     const perpMarkets = metaAndCtxs[0].universe
-      .filter((market: any) => !market.isDelisted)
       .map((market: any, index: number) => {
+        // Must map BEFORE filtering so `index` matches the original universe position,
+        // which is what Hyperliquid uses as the asset ID in all exchange requests.
+        if (market.isDelisted) return null;
         const cached: CachedMarket = {
           asset: index,
           aliases: [market.name],
@@ -275,7 +281,8 @@ export class HyperliquidClient {
           minBaseSize: cached.minBaseSize,
           minNotionalUsd: cached.minNotionalUsd,
         };
-      });
+      })
+      .filter((m: any) => m !== null);
 
     const hip3PerpMarkets = (
       await Promise.all(
@@ -468,64 +475,37 @@ export class HyperliquidClient {
     throw new Error(`No live market price available for ${market.name}`);
   }
 
-  private getAggressiveMarketPrice(referencePrice: number, side: OrderSide): number {
-    const slippageMultiplier = side === 'buy' ? 1.05 : 0.95;
-    return referencePrice * slippageMultiplier;
+  private getAggressiveMarketPrice(midPrice: number, side: OrderSide): number {
+    // 3% tolerance from mid — matches Hyperliquid's own SDK default.
+    // Buy: price 3% above mid (crosses the ask + depth within 3%).
+    // Sell: price 3% below mid (crosses the bid + depth within 3%).
+    // Worst-case slippage is capped at ~3%; IOC cancels any unfilled remainder.
+    const tolerance = 0.03;
+    return side === 'buy' ? midPrice * (1 + tolerance) : midPrice * (1 - tolerance);
   }
 
   private async getMarketOrderExecutionContext(market: CachedMarket, side: OrderSide) {
-    const mids = await this.getMids().catch(() => null);
-    let allMidPrice: number | null = null;
+    const mids = await this.getMids();
+    let midPrice: number | null = null;
 
-    if (mids) {
-      for (const alias of market.aliases) {
-        const mid = mids[alias];
-        if (mid != null) {
-          allMidPrice = parseFloat(mid);
-          break;
-        }
+    for (const alias of market.aliases) {
+      const mid = mids?.[alias];
+      if (mid != null) {
+        midPrice = parseFloat(mid);
+        break;
       }
     }
 
-    let bestBid: number | null = null;
-    let bestAsk: number | null = null;
-    try {
-      const orderbook = await this.getOrderbook(market.name);
-      bestBid = orderbook.levels.bids[0]?.px ?? null;
-      bestAsk = orderbook.levels.asks[0]?.px ?? null;
-    } catch {
-      // Best effort only — we can still fall back to mids.
+    if (!midPrice || !Number.isFinite(midPrice) || midPrice <= 0) {
+      throw new Error(`Market price unavailable for ${market.name}. Please retry in a moment.`);
     }
 
-    let markPrice: number | null = null;
-    let oraclePrice: number | null = null;
-    try {
-      const assetCtx = await this.getAssetCtx(market.baseCoin);
-      markPrice = assetCtx?.markPx ?? null;
-      oraclePrice = assetCtx?.oraclePx ?? null;
-    } catch {
-      // Asset context is not guaranteed for every market class.
-    }
-
-    const bookAnchor = side === 'buy' ? bestAsk : bestBid;
-    const referencePrice = bookAnchor ?? allMidPrice;
-    if (!referencePrice || !Number.isFinite(referencePrice) || referencePrice <= 0) {
-      throw new Error(`No executable market price available for ${market.name}`);
-    }
-
-    const rawExecutionPrice = bookAnchor != null
-      ? referencePrice
-      : this.getAggressiveMarketPrice(referencePrice, side);
+    const rawExecutionPrice = this.getAggressiveMarketPrice(midPrice, side);
 
     return {
-      allMidPrice,
-      bestAsk,
-      bestBid,
-      executionSource: bookAnchor != null ? 'book' as const : 'mid' as const,
-      markPrice,
-      oraclePrice,
+      executionSource: 'mid' as const,
       rawExecutionPrice,
-      referencePrice,
+      referencePrice: midPrice,
     };
   }
 
@@ -565,11 +545,14 @@ export class HyperliquidClient {
       if (action === 'usdClassTransfer' && lowerMessage.includes('must deposit before performing actions')) {
         throw new Error('Transfer unavailable until your main Hyperliquid account has a deposit. Deposit funds first, then try again.');
       }
-      if (
-        (action === 'placeOrder' || action === 'placeSpotOrder' || action === 'closePosition') &&
-        lowerMessage.includes('order price cannot be more than 95% away from the reference price')
-      ) {
-        throw new Error('Market too illiquid for a market order right now. Try a limit order.');
+      if (isTradingAction && lowerMessage.includes('order price cannot be more than 95% away from the reference price')) {
+        throw new Error('Order price is too far from the current market price. Adjust your price and try again.');
+      }
+      if (isTradingAction && lowerMessage.includes('could not immediately match')) {
+        throw new Error("Market order couldn't fill — no matching orders available. Try a limit order.");
+      }
+      if (isTradingAction && lowerMessage.includes('insufficient margin')) {
+        throw new Error('Insufficient margin for this order size. Reduce size or lower leverage.');
       }
       throw new Error(error.message);
     }

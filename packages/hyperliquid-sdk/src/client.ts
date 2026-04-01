@@ -684,6 +684,15 @@ export class HyperliquidClient {
     return this.wsManager.isConnected();
   }
 
+  /**
+   * Subscribe to WebSocket connection status changes.
+   * Fires immediately when the connection opens or closes.
+   * Returns an unsubscribe function.
+   */
+  onWsStatusChange(callback: (connected: boolean) => void): () => void {
+    return this.wsManager.onStatusChange(callback);
+  }
+
   subscribeToOrderbook(coin: string, callback: (data: WsMessage) => void): () => void {
     return this.wsManager.subscribe(`l2Book:${coin}`, callback);
   }

@@ -1,15 +1,19 @@
 import type { WsMessage, OrderbookLevel, Candle } from '@repo/types';
 
 type WsCallback = (data: WsMessage) => void;
+type StatusCallback = (connected: boolean) => void;
 
 export class WebSocketManager {
   private ws: WebSocket | null = null;
   private subscriptions: Map<string, Set<WsCallback>> = new Map();
+  private statusListeners: Set<StatusCallback> = new Set();
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
   private isConnecting = false;
   private testnet: boolean;
+  /** Timestamp of the last successful open — used to guard the reconnect counter reset. */
+  private connectionOpenedAt: number | null = null;
 
   constructor(testnet: boolean = false) {
     this.testnet = testnet;
@@ -46,8 +50,10 @@ export class WebSocketManager {
         this.ws.onopen = () => {
           console.log('[WS] Connected');
           this.isConnecting = false;
+          this.connectionOpenedAt = Date.now();
           this.reconnectAttempts = 0;
           this.resubscribeAll();
+          this.notifyStatus(true);
           resolve();
         };
 
@@ -63,6 +69,7 @@ export class WebSocketManager {
         this.ws.onclose = (event) => {
           console.log('[WS] Disconnected:', event.code, event.reason);
           this.isConnecting = false;
+          this.notifyStatus(false);
           this.handleReconnect();
         };
 
@@ -79,6 +86,16 @@ export class WebSocketManager {
   }
 
   private handleReconnect(): void {
+    // Only reset the counter if the connection was stable for >5s.
+    // This prevents a tight reconnect loop when the server is unreachable.
+    const MIN_STABLE_MS = 5000;
+    if (this.connectionOpenedAt !== null && Date.now() - this.connectionOpenedAt < MIN_STABLE_MS) {
+      // Connection dropped immediately — keep incrementing the back-off counter.
+    } else {
+      this.reconnectAttempts = 0;
+    }
+    this.connectionOpenedAt = null;
+
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error('[WS] Max reconnection attempts reached');
       return;
@@ -86,14 +103,29 @@ export class WebSocketManager {
 
     this.reconnectAttempts++;
     const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
-    
+
     console.log(`[WS] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
-    
+
     setTimeout(() => {
       this.connect().catch((error) => {
         console.error('[WS] Reconnection failed:', error);
       });
     }, delay);
+  }
+
+  /**
+   * Register a callback that fires whenever the connection status changes.
+   * Returns an unsubscribe function.
+   */
+  onStatusChange(callback: StatusCallback): () => void {
+    this.statusListeners.add(callback);
+    return () => this.statusListeners.delete(callback);
+  }
+
+  private notifyStatus(connected: boolean): void {
+    this.statusListeners.forEach((cb) => {
+      try { cb(connected); } catch { /* ignore listener errors */ }
+    });
   }
 
   private handleMessage(data: WsMessage): void {

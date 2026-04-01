@@ -828,17 +828,10 @@ export function useWebSocket() {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-
-    const checkConnection = () => {
-      setIsConnected(client.isWsConnected());
-    };
-
-    // Check connection status periodically
-    const interval = setInterval(checkConnection, 1000);
-
-    return () => {
-      clearInterval(interval);
-    };
+    // Initialise from current state, then subscribe to future changes.
+    setIsConnected(client.isWsConnected());
+    const unsubscribe = client.onWsStatusChange(setIsConnected);
+    return unsubscribe;
   }, [client]);
 
   const connect = useCallback(async () => {

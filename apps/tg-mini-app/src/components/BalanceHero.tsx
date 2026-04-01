@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { useUserState, useSpotBalance, usePortfolioHistory } from '@repo/hyperliquid-sdk';
+import { useUserState, useSpotBalance, usePortfolioHistory, useMids } from '@repo/hyperliquid-sdk';
 import { Chart } from '@repo/ui';
 import { useState } from 'react';
 
@@ -18,37 +18,63 @@ export function BalanceHero() {
   const { data: userState } = useUserState();
   const { data: spotBalance } = useSpotBalance();
   const { data: portfolioHistory } = usePortfolioHistory(period);
+  const { data: mids } = useMids();
 
-  // Perps equity
+  // Perps: total equity vs available (free margin)
   const perpsValue = userState?.marginSummary?.accountValue ?? 0;
+  const perpsAvailable = userState?.withdrawable ?? 0;
 
-  // Spot equity: sum all non-zero spot balances
-  const spotValue = (() => {
-    if (!spotBalance?.balances) return 0;
-    return (spotBalance.balances as Array<{ coin: string; total: string; entryNtl: string }>)
-      .reduce((sum, b) => sum + parseFloat(b.total ?? '0'), 0);
-  })();
+  // Spot: total equity and available (total - hold), priced via mids
+  type SpotBalance = { coin: string; total: string; hold: string; entryNtl: string };
+  const balances = spotBalance?.balances as SpotBalance[] | undefined;
+
+  const spotValue = balances?.reduce((sum, b) => {
+    const total = parseFloat(b.total ?? '0');
+    if (!Number.isFinite(total) || total <= 0) return sum;
+    if (b.coin === 'USDC' || b.coin === 'USDH') return sum + total;
+    const mid = mids?.[b.coin] ? parseFloat(mids[b.coin]) : 0;
+    return sum + total * (Number.isFinite(mid) ? mid : 0);
+  }, 0) ?? 0;
+
+  const spotAvailable = balances?.reduce((sum, b) => {
+    const available = parseFloat(b.total ?? '0') - parseFloat(b.hold ?? '0');
+    if (!Number.isFinite(available) || available <= 0) return sum;
+    if (b.coin === 'USDC' || b.coin === 'USDH') return sum + available;
+    const mid = mids?.[b.coin] ? parseFloat(mids[b.coin]) : 0;
+    return sum + available * (Number.isFinite(mid) ? mid : 0);
+  }, 0) ?? 0;
 
   const totalValue = perpsValue + spotValue;
 
+  const perpsLocked = perpsValue - perpsAvailable > 0.005;
+  const spotLocked = spotValue - spotAvailable > 0.005;
+
   return (
     <div className="px-4 pt-6 pb-4">
-      {/* Total balance */}
+      {/* Total equity */}
       <div className="mb-1">
-        <p className="text-xs text-gray-400 uppercase tracking-wide font-medium mb-1">Total Balance</p>
+        <p className="text-xs text-gray-400 uppercase tracking-wide font-medium mb-1">Total Equity</p>
         <p className="text-4xl font-bold text-foreground tracking-tight">
           {formatUsd(totalValue)}
         </p>
       </div>
 
-      {/* Equity breakdown */}
-      <div className="flex gap-4 mt-2 mb-5">
-        <span className="text-xs text-gray-400">
-          Perps <span className="text-gray-600 font-medium">{formatUsd(perpsValue)}</span>
-        </span>
-        <span className="text-xs text-gray-400">
-          Spot <span className="text-gray-600 font-medium">{formatUsd(spotValue)}</span>
-        </span>
+      {/* Per-account breakdown: Perps | Spot */}
+      <div className="flex gap-5 mt-2 mb-5">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs text-gray-400 font-medium">Perps</span>
+          <span className="text-xs text-gray-700 font-semibold">{formatUsd(perpsValue)}</span>
+          {perpsLocked && (
+            <span className="text-xs text-gray-400">{formatUsd(perpsAvailable)} avail</span>
+          )}
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs text-gray-400 font-medium">Spot</span>
+          <span className="text-xs text-gray-700 font-semibold">{formatUsd(spotValue)}</span>
+          {spotLocked && (
+            <span className="text-xs text-gray-400">{formatUsd(spotAvailable)} avail</span>
+          )}
+        </div>
       </div>
 
       {portfolioHistory && portfolioHistory.length > 0 ? (

@@ -8,11 +8,12 @@ export function TransferPage() {
   const { data: userState } = useUserState();
   const { data: spotBalance } = useSpotBalance();
 
-  const perpsBalance = userState?.marginSummary?.accountValue ?? 0;
-  const spotUsdcBalance = parseFloat(
-    spotBalance?.balances?.find((balance: any) => balance.coin === 'USDC')?.total ?? '0',
-  ) || 0;
-  const fromBalance = direction === 'perps-to-spot' ? perpsBalance : spotUsdcBalance;
+  const perpsTransferable = userState?.withdrawable ?? 0;
+  const spotUsdcEntry = spotBalance?.balances?.find((b: any) => b.coin === 'USDC');
+  const spotUsdcAvailable = spotUsdcEntry
+    ? Math.max(0, parseFloat(spotUsdcEntry.total ?? '0') - parseFloat(spotUsdcEntry.hold ?? '0'))
+    : 0;
+  const fromBalance = direction === 'perps-to-spot' ? perpsTransferable : spotUsdcAvailable;
 
   return (
     <div className="min-h-full bg-background px-4 py-5 space-y-4">
@@ -35,7 +36,7 @@ export function TransferPage() {
 
         <div className="flex items-center justify-between">
           <label className="text-sm font-semibold text-foreground">Amount</label>
-          <span className="text-xs text-muted">Available {fromBalance.toFixed(2)} USDC</span>
+          <span className="text-xs text-muted">Available to transfer {fromBalance.toFixed(2)} USDC</span>
         </div>
 
         <div className="flex gap-2">

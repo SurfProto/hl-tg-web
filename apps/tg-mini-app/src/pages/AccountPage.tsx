@@ -12,6 +12,8 @@ import {
   getBuilderFeeTenthsBp,
   isBuilderConfigured,
 } from '@repo/hyperliquid-sdk';
+
+type SpotBalance = { coin: string; total: string; hold: string; entryNtl: string };
 import { useHaptics } from '../hooks/useHaptics';
 
 function formatUsd(value: number) {
@@ -42,20 +44,32 @@ export function AccountPage() {
     ?? user?.wallet?.address
     ?? 'Trader';
 
-  const spotEquity = useMemo(() => {
-    if (!spotBalance?.balances) return 0;
+  const balances = spotBalance?.balances as SpotBalance[] | undefined;
 
-    return (spotBalance.balances as Array<{ coin: string; total: string }>)
-      .reduce((sum, balance) => {
-        const total = parseFloat(balance.total ?? '0');
-        if (!Number.isFinite(total) || total <= 0) return sum;
-        if (balance.coin === 'USDC' || balance.coin === 'USDH') return sum + total;
-        const mid = mids?.[balance.coin] ? parseFloat(mids[balance.coin]) : 0;
-        return sum + total * (Number.isFinite(mid) ? mid : 0);
-      }, 0);
-  }, [mids, spotBalance?.balances]);
+  const spotEquity = useMemo(() => {
+    if (!balances) return 0;
+    return balances.reduce((sum, b) => {
+      const total = parseFloat(b.total ?? '0');
+      if (!Number.isFinite(total) || total <= 0) return sum;
+      if (b.coin === 'USDC' || b.coin === 'USDH') return sum + total;
+      const mid = mids?.[b.coin] ? parseFloat(mids[b.coin]) : 0;
+      return sum + total * (Number.isFinite(mid) ? mid : 0);
+    }, 0);
+  }, [mids, balances]);
+
+  const spotAvailable = useMemo(() => {
+    if (!balances) return 0;
+    return balances.reduce((sum, b) => {
+      const available = parseFloat(b.total ?? '0') - parseFloat(b.hold ?? '0');
+      if (!Number.isFinite(available) || available <= 0) return sum;
+      if (b.coin === 'USDC' || b.coin === 'USDH') return sum + available;
+      const mid = mids?.[b.coin] ? parseFloat(mids[b.coin]) : 0;
+      return sum + available * (Number.isFinite(mid) ? mid : 0);
+    }, 0);
+  }, [mids, balances]);
 
   const perpsEquity = userState?.marginSummary?.accountValue ?? 0;
+  const perpsAvailable = userState?.withdrawable ?? 0;
   const totalEquity = perpsEquity + spotEquity;
   const recentFills = fills?.slice(0, 3) ?? [];
   const builderConfigured = isBuilderConfigured();
@@ -83,11 +97,23 @@ export function AccountPage() {
         </div>
 
         <div className="mt-5 rounded-2xl bg-surface p-4">
-          <p className="text-xs uppercase tracking-wide text-muted">Total equity</p>
+          <p className="text-xs uppercase tracking-wide text-muted">Total Equity</p>
           <p className="mt-2 text-3xl font-bold text-foreground">{formatUsd(totalEquity)}</p>
-          <div className="mt-3 flex flex-wrap gap-3 text-sm text-muted">
-            <span>Perps <span className="font-semibold text-foreground">{formatUsd(perpsEquity)}</span></span>
-            <span>Spot <span className="font-semibold text-foreground">{formatUsd(spotEquity)}</span></span>
+          <div className="mt-3 flex gap-5 text-sm">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs text-muted">Perps</span>
+              <span className="font-semibold text-foreground">{formatUsd(perpsEquity)}</span>
+              {perpsEquity - perpsAvailable > 0.005 && (
+                <span className="text-xs text-muted">{formatUsd(perpsAvailable)} avail</span>
+              )}
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs text-muted">Spot</span>
+              <span className="font-semibold text-foreground">{formatUsd(spotEquity)}</span>
+              {spotEquity - spotAvailable > 0.005 && (
+                <span className="text-xs text-muted">{formatUsd(spotAvailable)} avail</span>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -125,8 +151,16 @@ export function AccountPage() {
           <p className="mt-2 text-lg font-semibold text-foreground">{formatUsd(perpsEquity)}</p>
         </div>
         <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
+          <p className="text-xs text-muted">Perps Available</p>
+          <p className="mt-2 text-lg font-semibold text-foreground">{formatUsd(perpsAvailable)}</p>
+        </div>
+        <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
           <p className="text-xs text-muted">Spot Equity</p>
           <p className="mt-2 text-lg font-semibold text-foreground">{formatUsd(spotEquity)}</p>
+        </div>
+        <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
+          <p className="text-xs text-muted">Spot Available</p>
+          <p className="mt-2 text-lg font-semibold text-foreground">{formatUsd(spotAvailable)}</p>
         </div>
       </div>
 

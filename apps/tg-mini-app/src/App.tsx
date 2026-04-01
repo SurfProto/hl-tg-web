@@ -31,6 +31,7 @@ import { LanguagePage } from './pages/account/LanguagePage';
 import { SupportPage } from './pages/account/SupportPage';
 import { LegalPage } from './pages/account/LegalPage';
 import { ensureUser, getTelegramProfile } from './lib/supabase';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -155,6 +156,7 @@ function App() {
 
   return (
     <React.StrictMode>
+      <ErrorBoundary>
       <PrivyProvider
         appId={appId}
         config={{
@@ -181,6 +183,7 @@ function App() {
           <AppContent />
         </QueryClientProvider>
       </PrivyProvider>
+      </ErrorBoundary>
     </React.StrictMode>
   );
 }

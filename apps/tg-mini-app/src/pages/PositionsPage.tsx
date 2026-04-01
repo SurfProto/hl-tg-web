@@ -11,6 +11,7 @@ import {
 import { TokenIcon } from '../components/TokenIcon';
 import { useHaptics } from '../hooks/useHaptics';
 import { useToast } from '../hooks/useToast';
+import { formatPrice } from '../utils/format';
 
 function formatUsd(value: number) {
   return `$${Math.abs(value).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
@@ -108,7 +109,7 @@ export function PositionsPage() {
                           </span>
                         </div>
                         <p className="mt-1 text-sm text-muted">
-                          {Math.abs(position.szi).toFixed(4)} @ ${position.entryPx.toFixed(4)}
+                          {Math.abs(position.szi)} @ {formatPrice(position.entryPx)}
                         </p>
                       </div>
                     </div>
@@ -118,7 +119,7 @@ export function PositionsPage() {
                         {isPositive ? '+' : '-'}{formatUsd(pnl)}
                       </p>
                       <p className="mt-1 text-xs text-muted">
-                        Mark ${currentPrice.toFixed(4)}
+                        Mark {formatPrice(currentPrice)}
                       </p>
                     </div>
                   </div>
@@ -178,41 +179,58 @@ export function PositionsPage() {
           {!openOrders || openOrders.length === 0 ? (
             <PositionsEmptyState />
           ) : (
-            openOrders.map((order: any) => (
-              <div key={order.oid} className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="font-semibold text-foreground">{order.coin}</p>
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${order.side === 'buy' ? 'bg-blue-50 text-primary' : 'bg-gray-100 text-gray-700'}`}>
-                        {order.side === 'buy' ? 'Buy' : 'Sell'}
-                      </span>
+            openOrders.map((order: any) => {
+              const orderCoin = order.coin.includes(':') ? order.coin.split(':')[1] : order.coin;
+              return (
+                <div key={order.oid} className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <TokenIcon coin={orderCoin.split('/')[0]} />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="truncate font-semibold text-foreground">{orderCoin}</p>
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${order.side === 'buy' ? 'bg-blue-50 text-primary' : 'bg-gray-100 text-gray-700'}`}>
+                            {order.side === 'buy' ? 'Buy' : 'Sell'}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm text-muted">{order.orderType ?? 'limit'} order</p>
+                      </div>
                     </div>
-                    <p className="mt-1 text-sm text-muted">
-                      {order.sz} {order.orderType === 'limit' ? `@ $${order.limitPx}` : 'market order'}
-                    </p>
+                    <button
+                      onClick={() => {
+                        haptics.medium();
+                        cancelOrder.mutate({ coin: order.coin, oid: order.oid }, {
+                          onSuccess: () => {
+                            haptics.success();
+                            toast.success('Order cancelled');
+                          },
+                          onError: (e) => {
+                            haptics.error();
+                            toast.error(e instanceof Error ? e.message : 'Cancel failed. Please try again.');
+                          },
+                        });
+                      }}
+                      className="rounded-full bg-red-50 px-4 py-2 text-sm font-semibold text-negative active:bg-red-100 transition-colors"
+                    >
+                      {cancelOrder.isPending ? 'Canceling...' : 'Cancel'}
+                    </button>
                   </div>
-                  <button
-                    onClick={() => {
-                      haptics.medium();
-                      cancelOrder.mutate({ coin: order.coin, oid: order.oid }, {
-                        onSuccess: () => {
-                          haptics.success();
-                          toast.success('Order cancelled');
-                        },
-                        onError: (e) => {
-                          haptics.error();
-                          toast.error(e instanceof Error ? e.message : 'Cancel failed. Please try again.');
-                        },
-                      });
-                    }}
-                    className="rounded-full bg-red-50 px-4 py-2 text-sm font-semibold text-negative active:bg-red-100 transition-colors"
-                  >
-                    {cancelOrder.isPending ? 'Canceling...' : 'Cancel'}
-                  </button>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                    <div className="rounded-xl bg-surface px-3 py-2">
+                      <p className="text-xs text-muted">Size</p>
+                      <p className="mt-1 font-semibold text-foreground">{order.sz}</p>
+                    </div>
+                    <div className="rounded-xl bg-surface px-3 py-2">
+                      <p className="text-xs text-muted">Limit price</p>
+                      <p className="mt-1 font-semibold text-foreground">
+                        {order.limitPx ? `$${order.limitPx}` : '—'}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       )}

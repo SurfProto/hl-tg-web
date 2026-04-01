@@ -19,12 +19,7 @@ import { TokenIcon } from '../components/TokenIcon';
 import { TradingSetupSheet } from '../components/TradingSetupSheet';
 import { useHaptics } from '../hooks/useHaptics';
 import { useToast } from '../hooks/useToast';
-
-function formatPrice(price: number): string {
-  if (price >= 1000) return `$${price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
-  if (price >= 1) return `$${price.toFixed(4)}`;
-  return `$${price.toFixed(6)}`;
-}
+import { formatPrice } from '../utils/format';
 
 function formatUsdInput(value: number): string {
   const truncated = Math.floor(value * 100) / 100;

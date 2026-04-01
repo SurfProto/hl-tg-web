@@ -82,14 +82,16 @@ export function classifyMarket(market: AnyMarket): MarketCategory[] {
     return categories;
   }
 
+  const base = getMarketBaseAsset(market).toUpperCase();
+
   if (market.isHip3) {
     categories.push('hip3');
+    // HIP-3 markets also appear in tradfi/crypto tabs based on their underlying asset
+    categories.push(TRADFI_SYMBOLS.has(base) ? 'tradfi' : 'crypto');
     return categories;
   }
 
   categories.push('perps');
-
-  const base = getMarketBaseAsset(market).toUpperCase();
 
   if (PRE_LAUNCH_SYMBOLS.has(base)) {
     categories.push('prelaunch');

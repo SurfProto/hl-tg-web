@@ -9,8 +9,6 @@ interface MarketListItemProps {
   change24h: number;
   volume?: string;
   maxLeverage?: number;
-  isHip3?: boolean;
-  dex?: string;
   onClick: () => void;
 }
 
@@ -23,8 +21,6 @@ export function MarketListItem({
   change24h,
   volume,
   maxLeverage,
-  isHip3,
-  dex,
   onClick,
 }: MarketListItemProps) {
   const isPositive = change24h >= 0;
@@ -40,24 +36,9 @@ export function MarketListItem({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="font-semibold text-foreground text-sm truncate">{displayName}</span>
-          {isHip3 ? (
-            <>
-              {maxLeverage && (
-                <span className="flex-shrink-0 text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-medium">
-                  {maxLeverage}x
-                </span>
-              )}
-              {dex && (
-                <span className="flex-shrink-0 text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">
-                  {dex}
-                </span>
-              )}
-            </>
-          ) : (
-            <span className="flex-shrink-0 text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-medium">
-              {marketType === 'perp' ? (maxLeverage ? `${maxLeverage}x` : 'PERP') : 'SPOT'}
-            </span>
-          )}
+          <span className="flex-shrink-0 text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-medium">
+            {marketType === 'perp' ? (maxLeverage ? `${maxLeverage}x` : 'PERP') : 'SPOT'}
+          </span>
         </div>
         {marketType !== 'spot' && volume && (
           <span className="text-xs text-gray-400">Vol {volume}</span>

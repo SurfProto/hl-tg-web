@@ -112,7 +112,6 @@ export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
                   price={price != null ? `$${price.toLocaleString('en-US', { maximumFractionDigits: 4 })}` : '-'}
                   change24h={stats?.change24h ?? 0}
                   maxLeverage={market.type === 'perp' ? market.maxLeverage : undefined}
-                  isHip3={market.isHip3}
                   onClick={() => {
                     onSelect(coin);
                     onClose();

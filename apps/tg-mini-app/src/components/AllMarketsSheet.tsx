@@ -100,8 +100,6 @@ export function AllMarketsSheet({ isOpen, onClose, markets, mids, marketStats, o
                   change24h={stats?.change24h ?? 0}
                   volume={stats ? formatVolume(stats.dayNtlVlm) : undefined}
                   maxLeverage={market.type === 'perp' ? market.maxLeverage : undefined}
-                  isHip3={market.isHip3}
-                  dex={market.type === 'perp' && market.isHip3 ? market.dex : undefined}
                   onClick={() => onSelect(coin)}
                 />
               );

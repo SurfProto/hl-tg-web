@@ -16,10 +16,20 @@ export function getMarketDisplayName(market: AnyMarket | string): string {
     return `${baseName}/${quoteName}`;
   }
 
+  if (market.isHip3 && market.dex) {
+    const coinPart = stripDexPrefix(market.name); // e.g. GOLD-USDC (suffix kept)
+    return `${coinPart}:${market.dex}`;            // → GOLD-USDC:xyz
+  }
+
   return stripDexPrefix(market.name);
 }
 
 export function getMarketBaseAsset(market: AnyMarket | string): string {
+  if (typeof market !== 'string' && market.type === 'perp' && market.isHip3) {
+    // For HIP-3 display names are `COIN:dex` — base asset is just the coin part (before `:`)
+    // Use internal name directly: `dex:COIN` → strip prefix → `COIN`
+    return stripDexPrefix(market.name);
+  }
   return getMarketDisplayName(market).split('/')[0];
 }
 
@@ -36,6 +46,9 @@ export function getMarketSearchTerms(market: AnyMarket): string[] {
     terms.add(`${market.baseName}/${market.quoteName}`);
   } else {
     terms.add(getMarketDisplayName(market));
+    if (market.isHip3 && market.dex) {
+      terms.add(market.dex);
+    }
   }
 
   return [...terms].filter(Boolean);

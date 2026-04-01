@@ -74,6 +74,12 @@ export const COIN_SUBCATEGORY_MAP: Record<string, MarketSubCategory> = {
 
 // ─── Classification ──────────────────────────────────────────────────────────
 
+// Strip stablecoin suffix for set lookups only (not for display).
+// e.g. GOLD-USDC → GOLD, so TRADFI_SYMBOLS.has('GOLD') = true
+function normalizeBase(base: string): string {
+  return base.replace(/-(?:USDC|USDT|USDH|USD)$/i, '');
+}
+
 export function classifyMarket(market: AnyMarket): MarketCategory[] {
   const categories: MarketCategory[] = ['all'];
 
@@ -82,7 +88,7 @@ export function classifyMarket(market: AnyMarket): MarketCategory[] {
     return categories;
   }
 
-  const base = getMarketBaseAsset(market).toUpperCase();
+  const base = normalizeBase(getMarketBaseAsset(market).toUpperCase());
 
   if (market.isHip3) {
     categories.push('hip3');
@@ -110,7 +116,7 @@ export function getMarketSubCategory(market: AnyMarket): MarketSubCategory | und
     if (q === 'USDT') return 'usdt';
     return undefined;
   }
-  const base = getMarketBaseAsset(market).toUpperCase();
+  const base = normalizeBase(getMarketBaseAsset(market).toUpperCase());
   if (TRADFI_STOCKS.has(base))      return 'stocks';
   if (TRADFI_INDICES.has(base))     return 'indices';
   if (TRADFI_COMMODITIES.has(base)) return 'commodities';

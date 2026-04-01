@@ -89,7 +89,6 @@ export function TradePage() {
     () => selectedMarketForDisplay ? getMarketBaseAsset(selectedMarketForDisplay) : getMarketBaseAsset(symbol),
     [selectedMarketForDisplay, symbol],
   );
-  const isHip3Unsupported = Boolean(selectedPerpMarket?.isHip3);
 
   const maxLeverage = useMemo(
     () => selectedPerpMarket?.maxLeverage ?? 50,
@@ -340,45 +339,6 @@ export function TradePage() {
       },
     });
   };
-
-  if (isHip3Unsupported) {
-    return (
-      <div className="h-full flex flex-col bg-background">
-        <header className="flex-none px-4 py-3 flex items-center justify-between border-b border-separator bg-white">
-          <div className="flex items-center gap-2.5">
-            <TokenIcon coin={baseToken} size={32} />
-            <div>
-              <span className="font-bold text-foreground">{displayName}</span>
-              <span className="text-xs text-gray-400 ml-1">HIP-3</span>
-            </div>
-          </div>
-          {currentPrice != null && (
-            <span className="text-sm font-medium text-gray-600 tabular-nums">
-              {formatPrice(currentPrice)}
-            </span>
-          )}
-        </header>
-
-        <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
-          <div className="max-w-sm rounded-2xl border border-amber-200 bg-amber-50 px-5 py-5">
-            <p className="text-lg font-semibold text-foreground">Trading unavailable</p>
-            <p className="text-sm text-amber-800 mt-2">
-              HIP-3 markets are view-only in the Telegram app for now. Use the web app until abstraction support is added here.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex-none px-4 pt-2 pb-4 safe-area-bottom bg-white border-t border-separator">
-          <button
-            onPointerDown={() => navigate(-1)}
-            className="w-full py-4 rounded-xl font-semibold text-sm bg-primary text-white active:opacity-80 transition-opacity"
-          >
-            Back
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="h-full flex flex-col bg-background">

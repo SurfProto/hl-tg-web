@@ -293,8 +293,10 @@ export class HyperliquidClient {
           });
 
           return dexMetaAndCtxs[0].universe
-            .filter((market: any) => !market.isDelisted)
             .map((market: any, index: number) => {
+              // Must map BEFORE filtering so `index` matches the original universe position,
+              // which is required for the correct HIP-3 asset formula: 100000 + dexIndex*10000 + index
+              if (market.isDelisted) return null;
               const fullName = `${dex}:${market.name}`;
               const cached: CachedMarket = {
                 asset: 100000 + dexIndex * 10000 + index,
@@ -325,7 +327,8 @@ export class HyperliquidClient {
                 name: fullName,
                 onlyIsolated: Boolean(market.onlyIsolated),
               };
-            });
+            })
+            .filter((m: any) => m !== null);
         }),
       )
     ).flat();

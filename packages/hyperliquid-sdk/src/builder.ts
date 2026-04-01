@@ -23,13 +23,6 @@ export function configureBuilder(address: string | undefined, feeTenthsBp?: numb
   if (feeTenthsBp != null && !Number.isNaN(feeTenthsBp)) _config.feeTenthsBp = feeTenthsBp;
 }
 
-export const BUILDER_ADDRESS = {
-  get current(): string {
-    return _config.address;
-  },
-} as unknown as string;
-
-// Re-export as a plain getter function so hooks.ts can read the live value
 export function getBuilderAddress(): string {
   return _config.address;
 }

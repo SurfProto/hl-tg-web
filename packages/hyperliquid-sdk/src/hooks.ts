@@ -14,6 +14,7 @@ import {
   storeAgentKey,
 } from './agent';
 import type { AssetCtx, MarketStats, Order, PortfolioHistoryPoint, WsMessage } from '@repo/types';
+import { USDC_ARBITRUM, HL_BRIDGE_ARBITRUM } from './constants';
 
 /**
  * Hook to get a public Hyperliquid client instance (no wallet required).
@@ -440,7 +441,7 @@ export function useArbitrumUsdcBalance(address: string | undefined) {
       const { arbitrum } = await import('viem/chains');
       const client = createPublicClient({ chain: arbitrum, transport: http() });
       const raw = await client.readContract({
-        address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+        address: USDC_ARBITRUM,
         abi: erc20Abi,
         functionName: 'balanceOf',
         args: [address as `0x${string}`],
@@ -452,8 +453,6 @@ export function useArbitrumUsdcBalance(address: string | undefined) {
   });
 }
 
-const USDC_ARBITRUM = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as const;
-const HL_BRIDGE_ARBITRUM = '0x2Df1c51E09aECF9cacB7bc98cB1742757f163dF7' as const;
 
 export function useFundArbitrumUsdc() {
   const { user } = usePrivy();

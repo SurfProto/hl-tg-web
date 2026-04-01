@@ -64,6 +64,9 @@ export {
   clearAgentKey,
 } from './agent';
 
+// Shared constants (chain addresses, IDs)
+export { USDC_ARBITRUM, HL_BRIDGE_ARBITRUM, ARBITRUM_CHAIN_ID } from './constants';
+
 // Builder code
 export {
   configureBuilder,

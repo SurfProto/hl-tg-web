@@ -480,6 +480,7 @@ export function useFundArbitrumUsdc() {
  */
 export function useBridgeToHyperliquid() {
   const { wallets } = useWallets();
+  const { user } = usePrivy();
   const { sendTransaction } = useSendTransaction();
   const queryClient = useQueryClient();
 
@@ -487,8 +488,25 @@ export function useBridgeToHyperliquid() {
     mutationFn: async ({ amount }: { amount: number }) => {
       if (amount < 5) throw new Error('Minimum deposit is 5 USDC');
 
-      const { encodeFunctionData, erc20Abi } = await import('viem');
+      const { createPublicClient, encodeFunctionData, erc20Abi, http } = await import('viem');
       const { arbitrum } = await import('viem/chains');
+
+      // Preflight: check Arbitrum USDC balance before sending the transaction
+      const walletAddr = user?.wallet?.address;
+      if (!walletAddr) throw new Error('No wallet connected');
+      const publicClient = createPublicClient({ chain: arbitrum, transport: http() });
+      const rawBalance = await publicClient.readContract({
+        address: USDC_ARBITRUM,
+        abi: erc20Abi,
+        functionName: 'balanceOf',
+        args: [walletAddr as `0x${string}`],
+      });
+      const usdcBalance = Number(rawBalance) / 1e6;
+      if (usdcBalance < amount) {
+        throw new Error(
+          `Insufficient USDC on Arbitrum. You have ${usdcBalance.toFixed(2)} USDC but need ${amount.toFixed(2)} USDC.`
+        );
+      }
 
       const embeddedWallet = wallets.find(w => w.walletClientType === 'privy');
       if (!embeddedWallet) throw new Error('No embedded wallet found');

@@ -736,7 +736,9 @@ export class HyperliquidClient {
     const merged = { ...baseMids };
     for (const dexResult of dexMids) {
       Object.entries(dexResult.mids).forEach(([coin, price]) => {
-        merged[`${dexResult.dex}:${coin}`] = price;
+        // Strip any dex prefix the API may include (same fix as in ensureMarketCache)
+        const bareCoin = coin.includes(':') ? coin.split(':').pop()! : coin;
+        merged[`${dexResult.dex}:${bareCoin}`] = price;
       });
     }
     return merged;
@@ -1203,8 +1205,15 @@ export class HyperliquidClient {
 
   // Get market stats for all perp assets (24h vol, price change, OI, funding)
   async getMarketStats(): Promise<Record<string, MarketStats>> {
+    const cache = await this.ensureMarketCache();
     await this.refreshAssetCtxs();
     const { data, perpUniverse } = this.assetCtxsCache!;
+    const hip3MetaAndCtxs = await Promise.all(
+      cache.perpDexs.map(async ({ dex }) => ({
+        dex,
+        response: await this.postInfo<any>({ type: 'metaAndAssetCtxs', dex }),
+      })),
+    );
     const result: Record<string, MarketStats> = {};
 
     for (let i = 0; i < perpUniverse.length; i++) {
@@ -1226,6 +1235,34 @@ export class HyperliquidClient {
         oraclePx: parseFloat(ctx.oraclePx ?? '0'),
         change24h,
       };
+    }
+
+    for (const { dex, response } of hip3MetaAndCtxs) {
+      const hip3Universe = response?.[0]?.universe ?? [];
+      const hip3Ctxs = response?.[1] ?? [];
+
+      for (let i = 0; i < hip3Universe.length; i++) {
+        const meta = hip3Universe[i];
+        const ctx = hip3Ctxs[i];
+        if (!ctx || meta?.isDelisted) continue;
+
+        const bareName = meta.name.includes(':') ? meta.name.split(':').pop()! : meta.name;
+        const coin = `${dex}:${bareName}`;
+        const markPx = parseFloat(ctx.markPx ?? '0');
+        const prevDayPx = parseFloat(ctx.prevDayPx ?? '0');
+        const change24h = prevDayPx > 0 ? ((markPx - prevDayPx) / prevDayPx) * 100 : 0;
+
+        result[coin] = {
+          coin,
+          markPx,
+          prevDayPx,
+          dayNtlVlm: parseFloat(ctx.dayNtlVlm ?? '0'),
+          openInterest: parseFloat(ctx.openInterest ?? '0'),
+          funding: parseFloat(ctx.funding ?? '0'),
+          oraclePx: parseFloat(ctx.oraclePx ?? '0'),
+          change24h,
+        };
+      }
     }
 
     return result;

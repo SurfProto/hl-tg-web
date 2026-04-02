@@ -6,12 +6,14 @@
     "build": "turbo build",
     "dev": "turbo dev",
     "lint": "turbo lint",
+    "test": "turbo test",
     "format": "prettier --write \"**/*.{ts,tsx,md}\""
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
     "prettier": "^3.2.5",
-    "turbo": "^2.0.0"
+    "turbo": "^2.0.0",
+    "vitest": "^2.1.8"
   },
   "packageManager": "pnpm@9.1.0",
   "engines": {

@@ -28,10 +28,10 @@ export interface PerpMarket extends Market {
 export type AnyMarket = SpotMarket | PerpMarket;
 
 // Market classification types
-export type MarketCategory = 'all' | 'perps' | 'spot' | 'crypto' | 'tradfi' | 'hip3' | 'trending' | 'prelaunch';
-export type MarketTag = 'PERP' | 'SPOT' | 'TRADFI' | 'CASH' | 'HIP-3';
+export type MarketCategory = 'all' | 'perps' | 'spot' | 'crypto' | 'tradfi' | 'trending' | 'prelaunch';
+export type MarketTag = 'PERP' | 'SPOT' | 'TRADFI' | 'CASH';
 export type MarketSubCategory =
-  | 'stocks' | 'indices' | 'commodities' | 'fx'
+  | 'stocks' | 'indices' | 'commodities' | 'fx' | 'pre-ipo'
   | 'ai' | 'defi' | 'gaming' | 'layer1' | 'layer2' | 'meme'
   | 'usdc' | 'usdh' | 'usdt';
 

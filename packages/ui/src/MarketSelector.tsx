@@ -20,7 +20,7 @@ interface MarketSelectorProps {
 }
 
 const DEFAULT_CATEGORIES: MarketCategory[] = [
-  'all', 'perps', 'spot', 'crypto', 'tradfi', 'hip3', 'trending', 'prelaunch',
+  'all', 'perps', 'spot', 'crypto', 'tradfi', 'trending', 'prelaunch',
 ];
 
 const DEFAULT_LABELS: Record<string, string> = {
@@ -29,7 +29,6 @@ const DEFAULT_LABELS: Record<string, string> = {
   spot: 'Spot',
   crypto: 'Crypto',
   tradfi: 'Tradfi',
-  hip3: 'HIP-3',
   trending: 'Trending',
   prelaunch: 'Pre-launch',
 };

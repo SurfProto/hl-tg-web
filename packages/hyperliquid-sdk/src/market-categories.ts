@@ -26,6 +26,10 @@ const TRADFI_SYMBOLS = new Set([
 
 const PRE_LAUNCH_SYMBOLS = new Set(['MEGA']);
 
+// ─── Tradfi Pre-IPO ─────────────────────────────────────────────────────────
+
+const TRADFI_PRE_IPO = new Set<string>([]);
+
 // ─── Crypto sub-category map ─────────────────────────────────────────────────
 // The Hyperliquid API has no category metadata — this is the curated map.
 // Rule: one entry per coin, primary identity wins.
@@ -91,9 +95,7 @@ export function classifyMarket(market: AnyMarket): MarketCategory[] {
   const base = normalizeBase(getMarketBaseAsset(market).toUpperCase());
 
   if (market.isHip3) {
-    categories.push('hip3');
-    // HIP-3 markets also appear in tradfi/crypto tabs based on their underlying asset
-    categories.push(TRADFI_SYMBOLS.has(base) ? 'tradfi' : 'crypto');
+    categories.push('tradfi');
     return categories;
   }
 
@@ -117,6 +119,7 @@ export function getMarketSubCategory(market: AnyMarket): MarketSubCategory | und
     return undefined;
   }
   const base = normalizeBase(getMarketBaseAsset(market).toUpperCase());
+  if (TRADFI_PRE_IPO.has(base))     return 'pre-ipo';
   if (TRADFI_STOCKS.has(base))      return 'stocks';
   if (TRADFI_INDICES.has(base))     return 'indices';
   if (TRADFI_COMMODITIES.has(base)) return 'commodities';
@@ -132,10 +135,7 @@ export function getMarketTags(market: AnyMarket, spotTokenNames?: Set<string>): 
     tags.push('SPOT');
   } else {
     tags.push('PERP');
-    if (market.isHip3) {
-      tags.push('HIP-3');
-    }
-    if (TRADFI_SYMBOLS.has(baseAsset.toUpperCase())) {
+    if (TRADFI_SYMBOLS.has(normalizeBase(baseAsset.toUpperCase()))) {
       tags.push('TRADFI');
     }
     if (!market.isHip3 && spotTokenNames && spotTokenNames.has(baseAsset)) {
@@ -185,13 +185,12 @@ export const CATEGORY_LABELS: Record<MarketCategory, string> = {
   spot: 'Spot',
   crypto: 'Crypto',
   tradfi: 'Tradfi',
-  hip3: 'HIP-3',
   trending: 'Trending',
   prelaunch: 'Pre-launch',
 };
 
 export const CATEGORY_ORDER: MarketCategory[] = [
-  'all', 'perps', 'spot', 'crypto', 'tradfi', 'hip3', 'trending', 'prelaunch',
+  'all', 'perps', 'spot', 'crypto', 'tradfi', 'trending', 'prelaunch',
 ];
 
 export type SubFilterConfig = { key: MarketSubCategory; label: string }[];
@@ -215,5 +214,6 @@ export const SUB_FILTERS: Partial<Record<MarketCategory, SubFilterConfig>> = {
     { key: 'indices', label: 'Indices' },
     { key: 'commodities', label: 'Commodities' },
     { key: 'fx', label: 'FX' },
+    { key: 'pre-ipo', label: 'Pre-IPO' },
   ],
 };

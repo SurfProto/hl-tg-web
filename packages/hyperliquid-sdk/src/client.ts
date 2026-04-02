@@ -297,11 +297,13 @@ export class HyperliquidClient {
               // Must map BEFORE filtering so `index` matches the original universe position,
               // which is required for the correct HIP-3 asset formula: 100000 + dexIndex*10000 + index
               if (market.isDelisted) return null;
-              const fullName = `${dex}:${market.name}`;
+              // Strip any dex prefix the API may have included to avoid "xyz:xyz:GOLD-USDC"
+              const bareName = market.name.includes(':') ? market.name.split(':').pop()! : market.name;
+              const fullName = `${dex}:${bareName}`;
               const cached: CachedMarket = {
                 asset: 100000 + dexIndex * 10000 + index,
                 aliases: [fullName],
-                baseCoin: market.name,
+                baseCoin: bareName,
                 dex,
                 dexIndex,
                 isHip3: true,

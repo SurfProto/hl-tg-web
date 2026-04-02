@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   CATEGORY_LABELS,
@@ -12,13 +12,31 @@ import {
   useMids,
 } from '@repo/hyperliquid-sdk';
 import type { AnyMarket, MarketCategory, MarketSubCategory } from '@repo/types';
-import { AllMarketsSheet } from '../components/AllMarketsSheet';
-import { BalanceHero } from '../components/BalanceHero';
 import { CategoryPills } from '../components/CategoryPills';
 import { MarketListItem } from '../components/MarketListItem';
 import { MarketListItemSkeleton } from '../components/MarketListItemSkeleton';
-import { SearchSheet } from '../components/SearchSheet';
 import { formatPrice } from '../utils/format';
+
+function lazyNamedModule<T extends Record<string, React.ComponentType<any>>>(
+  loader: () => Promise<T>,
+  exportName: keyof T,
+) {
+  return lazy(async () => {
+    const module = await loader();
+    return { default: module[exportName] as React.ComponentType<any> };
+  });
+}
+
+const BalanceHero = lazyNamedModule(() => import('../components/BalanceHero'), 'BalanceHero');
+const SearchSheet = lazyNamedModule(() => import('../components/SearchSheet'), 'SearchSheet');
+const AllMarketsSheet = lazyNamedModule(() => import('../components/AllMarketsSheet'), 'AllMarketsSheet');
+const HOME_ROW_COUNT = 6;
+const DEFERRED_ROUTE_PREFETCHERS = [
+  () => import('./TradePage'),
+  () => import('./AccountPage'),
+  () => import('./PositionsPage'),
+  () => import('./CoinDetailPage'),
+];
 
 function formatVolume(vol: number): string {
   if (vol >= 1_000_000_000) return `$${(vol / 1_000_000_000).toFixed(1)}B`;
@@ -33,17 +51,43 @@ export function HomePage() {
   const [selectedSubCategory, setSelectedSubCategory] = useState<MarketSubCategory | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [allMarketsOpen, setAllMarketsOpen] = useState(false);
+  const [showDeferredContent, setShowDeferredContent] = useState(false);
 
   const { data: markets, isLoading: marketsLoading } = useMarketData();
   const { data: mids, isLoading: midsLoading } = useMids();
-  const { data: marketStats } = useMarketStats();
-  const isLoading = marketsLoading || midsLoading;
+  const { data: marketStats, isLoading: marketStatsLoading } = useMarketStats();
+  const isLoading = marketsLoading || midsLoading || marketStatsLoading;
 
   const subFilters = SUB_FILTERS[selectedCategory as MarketCategory] ?? null;
 
   useEffect(() => {
     setSelectedSubCategory(null);
   }, [selectedCategory]);
+
+  useEffect(() => {
+    if (isLoading) {
+      setShowDeferredContent(false);
+      return;
+    }
+
+    const prefetchDeferredContent = () => {
+      setShowDeferredContent(true);
+      for (const prefetchRoute of DEFERRED_ROUTE_PREFETCHERS) {
+        void prefetchRoute();
+      }
+    };
+
+    const requestIdleCallback = window.requestIdleCallback?.bind(window);
+    const cancelIdleCallback = window.cancelIdleCallback?.bind(window);
+
+    if (requestIdleCallback && cancelIdleCallback) {
+      const idleId = requestIdleCallback(prefetchDeferredContent, { timeout: 500 });
+      return () => cancelIdleCallback(idleId);
+    }
+
+    const timeoutId = window.setTimeout(prefetchDeferredContent, 120);
+    return () => window.clearTimeout(timeoutId);
+  }, [isLoading]);
 
   const allMarkets: AnyMarket[] = useMemo(() => [
     ...(markets?.spot ?? []).map((market: any) => ({ ...market, type: 'spot' as const })),
@@ -62,7 +106,7 @@ export function HomePage() {
     [allMarkets, priceChanges, markets?.spotTokenNames],
   );
 
-  const filtered = useMemo(() => {
+  const sortedFiltered = useMemo(() => {
     let result = selectedCategory === 'all'
       ? enriched
       : enriched.filter(({ categories }) => categories.includes(selectedCategory as MarketCategory));
@@ -71,14 +115,23 @@ export function HomePage() {
       result = result.filter(({ subCategory }) => subCategory === selectedSubCategory);
     }
 
-    return result;
-  }, [enriched, selectedCategory, selectedSubCategory]);
+    return [...result].sort((left, right) => {
+      const leftVolume = marketStats?.[left.market.name]?.dayNtlVlm ?? 0;
+      const rightVolume = marketStats?.[right.market.name]?.dayNtlVlm ?? 0;
+
+      if (rightVolume !== leftVolume) {
+        return rightVolume - leftVolume;
+      }
+
+      return getMarketDisplayName(left.market).localeCompare(getMarketDisplayName(right.market));
+    });
+  }, [enriched, marketStats, selectedCategory, selectedSubCategory]);
+
+  const visibleMarkets = sortedFiltered.slice(0, HOME_ROW_COUNT);
 
   return (
     <div className="min-h-full bg-background">
-      <BalanceHero />
-
-      <div className="px-4 mb-2">
+      <div className="px-4 pt-5 mb-2">
         <CategoryPills
           categories={CATEGORY_ORDER}
           labels={CATEGORY_LABELS}
@@ -116,13 +169,13 @@ export function HomePage() {
       <div className="bg-white border-t border-separator">
         {isLoading ? (
           <div className="divide-y divide-separator">
-            {Array.from({ length: 6 }, (_, index) => <MarketListItemSkeleton key={index} />)}
+            {Array.from({ length: HOME_ROW_COUNT }, (_, index) => <MarketListItemSkeleton key={index} />)}
           </div>
-        ) : filtered.length === 0 ? (
+        ) : sortedFiltered.length === 0 ? (
           <div className="py-16 text-center text-gray-400 text-sm">No markets</div>
         ) : (
           <div className="divide-y divide-separator">
-            {filtered.slice(0, 6).map(({ market }) => {
+            {visibleMarkets.map(({ market }) => {
               const coin = market.name;
               const displayName = getMarketDisplayName(market);
               const iconCoin = getMarketBaseAsset(market);
@@ -144,13 +197,13 @@ export function HomePage() {
                 />
               );
             })}
-            {filtered.length > 6 && (
+            {sortedFiltered.length > HOME_ROW_COUNT && (
               <button
                 type="button"
                 onClick={() => setAllMarketsOpen(true)}
                 className="w-full flex items-center justify-between px-4 py-3.5 bg-white active:bg-gray-50 transition-colors"
               >
-                <span className="text-sm font-medium text-primary">See all {filtered.length} markets</span>
+                <span className="text-sm font-medium text-primary">See all {sortedFiltered.length} markets</span>
                 <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
@@ -159,6 +212,12 @@ export function HomePage() {
           </div>
         )}
       </div>
+
+      {showDeferredContent && (
+        <Suspense fallback={<div className="h-px bg-separator mt-4" />}>
+          <BalanceHero />
+        </Suspense>
+      )}
 
       <button
         type="button"
@@ -171,23 +230,31 @@ export function HomePage() {
         </svg>
       </button>
 
-      <SearchSheet
-        isOpen={searchOpen}
-        onClose={() => setSearchOpen(false)}
-        onSelect={(coin) => navigate(`/coin/${encodeURIComponent(coin)}`)}
-      />
+      {searchOpen && (
+        <Suspense fallback={null}>
+          <SearchSheet
+            isOpen={searchOpen}
+            onClose={() => setSearchOpen(false)}
+            onSelect={(coin: string) => navigate(`/coin/${encodeURIComponent(coin)}`)}
+          />
+        </Suspense>
+      )}
 
-      <AllMarketsSheet
-        isOpen={allMarketsOpen}
-        onClose={() => setAllMarketsOpen(false)}
-        markets={filtered}
-        mids={mids}
-        marketStats={marketStats}
-        onSelect={(coin) => {
-          setAllMarketsOpen(false);
-          navigate(`/coin/${encodeURIComponent(coin)}`);
-        }}
-      />
+      {allMarketsOpen && (
+        <Suspense fallback={null}>
+          <AllMarketsSheet
+            isOpen={allMarketsOpen}
+            onClose={() => setAllMarketsOpen(false)}
+            markets={sortedFiltered}
+            mids={mids}
+            marketStats={marketStats}
+            onSelect={(coin: string) => {
+              setAllMarketsOpen(false);
+              navigate(`/coin/${encodeURIComponent(coin)}`);
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

@@ -1208,12 +1208,15 @@ export class HyperliquidClient {
     const cache = await this.ensureMarketCache();
     await this.refreshAssetCtxs();
     const { data, perpUniverse } = this.assetCtxsCache!;
-    const hip3MetaAndCtxs = await Promise.all(
-      cache.perpDexs.map(async ({ dex }) => ({
-        dex,
-        response: await this.postInfo<any>({ type: 'metaAndAssetCtxs', dex }),
-      })),
-    );
+    const [spotMetaAndCtxs, hip3MetaAndCtxs] = await Promise.all([
+      this.postInfo<any>({ type: 'spotMetaAndAssetCtxs' }).catch(() => null),
+      Promise.all(
+        cache.perpDexs.map(async ({ dex }) => ({
+          dex,
+          response: await this.postInfo<any>({ type: 'metaAndAssetCtxs', dex }),
+        })),
+      ),
+    ]);
     const result: Record<string, MarketStats> = {};
 
     for (let i = 0; i < perpUniverse.length; i++) {
@@ -1233,6 +1236,28 @@ export class HyperliquidClient {
         openInterest: parseFloat(ctx.openInterest ?? '0'),
         funding: parseFloat(ctx.funding ?? '0'),
         oraclePx: parseFloat(ctx.oraclePx ?? '0'),
+        change24h,
+      };
+    }
+
+    const spotCtxs = Array.isArray(spotMetaAndCtxs?.[1]) ? spotMetaAndCtxs[1] : [];
+    for (const ctx of spotCtxs) {
+      const coin = typeof ctx?.coin === 'string' ? ctx.coin : null;
+      if (!coin) continue;
+
+      const markPx = parseFloat(ctx.markPx ?? ctx.midPx ?? '0');
+      const prevDayPx = parseFloat(ctx.prevDayPx ?? '0');
+      const oraclePx = parseFloat(ctx.oraclePx ?? ctx.midPx ?? '0');
+      const change24h = prevDayPx > 0 ? ((markPx - prevDayPx) / prevDayPx) * 100 : 0;
+
+      result[coin] = {
+        coin,
+        markPx,
+        prevDayPx,
+        dayNtlVlm: parseFloat(ctx.dayNtlVlm ?? '0'),
+        openInterest: 0,
+        funding: 0,
+        oraclePx,
         change24h,
       };
     }

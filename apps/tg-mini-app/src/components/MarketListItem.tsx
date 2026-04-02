@@ -40,7 +40,7 @@ export function MarketListItem({
             {marketType === 'perp' ? (maxLeverage ? `${maxLeverage}x` : 'PERP') : 'SPOT'}
           </span>
         </div>
-        {marketType !== 'spot' && volume && (
+        {volume && (
           <span className="text-xs text-gray-400">Vol {volume}</span>
         )}
       </div>

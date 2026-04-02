@@ -1,75 +1,99 @@
-import React, { useEffect, useState } from 'react';
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PrivyProvider, usePrivy, type User } from '@privy-io/react-auth';
 import { arbitrum } from 'viem/chains';
+import { Layout } from './components/Layout';
+import { HomePage } from './pages/HomePage';
+import { ensureUser, getTelegramProfile } from './lib/supabase';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { ToastProvider } from './components/Toast';
+import './index.css';
 
-// loginWithTelegram was removed from Privy public types in v1.99 but remains in the bundle.
-// This interface narrows the cast to only the extra method we need, avoiding `as any`.
 interface PrivyWithTelegram {
   ready: boolean;
   authenticated: boolean;
   user: User | null;
   loginWithTelegram: () => Promise<void>;
 }
-import { Layout } from './components/Layout';
-import { HomePage } from './pages/HomePage';
-import { PositionsPage } from './pages/PositionsPage';
-import { PointsPage } from './pages/PointsPage';
-import { AccountPage } from './pages/AccountPage';
-import { CoinDetailPage } from './pages/CoinDetailPage';
-import { TradePage } from './pages/TradePage';
-import { DepositPage } from './pages/account/DepositPage';
-import { WithdrawPage } from './pages/account/WithdrawPage';
-import { TransferPage } from './pages/account/TransferPage';
-import { SwapPage } from './pages/account/SwapPage';
-import { AccountSettingsMenu } from './pages/account/AccountSettingsMenu';
-import { PersonalInfoPage } from './pages/account/PersonalInfoPage';
-import { NotificationsPage } from './pages/account/NotificationsPage';
-import { PrivateKeyPage } from './pages/account/PrivateKeyPage';
-import { LanguagePage } from './pages/account/LanguagePage';
-import { SupportPage } from './pages/account/SupportPage';
-import { LegalPage } from './pages/account/LegalPage';
-import { ensureUser, getTelegramProfile } from './lib/supabase';
-import { ErrorBoundary } from './components/ErrorBoundary';
-import { ToastProvider } from './components/Toast';
-import './index.css';
+
+function lazyNamedModule<T extends Record<string, React.ComponentType<any>>>(
+  loader: () => Promise<T>,
+  exportName: keyof T,
+) {
+  return lazy(async () => {
+    const module = await loader();
+    return { default: module[exportName] as React.ComponentType<any> };
+  });
+}
+
+const PositionsPage = lazyNamedModule(() => import('./pages/PositionsPage'), 'PositionsPage');
+const PointsPage = lazyNamedModule(() => import('./pages/PointsPage'), 'PointsPage');
+const AccountPage = lazyNamedModule(() => import('./pages/AccountPage'), 'AccountPage');
+const CoinDetailPage = lazyNamedModule(() => import('./pages/CoinDetailPage'), 'CoinDetailPage');
+const TradePage = lazyNamedModule(() => import('./pages/TradePage'), 'TradePage');
+const DepositPage = lazyNamedModule(() => import('./pages/account/DepositPage'), 'DepositPage');
+const WithdrawPage = lazyNamedModule(() => import('./pages/account/WithdrawPage'), 'WithdrawPage');
+const TransferPage = lazyNamedModule(() => import('./pages/account/TransferPage'), 'TransferPage');
+const SwapPage = lazyNamedModule(() => import('./pages/account/SwapPage'), 'SwapPage');
+const AccountSettingsMenu = lazyNamedModule(() => import('./pages/account/AccountSettingsMenu'), 'AccountSettingsMenu');
+const PersonalInfoPage = lazyNamedModule(() => import('./pages/account/PersonalInfoPage'), 'PersonalInfoPage');
+const NotificationsPage = lazyNamedModule(() => import('./pages/account/NotificationsPage'), 'NotificationsPage');
+const PrivateKeyPage = lazyNamedModule(() => import('./pages/account/PrivateKeyPage'), 'PrivateKeyPage');
+const LanguagePage = lazyNamedModule(() => import('./pages/account/LanguagePage'), 'LanguagePage');
+const SupportPage = lazyNamedModule(() => import('./pages/account/SupportPage'), 'SupportPage');
+const LegalPage = lazyNamedModule(() => import('./pages/account/LegalPage'), 'LegalPage');
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60, // 1 minute
+      staleTime: 1000 * 60,
       refetchOnWindowFocus: false,
     },
   },
 });
 
-// Seamless Telegram auth component
+function RouteFallback() {
+  return (
+    <div className="min-h-full bg-background">
+      <div className="px-4 pt-6 pb-4">
+        <div className="h-6 w-28 rounded-full bg-surface animate-pulse" />
+      </div>
+      <div className="divide-y divide-separator bg-white border-t border-separator">
+        {Array.from({ length: 6 }, (_, index) => (
+          <div key={index} className="flex items-center gap-3 px-4 py-3 animate-pulse">
+            <div className="h-9 w-9 rounded-full bg-surface flex-shrink-0" />
+            <div className="flex-1 min-w-0 space-y-2">
+              <div className="h-3 w-24 rounded-full bg-surface" />
+              <div className="h-3 w-16 rounded-full bg-surface" />
+            </div>
+            <div className="space-y-2 text-right">
+              <div className="h-3 w-16 rounded-full bg-surface" />
+              <div className="h-3 w-12 rounded-full bg-surface" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TelegramAuthGate({ children }: { children: React.ReactNode }) {
-  // Narrow cast: only exposes loginWithTelegram, not the full `any` escape hatch
   const privy = usePrivy() as unknown as PrivyWithTelegram;
-  const { ready, authenticated, user } = privy;
+  const { ready, authenticated, user, loginWithTelegram } = privy;
   const [loginError, setLoginError] = useState<string | null>(null);
 
   const isTMA = Boolean(window.Telegram?.WebApp?.initData);
 
-  // TMA lifecycle: dismiss loading indicator + expand to full height (once)
-  useEffect(() => {
-    if (!isTMA) return;
-    const tg = window.Telegram!.WebApp!;
-    tg.ready();
-    tg.expand();
-  }, [isTMA]);
-
-  // Seamless auto-login using TMA initData — no modal shown
   useEffect(() => {
     if (!ready || authenticated || !isTMA) return;
+
     setLoginError(null);
-    privy.loginWithTelegram().catch((err: unknown) => {
+    loginWithTelegram().catch((err: unknown) => {
       const message = err instanceof Error ? err.message : 'Login failed. Please try again.';
       setLoginError(message);
     });
-  }, [ready, authenticated, isTMA]);
+  }, [authenticated, isTMA, loginWithTelegram, ready]);
 
   useEffect(() => {
     if (!ready || !authenticated) return;
@@ -85,7 +109,7 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
 
   if (!ready) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="tg-root-height bg-background flex items-center justify-center">
         <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto"></div>
       </div>
     );
@@ -93,13 +117,13 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
 
   if (loginError) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4 px-6 text-center">
+      <div className="tg-root-height bg-background flex flex-col items-center justify-center gap-4 px-6 text-center">
         <p className="text-red-500 text-sm">{loginError}</p>
         <button
           className="px-6 py-2 bg-blue-500 text-white rounded-full text-sm font-medium"
           onClick={() => {
             setLoginError(null);
-            privy.loginWithTelegram().catch((err: unknown) => {
+            loginWithTelegram().catch((err: unknown) => {
               const message = err instanceof Error ? err.message : 'Login failed. Please try again.';
               setLoginError(message);
             });
@@ -116,31 +140,33 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
 
 function AppContent() {
   return (
-    <HashRouter>
+    <BrowserRouter>
       <TelegramAuthGate>
         <Layout>
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/positions" element={<PositionsPage />} />
-            <Route path="/points" element={<PointsPage />} />
-            <Route path="/account" element={<AccountPage />} />
-            <Route path="/account/deposit" element={<DepositPage />} />
-            <Route path="/account/withdraw" element={<WithdrawPage />} />
-            <Route path="/account/transfer" element={<TransferPage />} />
-            <Route path="/account/swap" element={<SwapPage />} />
-            <Route path="/account/settings" element={<AccountSettingsMenu />} />
-            <Route path="/account/settings/personal" element={<PersonalInfoPage />} />
-            <Route path="/account/settings/notifications" element={<NotificationsPage />} />
-            <Route path="/account/settings/private-key" element={<PrivateKeyPage />} />
-            <Route path="/account/settings/language" element={<LanguagePage />} />
-            <Route path="/account/settings/support" element={<SupportPage />} />
-            <Route path="/account/settings/legal" element={<LegalPage />} />
-            <Route path="/coin/:symbol" element={<CoinDetailPage />} />
-            <Route path="/trade/:symbol" element={<TradePage />} />
-          </Routes>
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/positions" element={<PositionsPage />} />
+              <Route path="/points" element={<PointsPage />} />
+              <Route path="/account" element={<AccountPage />} />
+              <Route path="/account/deposit" element={<DepositPage />} />
+              <Route path="/account/withdraw" element={<WithdrawPage />} />
+              <Route path="/account/transfer" element={<TransferPage />} />
+              <Route path="/account/swap" element={<SwapPage />} />
+              <Route path="/account/settings" element={<AccountSettingsMenu />} />
+              <Route path="/account/settings/personal" element={<PersonalInfoPage />} />
+              <Route path="/account/settings/notifications" element={<NotificationsPage />} />
+              <Route path="/account/settings/private-key" element={<PrivateKeyPage />} />
+              <Route path="/account/settings/language" element={<LanguagePage />} />
+              <Route path="/account/settings/support" element={<SupportPage />} />
+              <Route path="/account/settings/legal" element={<LegalPage />} />
+              <Route path="/coin/:symbol" element={<CoinDetailPage />} />
+              <Route path="/trade/:symbol" element={<TradePage />} />
+            </Routes>
+          </Suspense>
         </Layout>
       </TelegramAuthGate>
-    </HashRouter>
+    </BrowserRouter>
   );
 }
 
@@ -156,14 +182,12 @@ function App() {
   }
 
   return (
-    <React.StrictMode>
-      <ErrorBoundary>
+    <ErrorBoundary>
       <PrivyProvider
         appId={appId}
         config={{
           defaultChain: arbitrum,
           supportedChains: [arbitrum],
-          // Restrict login methods to prevent Google OAuth popup in Telegram WebView
           loginMethods: ['email', 'sms', 'telegram'],
           appearance: {
             theme: 'light',
@@ -172,7 +196,6 @@ function App() {
           embeddedWallets: {
             createOnLogin: 'users-without-wallets',
           },
-          // Disable Coinbase Wallet SDK to prevent SES Lockdown in Telegram Mini Apps
           externalWallets: {
             coinbaseWallet: {
               connectionOptions: 'smartWalletOnly',
@@ -186,8 +209,7 @@ function App() {
           </ToastProvider>
         </QueryClientProvider>
       </PrivyProvider>
-      </ErrorBoundary>
-    </React.StrictMode>
+    </ErrorBoundary>
   );
 }
 

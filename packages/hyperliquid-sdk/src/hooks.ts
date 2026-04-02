@@ -18,6 +18,20 @@ import {
 import type { AssetCtx, MarketStats, Order, PortfolioHistoryPoint, WsMessage } from '@repo/types';
 import { USDC_ARBITRUM, HL_BRIDGE_ARBITRUM } from './constants';
 
+const publicClientCache = new Map<'mainnet' | 'testnet', HyperliquidClient>();
+
+function getSharedPublicHyperliquidClient(testnet: boolean) {
+  const cacheKey = testnet ? 'testnet' : 'mainnet';
+  let client = publicClientCache.get(cacheKey);
+
+  if (!client) {
+    client = new HyperliquidClient({ testnet });
+    publicClientCache.set(cacheKey, client);
+  }
+
+  return client;
+}
+
 /**
  * Hook to get a public Hyperliquid client instance (no wallet required).
  * Use for market data: prices, orderbook, candles, etc.
@@ -25,7 +39,7 @@ import { USDC_ARBITRUM, HL_BRIDGE_ARBITRUM } from './constants';
  */
 function usePublicHyperliquid() {
   const testnet = import.meta.env.VITE_HYPERLIQUID_TESTNET === 'true';
-  const client = useMemo(() => new HyperliquidClient({ testnet }), [testnet]);
+  const client = useMemo(() => getSharedPublicHyperliquidClient(testnet), [testnet]);
   return { client };
 }
 

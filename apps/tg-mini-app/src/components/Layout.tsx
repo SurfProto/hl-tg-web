@@ -67,7 +67,7 @@ export function Layout({ children }: LayoutProps) {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
+    <div className="tg-root-height bg-background text-foreground flex flex-col">
       <main className={`flex-1 overflow-y-auto ${hideNav ? '' : 'pb-20'}`}>
         {children}
       </main>

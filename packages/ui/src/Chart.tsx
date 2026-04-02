@@ -333,10 +333,11 @@ export function Chart({
     zoomPreset,
   ]);
 
+  // Uses refs so it's safe to call from ResizeObserver or any async context.
   function updateLastPriceCoordinate(price: number | null) {
     if (
-      !showLastPrice ||
-      variant !== "lite-candles" ||
+      !showLastPriceRef.current ||
+      variantRef.current !== "lite-candles" ||
       price == null ||
       !candlestickSeriesRef.current
     ) {
@@ -353,11 +354,12 @@ export function Chart({
     setLastPriceY(coordinate);
   }
 
+  // Uses refs so it's safe to call from ResizeObserver or any async context.
   function applyViewport(totalPoints: number) {
     if (!chartRef.current || totalPoints === 0) return;
 
-    if (zoomPreset === "interval-default" && variant !== "trading") {
-      const viewportPreset = getViewportPreset(variant, interval);
+    if (zoomPresetRef.current === "interval-default" && variantRef.current !== "trading") {
+      const viewportPreset = getViewportPreset(variantRef.current, intervalRef.current);
       const visibleRange = viewportPreset
         ? getVisibleLogicalRange(
             totalPoints,
@@ -375,6 +377,22 @@ export function Chart({
     chartRef.current.timeScale().fitContent();
   }
 
+  function handleResize(width: number, height: number) {
+    if (!chartRef.current) return;
+    chartRef.current.applyOptions({
+      width: Math.max(width, 0),
+      height: Math.max(height, 0),
+    });
+    const totalPoints =
+      seriesKindRef.current === "area"
+        ? areaPointCountRef.current
+        : candleCountRef.current;
+    if (totalPoints > 0) {
+      applyViewport(totalPoints);
+    }
+    updateLastPriceCoordinate(lastPriceRef.current);
+  }
+
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
@@ -389,61 +407,9 @@ export function Chart({
 
     const resizeObserver = new ResizeObserver((entries) => {
       const entry = entries[0];
-      if (!entry || !chartRef.current) return;
-
+      if (!entry) return;
       const { width, height } = entry.contentRect;
-      chartRef.current.applyOptions({
-        width: Math.max(width, 0),
-        height: Math.max(height, 0),
-      });
-
-      const totalPoints =
-        seriesKindRef.current === "area"
-          ? areaPointCountRef.current
-          : candleCountRef.current;
-
-      if (totalPoints > 0) {
-        if (
-          zoomPresetRef.current === "interval-default" &&
-          variantRef.current !== "trading"
-        ) {
-          const viewportPreset = getViewportPreset(
-            variantRef.current,
-            intervalRef.current,
-          );
-          const visibleRange = viewportPreset
-            ? getVisibleLogicalRange(
-                totalPoints,
-                viewportPreset.visibleBars,
-                viewportPreset.rightOffset,
-              )
-            : null;
-
-          if (visibleRange) {
-            chartRef.current.timeScale().setVisibleLogicalRange(visibleRange);
-          } else {
-            chartRef.current.timeScale().fitContent();
-          }
-        } else {
-          chartRef.current.timeScale().fitContent();
-        }
-      }
-
-      if (
-        !showLastPriceRef.current ||
-        variantRef.current !== "lite-candles" ||
-        lastPriceRef.current == null ||
-        !candlestickSeriesRef.current
-      ) {
-        setLastPriceY(null);
-      } else {
-        const coordinate = candlestickSeriesRef.current.priceToCoordinate(
-          lastPriceRef.current,
-        );
-        setLastPriceY(
-          coordinate == null || Number.isNaN(coordinate) ? null : coordinate,
-        );
-      }
+      handleResize(width, height);
     });
 
     resizeObserver.observe(chartContainerRef.current);

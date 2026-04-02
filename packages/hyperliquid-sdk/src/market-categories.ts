@@ -167,11 +167,11 @@ export function enrichMarkets(
       );
 
     const trendingNames = new Set(withChanges.slice(0, 20).map((em) => em.market.name));
-    for (const em of enriched) {
-      if (trendingNames.has(em.market.name)) {
-        em.categories.push('trending');
-      }
-    }
+    return enriched.map((em) =>
+      trendingNames.has(em.market.name)
+        ? { ...em, categories: [...em.categories, 'trending'] as MarketCategory[] }
+        : em,
+    );
   }
 
   return enriched;

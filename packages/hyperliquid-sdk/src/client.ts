@@ -117,6 +117,7 @@ export class HyperliquidClient {
   private config: HyperliquidClientConfig;
   private marketCache: MarketCache | null = null;
   private assetCtxsCache: { data: any[]; perpUniverse: any[]; timestamp: number } | null = null;
+  private hip3AssetCtxsCache: Map<string, { data: any[]; universe: any[]; timestamp: number }> = new Map();
   private builderApprovalCache = new Map<string, number>();
   private leverageTypeCache = new Map<string, boolean>();
 
@@ -290,6 +291,12 @@ export class HyperliquidClient {
           const dexMetaAndCtxs = await this.postInfo<any>({
             type: 'metaAndAssetCtxs',
             dex,
+          });
+
+          this.hip3AssetCtxsCache.set(dex, {
+            data: dexMetaAndCtxs[1] ?? [],
+            universe: dexMetaAndCtxs[0].universe,
+            timestamp: Date.now(),
           });
 
           return dexMetaAndCtxs[0].universe
@@ -1192,15 +1199,29 @@ export class HyperliquidClient {
   // Refresh asset contexts cache (30-second TTL, independent of market metadata)
   private async refreshAssetCtxs(): Promise<void> {
     const ASSET_CTX_TTL_MS = 30_000;
-    if (this.assetCtxsCache && Date.now() - this.assetCtxsCache.timestamp < ASSET_CTX_TTL_MS) {
+    const now = Date.now();
+    if (this.assetCtxsCache && now - this.assetCtxsCache.timestamp < ASSET_CTX_TTL_MS) {
       return;
     }
-    const metaAndCtxs = await this.postInfo<any>({ type: 'metaAndAssetCtxs' });
+    const perpDexs = this.marketCache?.perpDexs ?? [];
+    const [metaAndCtxs, ...dexResults] = await Promise.all([
+      this.postInfo<any>({ type: 'metaAndAssetCtxs' }),
+      ...perpDexs.map(({ dex }) =>
+        this.postInfo<any>({ type: 'metaAndAssetCtxs', dex }).then((r) => ({ dex, r })),
+      ),
+    ]);
     this.assetCtxsCache = {
       data: metaAndCtxs[1],
       perpUniverse: metaAndCtxs[0].universe,
-      timestamp: Date.now(),
+      timestamp: now,
     };
+    for (const { dex, r } of dexResults) {
+      this.hip3AssetCtxsCache.set(dex, {
+        data: r[1] ?? [],
+        universe: r[0].universe,
+        timestamp: now,
+      });
+    }
   }
 
   // Get market stats for all perp assets (24h vol, price change, OI, funding)
@@ -1208,15 +1229,16 @@ export class HyperliquidClient {
     const cache = await this.ensureMarketCache();
     await this.refreshAssetCtxs();
     const { data, perpUniverse } = this.assetCtxsCache!;
-    const [spotMetaAndCtxs, hip3MetaAndCtxs] = await Promise.all([
+    const [spotMetaAndCtxs] = await Promise.all([
       this.postInfo<any>({ type: 'spotMetaAndAssetCtxs' }).catch(() => null),
-      Promise.all(
-        cache.perpDexs.map(async ({ dex }) => ({
-          dex,
-          response: await this.postInfo<any>({ type: 'metaAndAssetCtxs', dex }),
-        })),
-      ),
     ]);
+    const hip3MetaAndCtxs = cache.perpDexs.map(({ dex }) => {
+      const cached = this.hip3AssetCtxsCache.get(dex);
+      return {
+        dex,
+        response: cached ? [{ universe: cached.universe }, cached.data] : null,
+      };
+    }).filter(({ response }) => response !== null) as Array<{ dex: string; response: any[] }>;
     const result: Record<string, MarketStats> = {};
 
     for (let i = 0; i < perpUniverse.length; i++) {

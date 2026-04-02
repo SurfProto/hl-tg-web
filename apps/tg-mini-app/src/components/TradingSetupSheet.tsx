@@ -26,16 +26,21 @@ export function TradingSetupSheet({ isOpen, onClose, setup, isExpired = false }:
   if (!isOpen) return null;
 
   const statusLabel = (() => {
-    if (isSuccess) return 'Starting trading...';
+    if (isSuccess) return 'Starting trading…';
     if (!isPending) return 'Enable 1-click trading';
-    return 'Setting up...';
+    return 'Setting up…';
   })();
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col">
       <div className="absolute inset-0 bg-black/40" />
 
-      <div className="relative mt-auto bg-white rounded-t-2xl px-4 pt-4 pb-8 animate-slide-up">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="trading-setup-title"
+        className="relative mt-auto bg-white rounded-t-2xl px-4 pt-4 pb-8 animate-slide-up"
+      >
         <div className="flex justify-center mb-5">
           <div className="w-10 h-1 rounded-full bg-gray-300" />
         </div>
@@ -48,7 +53,7 @@ export function TradingSetupSheet({ isOpen, onClose, setup, isExpired = false }:
           </div>
         </div>
 
-        <h2 className="text-lg font-bold text-foreground text-center mb-2">
+        <h2 id="trading-setup-title" className="text-lg font-bold text-foreground text-center mb-2">
           {isExpired ? 'Reauthorize trading' : '1-click trading'}
         </h2>
         <p className="text-sm text-gray-500 text-center mb-6 leading-relaxed">
@@ -95,7 +100,8 @@ export function TradingSetupSheet({ isOpen, onClose, setup, isExpired = false }:
         )}
 
         <button
-          onPointerDown={() => {
+          type="button"
+          onClick={() => {
             if (!isSuccess) setup.mutate();
           }}
           disabled={isPending || isSuccess}

@@ -32,27 +32,32 @@ export function WithdrawPage() {
 
       <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm space-y-3">
         <div className="flex items-center justify-between">
-          <label className="text-sm font-semibold text-foreground">Amount</label>
+          <label htmlFor="withdraw-amount" className="text-sm font-semibold text-foreground">Amount</label>
           <span className="text-xs text-muted">Available {withdrawable.toFixed(2)} USDC</span>
         </div>
         <div className="flex gap-2">
           <input
+            id="withdraw-amount"
             type="number"
+            name="withdraw-amount"
+            inputMode="decimal"
+            autoComplete="off"
             value={amount}
             onChange={(event) => setAmount(event.target.value)}
             placeholder="0.00"
-            className="flex-1 rounded-2xl border border-separator bg-surface px-4 py-3 text-sm text-foreground outline-none"
+            className="flex-1 rounded-2xl border border-separator bg-surface px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
           />
-          <button onClick={() => setAmount(withdrawable.toFixed(2))} className="rounded-2xl bg-surface px-4 py-3 text-sm font-semibold text-primary">
+          <button type="button" onClick={() => setAmount(withdrawable.toFixed(2))} className="rounded-2xl bg-surface px-4 py-3 text-sm font-semibold text-primary">
             MAX
           </button>
         </div>
         <button
+          type="button"
           onClick={() => withdraw.mutate({ destination: destination ?? '', amount })}
           disabled={!destination || !amount || parseFloat(amount) <= 0 || withdraw.isPending}
           className="w-full rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
         >
-          {withdraw.isPending ? 'Submitting...' : 'Withdraw to Arbitrum'}
+          {withdraw.isPending ? 'Submitting…' : 'Withdraw to Arbitrum'}
         </button>
         {withdraw.isSuccess && <p className="text-sm text-positive">Withdrawal submitted. Arrival is usually within 5 minutes.</p>}
         {withdraw.isError && <p className="text-sm text-negative">{withdraw.error instanceof Error ? withdraw.error.message : 'Withdrawal failed'}</p>}

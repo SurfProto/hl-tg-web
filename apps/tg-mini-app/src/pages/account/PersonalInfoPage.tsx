@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
-import { getCurrentUserRecord, supabase } from '../../lib/supabase';
 import { useHaptics } from '../../hooks/useHaptics';
+import { getCurrentUserRecord, supabase } from '../../lib/supabase';
 
 export function PersonalInfoPage() {
   const haptics = useHaptics();
@@ -37,6 +37,7 @@ export function PersonalInfoPage() {
           <div className="mt-2 flex items-center justify-between gap-3 rounded-2xl bg-surface px-4 py-3">
             <span className="font-mono text-sm text-foreground break-all">{walletAddress ?? 'No wallet connected'}</span>
             <button
+              type="button"
               onClick={async () => {
                 if (!walletAddress) return;
                 await navigator.clipboard.writeText(walletAddress);
@@ -50,16 +51,21 @@ export function PersonalInfoPage() {
         </div>
 
         <div>
-          <p className="text-xs text-muted">Username</p>
+          <label htmlFor="personal-username" className="text-xs text-muted">Username</label>
           <div className="mt-2 flex gap-2">
             <input
+              id="personal-username"
+              name="username"
               value={username}
+              spellCheck={false}
+              autoCapitalize="none"
+              autoComplete="off"
               onChange={(event) => setUsername(event.target.value)}
               placeholder="@username"
-              className="flex-1 rounded-2xl border border-separator bg-surface px-4 py-3 text-sm text-foreground outline-none"
+              className="flex-1 rounded-2xl border border-separator bg-surface px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
             />
-            <button onClick={saveUsername} disabled={saving || !walletAddress} className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
-              {saving ? 'Saving...' : 'Save'}
+            <button type="button" onClick={saveUsername} disabled={saving || !walletAddress} className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
+              {saving ? 'Saving…' : 'Save'}
             </button>
           </div>
         </div>
@@ -70,7 +76,7 @@ export function PersonalInfoPage() {
             <p className="mt-1 text-sm text-foreground">{user?.email?.address ?? 'Not linked'}</p>
           </div>
           {!user?.email?.address && (
-            <button onClick={() => privy.linkEmail?.()} className="rounded-full bg-surface px-4 py-2 text-sm font-semibold text-foreground">
+            <button type="button" onClick={() => privy.linkEmail?.()} className="rounded-full bg-surface px-4 py-2 text-sm font-semibold text-foreground">
               Add
             </button>
           )}
@@ -82,7 +88,7 @@ export function PersonalInfoPage() {
             <p className="mt-1 text-sm text-foreground">{user?.phone?.number ?? 'Not linked'}</p>
           </div>
           {!user?.phone?.number && (
-            <button onClick={() => privy.linkPhone?.()} className="rounded-full bg-surface px-4 py-2 text-sm font-semibold text-foreground">
+            <button type="button" onClick={() => privy.linkPhone?.()} className="rounded-full bg-surface px-4 py-2 text-sm font-semibold text-foreground">
               Add
             </button>
           )}

@@ -1,24 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  useMarketData,
-  useMids,
-  useMarketStats,
-  enrichMarkets,
-  CATEGORY_ORDER,
   CATEGORY_LABELS,
+  CATEGORY_ORDER,
   SUB_FILTERS,
+  enrichMarkets,
   getMarketBaseAsset,
   getMarketDisplayName,
+  useMarketData,
+  useMarketStats,
+  useMids,
 } from '@repo/hyperliquid-sdk';
 import type { AnyMarket, MarketCategory, MarketSubCategory } from '@repo/types';
-import { formatPrice } from '../utils/format';
+import { AllMarketsSheet } from '../components/AllMarketsSheet';
 import { BalanceHero } from '../components/BalanceHero';
 import { CategoryPills } from '../components/CategoryPills';
 import { MarketListItem } from '../components/MarketListItem';
-import { AllMarketsSheet } from '../components/AllMarketsSheet';
 import { MarketListItemSkeleton } from '../components/MarketListItemSkeleton';
 import { SearchSheet } from '../components/SearchSheet';
+import { formatPrice } from '../utils/format';
 
 function formatVolume(vol: number): string {
   if (vol >= 1_000_000_000) return `$${(vol / 1_000_000_000).toFixed(1)}B`;
@@ -46,14 +46,14 @@ export function HomePage() {
   }, [selectedCategory]);
 
   const allMarkets: AnyMarket[] = useMemo(() => [
-    ...(markets?.spot ?? []).map((m: any) => ({ ...m, type: 'spot' as const })),
-    ...(markets?.perp ?? []).map((m: any) => ({ ...m, type: 'perp' as const })),
+    ...(markets?.spot ?? []).map((market: any) => ({ ...market, type: 'spot' as const })),
+    ...(markets?.perp ?? []).map((market: any) => ({ ...market, type: 'perp' as const })),
   ], [markets]);
 
   const priceChanges: Record<string, number> = useMemo(() => {
     if (!marketStats) return {};
     return Object.fromEntries(
-      Object.entries(marketStats).map(([coin, stats]) => [coin, stats.change24h])
+      Object.entries(marketStats).map(([coin, stats]) => [coin, stats.change24h]),
     );
   }, [marketStats]);
 
@@ -63,20 +63,21 @@ export function HomePage() {
   );
 
   const filtered = useMemo(() => {
-    let result = selectedCategory === 'all' ? enriched
+    let result = selectedCategory === 'all'
+      ? enriched
       : enriched.filter(({ categories }) => categories.includes(selectedCategory as MarketCategory));
+
     if (selectedSubCategory) {
       result = result.filter(({ subCategory }) => subCategory === selectedSubCategory);
     }
+
     return result;
   }, [enriched, selectedCategory, selectedSubCategory]);
 
   return (
     <div className="min-h-full bg-background">
-      {/* Balance hero */}
       <BalanceHero />
 
-      {/* Category pills */}
       <div className="px-4 mb-2">
         <CategoryPills
           categories={CATEGORY_ORDER}
@@ -86,15 +87,13 @@ export function HomePage() {
         />
       </div>
 
-      {/* Sub-filter pills */}
       {subFilters && (
         <div className="px-4 mb-3 flex gap-2 overflow-x-auto no-scrollbar">
           <button
-            onPointerDown={() => setSelectedSubCategory(null)}
+            type="button"
+            onClick={() => setSelectedSubCategory(null)}
             className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-              selectedSubCategory === null
-                ? 'bg-foreground text-white'
-                : 'bg-surface text-gray-500'
+              selectedSubCategory === null ? 'bg-foreground text-white' : 'bg-surface text-gray-500'
             }`}
           >
             All
@@ -102,11 +101,10 @@ export function HomePage() {
           {subFilters.map(({ key, label }) => (
             <button
               key={key}
-              onPointerDown={() => setSelectedSubCategory(key)}
+              type="button"
+              onClick={() => setSelectedSubCategory(key)}
               className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                selectedSubCategory === key
-                  ? 'bg-foreground text-white'
-                  : 'bg-surface text-gray-500'
+                selectedSubCategory === key ? 'bg-foreground text-white' : 'bg-surface text-gray-500'
               }`}
             >
               {label}
@@ -115,11 +113,10 @@ export function HomePage() {
         </div>
       )}
 
-      {/* Market list */}
       <div className="bg-white border-t border-separator">
         {isLoading ? (
           <div className="divide-y divide-separator">
-            {Array.from({ length: 6 }, (_, i) => <MarketListItemSkeleton key={i} />)}
+            {Array.from({ length: 6 }, (_, index) => <MarketListItemSkeleton key={index} />)}
           </div>
         ) : filtered.length === 0 ? (
           <div className="py-16 text-center text-gray-400 text-sm">No markets</div>
@@ -139,7 +136,7 @@ export function HomePage() {
                   displayName={displayName}
                   iconCoin={iconCoin}
                   marketType={market.type}
-                  price={price != null ? formatPrice(price) : '—'}
+                  price={price != null ? formatPrice(price) : '\u2014'}
                   change24h={stats?.change24h ?? 0}
                   volume={stats ? formatVolume(stats.dayNtlVlm) : undefined}
                   maxLeverage={market.type === 'perp' ? market.maxLeverage : undefined}
@@ -149,11 +146,12 @@ export function HomePage() {
             })}
             {filtered.length > 6 && (
               <button
+                type="button"
                 onClick={() => setAllMarketsOpen(true)}
                 className="w-full flex items-center justify-between px-4 py-3.5 bg-white active:bg-gray-50 transition-colors"
               >
                 <span className="text-sm font-medium text-primary">See all {filtered.length} markets</span>
-                <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
               </button>
@@ -162,32 +160,33 @@ export function HomePage() {
         )}
       </div>
 
-      {/* Floating search button */}
       <button
+        type="button"
         onClick={() => setSearchOpen(true)}
-        className="fixed bottom-24 right-4 w-12 h-12 bg-primary text-white rounded-full shadow-lg flex items-center justify-center z-40 active:bg-primary-dark transition-colors"
+        className="fixed bottom-24 right-4 w-12 h-12 bg-primary text-white rounded-full shadow-lg flex items-center justify-center z-40 active:bg-primary-dark transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
         aria-label="Search markets"
       >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0" />
         </svg>
       </button>
 
-      {/* Search sheet */}
       <SearchSheet
         isOpen={searchOpen}
         onClose={() => setSearchOpen(false)}
         onSelect={(coin) => navigate(`/coin/${encodeURIComponent(coin)}`)}
       />
 
-      {/* All markets sheet */}
       <AllMarketsSheet
         isOpen={allMarketsOpen}
         onClose={() => setAllMarketsOpen(false)}
         markets={filtered}
         mids={mids}
         marketStats={marketStats}
-        onSelect={(coin) => { setAllMarketsOpen(false); navigate(`/coin/${encodeURIComponent(coin)}`); }}
+        onSelect={(coin) => {
+          setAllMarketsOpen(false);
+          navigate(`/coin/${encodeURIComponent(coin)}`);
+        }}
       />
     </div>
   );

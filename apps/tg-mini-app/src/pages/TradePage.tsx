@@ -2,16 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { usePrivy } from '@privy-io/react-auth';
 import {
-  useSetupTrading,
+  getMarketBaseAsset,
+  getMarketDisplayName,
   useMarketData,
   useMids,
   usePlaceOrder,
   usePlaceSpotOrder,
+  useSetupTrading,
   useSpotBalance,
   useUserState,
   validateOrderInput,
-  getMarketBaseAsset,
-  getMarketDisplayName,
 } from '@repo/hyperliquid-sdk';
 import type { AnyMarket, Order } from '@repo/types';
 import { NumPad } from '../components/NumPad';
@@ -330,7 +330,7 @@ export function TradePage() {
     mutation.mutate(order, {
       onSuccess: () => {
         haptics.success();
-        toast.success(`${side === 'buy' ? 'Long' : 'Short'} ${displayName} order placed`);
+        toast.success(`${ctaLabel} order placed`);
         navigate(-1);
       },
       onError: (error) => {
@@ -360,8 +360,10 @@ export function TradePage() {
           {(['market', 'limit'] as const).map((value) => (
             <button
               key={value}
-              onPointerDown={() => handleOrderTypeToggle(value)}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all capitalize ${
+              type="button"
+              onClick={() => handleOrderTypeToggle(value)}
+              aria-pressed={orderType === value}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors capitalize ${
                 orderType === value ? 'bg-white shadow text-foreground' : 'text-gray-500'
               }`}
             >
@@ -371,7 +373,8 @@ export function TradePage() {
         </div>
 
         <button
-          onPointerDown={() => setSettingsOpen(true)}
+          type="button"
+          onClick={() => setSettingsOpen(true)}
           className="p-2 rounded-lg text-gray-500 active:bg-gray-100 transition-colors"
           aria-label="Order settings"
         >
@@ -414,13 +417,14 @@ export function TradePage() {
           )}
           {step === 'price' && (
             <button
-              onPointerDown={() => {
+              type="button"
+              onClick={() => {
                 setSubmitError(null);
                 setStep('amount');
               }}
               className="text-sm text-primary mt-2 active:opacity-60"
             >
-              &larr; Edit amount
+              {'\u2190 Edit amount'}
             </button>
           )}
         </div>
@@ -430,7 +434,8 @@ export function TradePage() {
             {[{ label: '10%', pct: 0.1 }, { label: '25%', pct: 0.25 }, { label: '50%', pct: 0.5 }, { label: 'Max', pct: 1 }].map(({ label, pct }) => (
               <button
                 key={label}
-                onPointerDown={() => handleQuickFill(pct)}
+                type="button"
+                onClick={() => handleQuickFill(pct)}
                 className="px-3.5 py-1.5 rounded-full bg-surface text-sm font-medium text-gray-600 active:bg-gray-200 transition-colors"
               >
                 {label}
@@ -446,7 +451,9 @@ export function TradePage() {
               {leverageOptions.map((value) => (
                 <button
                   key={value}
-                  onPointerDown={() => handleLeveragePill(value)}
+                  type="button"
+                  onClick={() => handleLeveragePill(value)}
+                  aria-pressed={leverage === value}
                   className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
                     leverage === value ? 'bg-primary text-white' : 'bg-surface text-gray-600 active:bg-gray-200'
                   }`}
@@ -470,21 +477,23 @@ export function TradePage() {
       <div className="flex-none px-4 pt-2 pb-4 safe-area-bottom bg-white border-t border-separator">
         {orderType === 'limit' && step === 'amount' ? (
           <button
-            onPointerDown={handlePrimaryAction}
+            type="button"
+            onClick={handlePrimaryAction}
             disabled={isSubmitDisabled}
             className="w-full py-4 rounded-xl font-semibold text-sm bg-primary text-white disabled:opacity-40 active:opacity-80 transition-opacity"
           >
-            {'Set Price ->'}
+            {'Set Price \u2192'}
           </button>
         ) : (
           <button
-            onPointerDown={handlePrimaryAction}
+            type="button"
+            onClick={handlePrimaryAction}
             disabled={isSubmitDisabled}
             className={`w-full py-4 rounded-xl font-semibold text-sm text-white disabled:opacity-40 active:opacity-80 transition-opacity ${
               side === 'buy' ? 'bg-primary' : 'bg-secondary'
             }`}
           >
-            {isPending ? 'Placing order...' : ctaLabel}
+            {isPending ? 'Placing order…' : ctaLabel}
           </button>
         )}
 
@@ -503,16 +512,23 @@ export function TradePage() {
 
       {settingsOpen && (
         <div className="fixed inset-0 z-50 flex flex-col">
-          <div
+          <button
+            type="button"
             className="absolute inset-0 bg-black/40"
-            onPointerDown={() => setSettingsOpen(false)}
+            onClick={() => setSettingsOpen(false)}
+            aria-label="Close order settings"
           />
-          <div className="relative mt-auto bg-white rounded-t-2xl px-4 pt-4 pb-8 animate-slide-up">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="order-settings-title"
+            className="relative mt-auto bg-white rounded-t-2xl px-4 pt-4 pb-8 animate-slide-up"
+          >
             <div className="flex justify-center mb-5">
               <div className="w-10 h-1 rounded-full bg-gray-300" />
             </div>
 
-            <h3 className="text-base font-bold text-foreground mb-5">Order Settings</h3>
+            <h3 id="order-settings-title" className="text-base font-bold text-foreground mb-5">Order Settings</h3>
 
             <div className="mb-3 text-sm font-medium text-gray-500">Time in Force</div>
             <div className="flex gap-2 mb-6">
@@ -523,11 +539,13 @@ export function TradePage() {
               ] as const).map(({ key, label, desc }) => (
                 <button
                   key={key}
-                  onPointerDown={() => {
+                  type="button"
+                  onClick={() => {
                     setSubmitError(null);
                     setTif(key);
                     haptics.selection();
                   }}
+                  aria-pressed={tif === key}
                   className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
                     tif === key
                       ? 'bg-primary text-white border-primary'
@@ -543,7 +561,8 @@ export function TradePage() {
             </div>
 
             <button
-              onPointerDown={() => {
+              type="button"
+              onClick={() => {
                 setSettingsOpen(false);
                 haptics.light();
               }}
@@ -555,7 +574,6 @@ export function TradePage() {
         </div>
       )}
 
-      {/* 1-click trading setup — shown on first use */}
       <TradingSetupSheet
         isOpen={setupVisible}
         onClose={() => setSetupVisible(false)}

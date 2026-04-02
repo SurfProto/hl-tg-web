@@ -9,10 +9,10 @@ export function PointsPage() {
 
       <div className="grid grid-cols-2 gap-3">
         {[
-          ['Total Volume', '—'],
-          ['XP Earned', '—'],
-          ['Referral Volume', '—'],
-          ['Referrals', '—'],
+          ['Total Volume', '\u2014'],
+          ['XP Earned', '\u2014'],
+          ['Referral Volume', '\u2014'],
+          ['Referrals', '\u2014'],
           ['Multiplier', '1.0x'],
           ['Weekly Pool', 'TBD'],
         ].map(([label, value]) => (

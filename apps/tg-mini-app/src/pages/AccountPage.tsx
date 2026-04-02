@@ -1,20 +1,20 @@
 import { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import {
-  useBuilderFeeApproval,
+  getBuilderAddress,
+  getBuilderFeeTenthsBp,
+  isBuilderConfigured,
   useApproveBuilderFee,
+  useBuilderFeeApproval,
   useFills,
   useMids,
   useSpotBalance,
   useUserState,
-  getBuilderAddress,
-  getBuilderFeeTenthsBp,
-  isBuilderConfigured,
 } from '@repo/hyperliquid-sdk';
+import { useHaptics } from '../hooks/useHaptics';
 
 type SpotBalance = { coin: string; total: string; hold: string; entryNtl: string };
-import { useHaptics } from '../hooks/useHaptics';
 
 function formatUsd(value: number) {
   return `$${value.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`;
@@ -26,7 +26,6 @@ function formatAddress(address?: string) {
 }
 
 export function AccountPage() {
-  const navigate = useNavigate();
   const haptics = useHaptics();
   const privy = usePrivy() as any;
   const { user, authenticated } = privy;
@@ -48,22 +47,22 @@ export function AccountPage() {
 
   const spotEquity = useMemo(() => {
     if (!balances) return 0;
-    return balances.reduce((sum, b) => {
-      const total = parseFloat(b.total ?? '0');
+    return balances.reduce((sum, balance) => {
+      const total = parseFloat(balance.total ?? '0');
       if (!Number.isFinite(total) || total <= 0) return sum;
-      if (b.coin === 'USDC' || b.coin === 'USDH') return sum + total;
-      const mid = mids?.[b.coin] ? parseFloat(mids[b.coin]) : 0;
+      if (balance.coin === 'USDC' || balance.coin === 'USDH') return sum + total;
+      const mid = mids?.[balance.coin] ? parseFloat(mids[balance.coin]) : 0;
       return sum + total * (Number.isFinite(mid) ? mid : 0);
     }, 0);
   }, [mids, balances]);
 
   const spotAvailable = useMemo(() => {
     if (!balances) return 0;
-    return balances.reduce((sum, b) => {
-      const available = parseFloat(b.total ?? '0') - parseFloat(b.hold ?? '0');
+    return balances.reduce((sum, balance) => {
+      const available = parseFloat(balance.total ?? '0') - parseFloat(balance.hold ?? '0');
       if (!Number.isFinite(available) || available <= 0) return sum;
-      if (b.coin === 'USDC' || b.coin === 'USDH') return sum + available;
-      const mid = mids?.[b.coin] ? parseFloat(mids[b.coin]) : 0;
+      if (balance.coin === 'USDC' || balance.coin === 'USDH') return sum + available;
+      const mid = mids?.[balance.coin] ? parseFloat(mids[balance.coin]) : 0;
       return sum + available * (Number.isFinite(mid) ? mid : 0);
     }, 0);
   }, [mids, balances]);
@@ -88,6 +87,7 @@ export function AccountPage() {
           </div>
           {authenticated && (
             <button
+              type="button"
               onClick={() => privy.logout()}
               className="rounded-full bg-surface px-4 py-2 text-sm font-semibold text-foreground active:bg-gray-200 transition-colors"
             >
@@ -125,6 +125,7 @@ export function AccountPage() {
             <p className="mt-1 font-mono text-sm text-muted">{formatAddress(walletAddress)}</p>
           </div>
           <button
+            type="button"
             onClick={async () => {
               if (!walletAddress) return;
               await navigator.clipboard.writeText(walletAddress);
@@ -171,13 +172,14 @@ export function AccountPage() {
           { label: 'Transfer', path: '/account/transfer' },
           { label: 'Swap', path: '/account/swap' },
         ] as const).map((action) => (
-          <button
+          <Link
             key={action.path}
-            onClick={() => navigate(action.path)}
-            className="rounded-2xl border border-separator bg-white px-3 py-4 text-center text-sm font-semibold text-foreground shadow-sm active:bg-surface transition-colors"
+            to={action.path}
+            onClick={() => haptics.light()}
+            className="rounded-2xl border border-separator bg-white px-3 py-4 text-center text-sm font-semibold text-foreground shadow-sm active:bg-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
           >
             {action.label}
-          </button>
+          </Link>
         ))}
       </div>
 
@@ -195,23 +197,25 @@ export function AccountPage() {
         </div>
         {builderConfigured && !builderApproved && !builderApprovalLoading && (
           <button
+            type="button"
             onClick={() => approveBuilderFee.mutate()}
             disabled={approveBuilderFee.isPending}
             className="mt-4 w-full rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white active:bg-primary-dark transition-colors disabled:opacity-60"
           >
-            {approveBuilderFee.isPending ? 'Approving...' : 'Approve builder fee'}
+            {approveBuilderFee.isPending ? 'Approving…' : 'Approve builder fee'}
           </button>
         )}
       </div>
 
       <div className="rounded-2xl border border-separator bg-white shadow-sm">
-        <button
-          onClick={() => navigate('/account/settings')}
-          className="flex w-full items-center justify-between px-4 py-4 text-left text-sm font-semibold text-foreground active:bg-surface transition-colors"
+        <Link
+          to="/account/settings"
+          onClick={() => haptics.light()}
+          className="flex w-full items-center justify-between px-4 py-4 text-left text-sm font-semibold text-foreground active:bg-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
         >
           <span>Account settings</span>
-          <span className="text-muted">›</span>
-        </button>
+          <span className="text-muted" aria-hidden="true">{'\u203a'}</span>
+        </Link>
         <div className="h-px bg-separator" />
         <div className="px-4 py-4">
           <p className="text-sm font-semibold text-foreground">Recent fills</p>

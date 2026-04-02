@@ -5,8 +5,28 @@ function stripDexPrefix(name: string): string {
   return separatorIndex === -1 ? name : name.slice(separatorIndex + 1);
 }
 
+function parseHip3String(name: string) {
+  const separatorIndex = name.indexOf(':');
+  if (separatorIndex === -1) return null;
+
+  const left = name.slice(0, separatorIndex);
+  const right = name.slice(separatorIndex + 1);
+
+  return {
+    left,
+    right,
+    // Internal API form: dex:COIN-USDC
+    isDexPrefixed: !left.includes('-') && right.includes('-'),
+    // Display/router form introduced by recent HIP-3 UI changes: COIN-USDC:dex
+    isDisplayFormatted: left.includes('-') && !right.includes('-'),
+  };
+}
+
 export function getMarketDisplayName(market: AnyMarket | string): string {
   if (typeof market === 'string') {
+    const parsed = parseHip3String(market);
+    if (parsed?.isDisplayFormatted) return market;
+    if (parsed?.isDexPrefixed) return parsed.right;
     return stripDexPrefix(market);
   }
 
@@ -29,6 +49,11 @@ export function getMarketBaseAsset(market: AnyMarket | string): string {
     // For HIP-3 display names are `COIN:dex` — base asset is just the coin part (before `:`)
     // Use internal name directly: `dex:COIN` → strip prefix → `COIN`
     return stripDexPrefix(market.name);
+  }
+  if (typeof market === 'string') {
+    const parsed = parseHip3String(market);
+    if (parsed?.isDisplayFormatted) return parsed.left;
+    if (parsed?.isDexPrefixed) return parsed.right;
   }
   return getMarketDisplayName(market).split('/')[0];
 }

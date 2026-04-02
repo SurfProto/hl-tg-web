@@ -5,10 +5,11 @@ import {
   getMarketDisplayName,
   getMarketSearchTerms,
   useMarketData,
-  useMids,
   useMarketStats,
+  useMids,
 } from '@repo/hyperliquid-sdk';
 import type { AnyMarket } from '@repo/types';
+import { formatPrice } from '../utils/format';
 import { MarketListItem } from './MarketListItem';
 
 interface SearchSheetProps {
@@ -33,7 +34,7 @@ export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
   const priceChanges: Record<string, number> = useMemo(() => {
     if (!marketStats) return {};
     return Object.fromEntries(
-      Object.entries(marketStats).map(([coin, stats]) => [coin, stats.change24h])
+      Object.entries(marketStats).map(([coin, stats]) => [coin, stats.change24h]),
     );
   }, [marketStats]);
 
@@ -44,46 +45,73 @@ export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
 
   const filtered = useMemo(() => {
     if (!query.trim()) return enriched.slice(0, 50);
-    const q = query.toLowerCase();
+    const normalizedQuery = query.toLowerCase();
     return enriched
-      .filter(({ market }) => getMarketSearchTerms(market).some((term) => term.toLowerCase().includes(q)))
+      .filter(({ market }) => getMarketSearchTerms(market).some((term) => term.toLowerCase().includes(normalizedQuery)))
       .slice(0, 50);
   }, [enriched, query]);
 
   useEffect(() => {
-    if (isOpen) {
-      setQuery('');
-      setTimeout(() => inputRef.current?.focus(), 100);
-    }
+    if (!isOpen) return;
+
+    setQuery('');
+    const timeout = window.setTimeout(() => inputRef.current?.focus(), 100);
+    return () => window.clearTimeout(timeout);
   }, [isOpen]);
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/40"
+        onClick={onClose}
+        aria-label="Close market search"
+      />
 
-      <div className="relative mt-auto max-h-[85vh] flex flex-col rounded-t-2xl bg-white animate-slide-up">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="market-search-title"
+        className="relative mt-auto max-h-[85vh] flex flex-col rounded-t-2xl bg-white animate-slide-up overscroll-contain"
+      >
         <div className="flex justify-center pt-3 pb-1">
           <div className="h-1 w-10 rounded-full bg-gray-300" />
         </div>
 
         <div className="px-4 py-3">
-          <div className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2.5">
-            <svg className="h-4 w-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <h2 id="market-search-title" className="sr-only">Search markets</h2>
+          <label htmlFor="market-search-input" className="sr-only">Search markets</label>
+          <div className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2.5 focus-within:ring-2 focus-within:ring-primary/30">
+            <svg
+              className="h-4 w-4 flex-shrink-0 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0" />
             </svg>
             <input
+              id="market-search-input"
               ref={inputRef}
               type="text"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search markets..."
-              className="flex-1 bg-transparent text-sm text-foreground outline-none placeholder-gray-400"
+              name="market-search"
+              autoComplete="off"
+              placeholder="Search markets…"
+              onChange={(event) => setQuery(event.target.value)}
+              className="flex-1 bg-transparent text-sm text-foreground placeholder-gray-400 focus:outline-none"
             />
             {query && (
-              <button onClick={() => setQuery('')} className="text-gray-400">
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                className="text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 rounded-full"
+                aria-label="Clear search"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -91,7 +119,7 @@ export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
           </div>
         </div>
 
-        <div className="flex-1 divide-y divide-separator overflow-y-auto">
+        <div className="flex-1 divide-y divide-separator overflow-y-auto overscroll-contain">
           {filtered.length === 0 ? (
             <div className="py-12 text-center text-sm text-gray-400">No markets found</div>
           ) : (
@@ -109,7 +137,7 @@ export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
                   displayName={displayName}
                   iconCoin={iconCoin}
                   marketType={market.type}
-                  price={price != null ? `$${price.toLocaleString('en-US', { maximumFractionDigits: 4 })}` : '-'}
+                  price={price != null ? formatPrice(price) : '\u2014'}
                   change24h={stats?.change24h ?? 0}
                   maxLeverage={market.type === 'perp' ? market.maxLeverage : undefined}
                   onClick={() => {

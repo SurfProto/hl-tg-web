@@ -1325,28 +1325,31 @@ export class HyperliquidClient {
   async getPortfolioHistory(period: '1d' | '7d' | '30d' = '7d'): Promise<PortfolioHistoryPoint[]> {
     const client = await this.getPublicClient();
     const portfolio = await client.portfolio({ user: this.walletAddress as `0x${string}` });
-
-    // The portfolio response may contain pnlHistory or similar time-series data.
-    // Inspect and extract what's available.
-    if (Array.isArray(portfolio)) {
-      // Portfolio returns an array of snapshots — map to {time, value}
-      const now = Date.now();
-      const periodMs = period === '1d' ? 86400000 : period === '7d' ? 604800000 : 2592000000;
-      const cutoff = now - periodMs;
-
-      return portfolio
-        .filter((point: any) => {
-          const t = point.time ?? point.t ?? point.timestamp ?? 0;
-          return t >= cutoff;
-        })
-        .map((point: any) => ({
-          time: point.time ?? point.t ?? point.timestamp ?? 0,
-          value: parseFloat(point.accountValue ?? point.value ?? point.equity ?? '0'),
-        }));
+    const periodKey = period === '1d' ? 'day' : period === '7d' ? 'week' : 'month';
+    const portfolioSeries = Array.isArray(portfolio)
+      ? portfolio
+      : Array.isArray(portfolio?.portfolio)
+        ? portfolio.portfolio
+        : [];
+    const periodEntry = portfolioSeries.find((entry: any) =>
+      Array.isArray(entry) && entry[0] === periodKey,
+    );
+    const accountValueHistory = Array.isArray(periodEntry?.[1]?.accountValueHistory)
+      ? periodEntry[1].accountValueHistory
+      : [];
+    const parsedHistory = accountValueHistory
+      .map((point: any) => {
+        if (!Array.isArray(point) || point.length < 2) return null;
+        const time = Number(point[0]);
+        const value = parseFloat(point[1] ?? '0');
+        if (!Number.isFinite(time) || !Number.isFinite(value)) return null;
+        return { time, value };
+      })
+      .filter((point: PortfolioHistoryPoint | null): point is PortfolioHistoryPoint => point !== null)
+      .sort((left: PortfolioHistoryPoint, right: PortfolioHistoryPoint) => left.time - right.time);
+    if (parsedHistory.length > 0) {
+      return parsedHistory;
     }
-
-    // Fallback: if portfolio is a single object or has a different shape,
-    // return current snapshot as a single point
     const userState = await this.getUserState();
     const accountValue = userState?.marginSummary?.accountValue ?? 0;
     return [{ time: Date.now(), value: accountValue }];

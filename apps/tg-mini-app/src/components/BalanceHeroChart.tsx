@@ -4,7 +4,7 @@ import { Chart } from '@repo/ui';
 
 export function BalanceHeroChart() {
   const [period, setPeriod] = useState<'1d' | '7d' | '30d'>('7d');
-  const { data: portfolioHistory, isLoading } = usePortfolioHistory(period);
+  const { data: portfolioHistory, isError, isLoading } = usePortfolioHistory(period);
   const historyPoints = portfolioHistory ?? [];
 
   const performance = useMemo(() => {
@@ -33,6 +33,17 @@ export function BalanceHeroChart() {
       <div className="animate-pulse">
         <div className="h-4 w-28 rounded bg-gray-200" />
         <div className="mt-4 h-[228px] rounded-[28px] bg-gray-100" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div>
+        <div className="text-sm font-semibold text-gray-500">0.00%</div>
+        <div className="mt-4 flex h-[228px] items-center justify-center rounded-[28px] border border-dashed border-separator bg-surface">
+          <p className="text-sm text-gray-400">Portfolio history is temporarily unavailable.</p>
+        </div>
       </div>
     );
   }

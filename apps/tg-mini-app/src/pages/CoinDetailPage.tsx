@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { startTransition, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   getMarketBaseAsset,
@@ -9,8 +9,8 @@ import {
   useMids,
   useSpotBalance,
 } from "@repo/hyperliquid-sdk";
-import type { AnyMarket } from "@repo/types";
-import { Chart } from "@repo/ui";
+import type { AnyMarket, Candle } from "@repo/types";
+import { Chart, type LiteCandleInspection } from "@repo/ui";
 import { StatRow } from "../components/StatRow";
 import { TokenIcon } from "../components/TokenIcon";
 
@@ -35,12 +35,33 @@ function formatFunding(rate: number): string {
   return `${(rate * 100).toFixed(4)}%`;
 }
 
+function formatTooltipTimestamp(candle: Candle, interval: string): string {
+  const date = new Date(candle.T || candle.t);
+
+  if (interval === "1d") {
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: date.getFullYear() === new Date().getFullYear() ? undefined : "numeric",
+    }).format(date);
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
 export function CoinDetailPage() {
   const { symbol: rawSymbol = "" } = useParams<{ symbol: string }>();
   const symbol = decodeURIComponent(rawSymbol);
   const navigate = useNavigate();
 
   const [interval, setInterval] = useState("1h");
+  const [activeInspection, setActiveInspection] =
+    useState<LiteCandleInspection | null>(null);
 
   const { data: markets } = useMarketData();
   const { data: mids } = useMids();
@@ -76,6 +97,31 @@ export function CoinDetailPage() {
   const price = mids?.[symbol] ? parseFloat(mids[symbol]) : null;
   const change24h = assetCtx?.change24h ?? 0;
   const isPositive = change24h >= 0;
+  const inspectionTooltip = useMemo(() => {
+    if (!activeInspection) return null;
+
+    const tooltipWidth = 184;
+    const horizontalPadding = 16;
+    const halfWidth = tooltipWidth / 2;
+    const maxLeft = Math.max(
+      halfWidth + horizontalPadding,
+      activeInspection.containerWidth - halfWidth - horizontalPadding,
+    );
+    const left = Math.min(
+      maxLeft,
+      Math.max(halfWidth + horizontalPadding, activeInspection.x),
+    );
+    const top = Math.min(
+      activeInspection.containerHeight - 16,
+      Math.max(88, activeInspection.y - 12),
+    );
+
+    return {
+      candle: activeInspection.candle,
+      left,
+      top,
+    };
+  }, [activeInspection]);
 
   const holdings = useMemo(() => {
     if (!spotBalance?.balances || isPerp) return null;
@@ -115,23 +161,69 @@ export function CoinDetailPage() {
       </div>
 
       <div className="px-4 pb-5">
-        <Chart
-          candles={candles ?? []}
-          interval={interval}
-          onIntervalChange={setInterval}
-          currentPrice={price ?? undefined}
-          variant="lite-candles"
-          showLastPrice={true}
-          zoomPreset="interval-default"
-          ranges={[
-            { key: "15m", label: "15M" },
-            { key: "1h", label: "1H" },
-            { key: "4h", label: "4H" },
-            { key: "1d", label: "24H" },
-          ]}
-          showFooterStats={false}
-          heightClassName="h-[248px]"
-        />
+        <div className="relative">
+          <Chart
+            candles={candles ?? []}
+            interval={interval}
+            onIntervalChange={(nextInterval) => {
+              setActiveInspection(null);
+              setInterval(nextInterval);
+            }}
+            currentPrice={price ?? undefined}
+            variant="lite-candles"
+            showLastPrice={true}
+            zoomPreset="interval-default"
+            enableLiteCandleInspect={true}
+            onLiteCandleInspect={(inspection) => {
+              startTransition(() => {
+                setActiveInspection(inspection);
+              });
+            }}
+            ranges={[
+              { key: "15m", label: "15M" },
+              { key: "1h", label: "1H" },
+              { key: "4h", label: "4H" },
+              { key: "1d", label: "24H" },
+            ]}
+            showFooterStats={false}
+            heightClassName="h-[248px]"
+          />
+
+          {inspectionTooltip && (
+            <div
+              className="pointer-events-none absolute z-20 w-[184px] -translate-x-1/2 -translate-y-full rounded-[22px] border border-white/75 bg-white/95 px-3.5 py-3 shadow-[0_16px_40px_rgba(15,23,42,0.16)] backdrop-blur-sm"
+              style={{
+                left: `${inspectionTooltip.left}px`,
+                top: `${inspectionTooltip.top}px`,
+              }}
+            >
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400">
+                {formatTooltipTimestamp(inspectionTooltip.candle, interval)}
+              </div>
+              <div className="mt-1 text-lg font-bold tracking-tight text-foreground tabular-nums">
+                {formatPrice(inspectionTooltip.candle.c)}
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] font-medium tabular-nums">
+                <div className="flex items-center justify-between gap-2 text-gray-500">
+                  <span>Open</span>
+                  <span className="text-foreground">{formatPrice(inspectionTooltip.candle.o)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2 text-gray-500">
+                  <span>High</span>
+                  <span className="text-positive">{formatPrice(inspectionTooltip.candle.h)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2 text-gray-500">
+                  <span>Low</span>
+                  <span className="text-negative">{formatPrice(inspectionTooltip.candle.l)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2 text-gray-500">
+                  <span>Vol</span>
+                  <span className="text-foreground">{formatVolume(inspectionTooltip.candle.v)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="px-4 pb-4">

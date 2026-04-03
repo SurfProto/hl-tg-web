@@ -3,6 +3,7 @@ import {
   ColorType,
   CrosshairMode,
   LineStyle,
+  type MouseEventParams,
   createChart,
   type AreaData,
   type CandlestickData,
@@ -23,6 +24,14 @@ export interface ChartRangeOption {
   label: string;
 }
 
+export interface LiteCandleInspection {
+  candle: Candle;
+  x: number;
+  y: number;
+  containerWidth: number;
+  containerHeight: number;
+}
+
 interface ChartProps {
   candles: Candle[];
   interval: string;
@@ -38,6 +47,8 @@ interface ChartProps {
   showGrid?: boolean;
   showLastPrice?: boolean;
   zoomPreset?: ChartZoomPreset;
+  enableLiteCandleInspect?: boolean;
+  onLiteCandleInspect?: (inspection: LiteCandleInspection | null) => void;
 }
 
 const TRADING_RANGES: ChartRangeOption[] = [
@@ -156,6 +167,8 @@ export function Chart({
   showGrid,
   showLastPrice = false,
   zoomPreset = "auto-fit",
+  enableLiteCandleInspect = false,
+  onLiteCandleInspect,
 }: ChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -163,6 +176,7 @@ export function Chart({
   const areaSeriesRef = useRef<ISeriesApi<"Area"> | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [lastPriceY, setLastPriceY] = useState<number | null>(null);
+  const [isLiteCandleInspecting, setIsLiteCandleInspecting] = useState(false);
 
   const seriesKind: "candlestick" | "area" = useMemo(() => {
     if (variant === "lite-area") return "area";
@@ -178,6 +192,13 @@ export function Chart({
   const showLastPriceRef = useRef(showLastPrice);
   const candleCountRef = useRef(candles.length);
   const areaPointCountRef = useRef(areaData?.length ?? 0);
+  const liteCandleInspectRef = useRef(enableLiteCandleInspect);
+  const onLiteCandleInspectRef = useRef(onLiteCandleInspect);
+  const candlesByTimeRef = useRef<Map<number, Candle>>(new Map());
+  const isLiteCandleInspectingRef = useRef(false);
+
+  const liteCandleInspectEnabled =
+    variant === "lite-candles" && enableLiteCandleInspect;
 
   const resolvedRanges = useMemo(() => {
     if (ranges) return ranges;
@@ -323,15 +344,33 @@ export function Chart({
     showLastPriceRef.current = showLastPrice;
     candleCountRef.current = candles.length;
     areaPointCountRef.current = areaData?.length ?? 0;
+    liteCandleInspectRef.current = liteCandleInspectEnabled;
+    onLiteCandleInspectRef.current = onLiteCandleInspect;
+    candlesByTimeRef.current = new Map(
+      candles.map((candle) => [candle.t / 1000, candle]),
+    );
   }, [
     areaData?.length,
-    candles.length,
+    candles,
     interval,
+    liteCandleInspectEnabled,
+    onLiteCandleInspect,
     seriesKind,
     showLastPrice,
     variant,
     zoomPreset,
   ]);
+
+  function updateLiteCandleInspecting(next: boolean) {
+    if (isLiteCandleInspectingRef.current === next) return;
+    isLiteCandleInspectingRef.current = next;
+    setIsLiteCandleInspecting(next);
+  }
+
+  function publishLiteCandleInspect(inspection: LiteCandleInspection | null) {
+    updateLiteCandleInspecting(inspection !== null);
+    onLiteCandleInspectRef.current?.(inspection);
+  }
 
   // Uses refs so it's safe to call from ResizeObserver or any async context.
   function updateLastPriceCoordinate(price: number | null) {
@@ -506,6 +545,94 @@ export function Chart({
     updateLastPriceCoordinate(lastPrice);
   }, [candles, currentPrice, interval, lastPrice, showLastPrice, variant]);
 
+  useEffect(() => {
+    publishLiteCandleInspect(null);
+  }, [candles, interval, liteCandleInspectEnabled]);
+
+  useEffect(() => {
+    if (
+      !liteCandleInspectEnabled ||
+      seriesKind !== "candlestick" ||
+      !chartRef.current ||
+      !candlestickSeriesRef.current ||
+      !chartContainerRef.current
+    ) {
+      return;
+    }
+
+    const chart = chartRef.current;
+    const series = candlestickSeriesRef.current;
+    const container = chartContainerRef.current;
+
+    const clearInspection = () => publishLiteCandleInspect(null);
+
+    const handleCrosshairMove = (param: MouseEventParams<Time>) => {
+      if (!liteCandleInspectRef.current) {
+        clearInspection();
+        return;
+      }
+
+      const point = param.point;
+      if (
+        !point ||
+        point.x < 0 ||
+        point.y < 0 ||
+        point.x > container.clientWidth ||
+        point.y > container.clientHeight
+      ) {
+        clearInspection();
+        return;
+      }
+
+      const hoveredTime =
+        typeof param.time === "number" ? param.time : null;
+      if (hoveredTime == null) {
+        clearInspection();
+        return;
+      }
+
+      const candle = candlesByTimeRef.current.get(hoveredTime);
+      const seriesData = param.seriesData.get(
+        series,
+      ) as CandlestickData<Time> | undefined;
+
+      if (
+        !candle ||
+        !seriesData ||
+        typeof seriesData.open !== "number" ||
+        typeof seriesData.high !== "number" ||
+        typeof seriesData.low !== "number" ||
+        typeof seriesData.close !== "number"
+      ) {
+        clearInspection();
+        return;
+      }
+
+      const coordinate = series.priceToCoordinate(seriesData.close);
+      publishLiteCandleInspect({
+        candle,
+        x: point.x,
+        y: coordinate ?? point.y,
+        containerWidth: container.clientWidth,
+        containerHeight: container.clientHeight,
+      });
+    };
+
+    chart.subscribeCrosshairMove(handleCrosshairMove);
+    container.addEventListener("pointerleave", clearInspection);
+    container.addEventListener("pointerup", clearInspection);
+    container.addEventListener("touchend", clearInspection);
+    container.addEventListener("touchcancel", clearInspection);
+
+    return () => {
+      chart.unsubscribeCrosshairMove(handleCrosshairMove);
+      container.removeEventListener("pointerleave", clearInspection);
+      container.removeEventListener("pointerup", clearInspection);
+      container.removeEventListener("touchend", clearInspection);
+      container.removeEventListener("touchcancel", clearInspection);
+    };
+  }, [candles, liteCandleInspectEnabled, seriesKind]);
+
   const rangeSelector =
     resolvedRanges.length > 0 && onIntervalChange ? (
       <div
@@ -581,7 +708,8 @@ export function Chart({
         {showLastPrice &&
           variant === "lite-candles" &&
           lastPrice != null &&
-          lastPriceY != null && (
+          lastPriceY != null &&
+          !isLiteCandleInspecting && (
             <div
               className="pointer-events-none absolute right-3 z-10 -translate-y-1/2"
               style={{ top: `${lastPriceY}px` }}

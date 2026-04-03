@@ -85,6 +85,30 @@ body {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+.bottom-nav-safe {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem);
+}
+
+.bottom-dock-safe {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem);
+}
+
+.page-above-bottom-nav {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 5.5rem);
+}
+
+.page-above-bottom-dock {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 7rem);
+}
+
+.floating-above-bottom-nav {
+  bottom: calc(env(safe-area-inset-bottom) + 5.5rem);
+}
+
+.toast-above-bottom-nav {
+  bottom: calc(env(safe-area-inset-bottom) + 5.5rem);
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 4px;

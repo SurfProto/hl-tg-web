@@ -86,7 +86,7 @@ export function CoinDetailPage() {
   }, [spotBalance, baseToken, displayName, isPerp]);
 
   return (
-    <div className="min-h-full bg-background pb-24">
+    <div className="min-h-full bg-background page-above-bottom-dock">
       <div className="px-4 pt-5 pb-3 flex items-center gap-3">
         <div className="rounded-2xl bg-white p-1.5 shadow-sm ring-1 ring-black/[0.04]">
           <TokenIcon coin={baseToken} size={36} />
@@ -188,7 +188,7 @@ export function CoinDetailPage() {
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-separator px-4 py-3 safe-area-bottom flex gap-3">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-separator px-4 py-3 bottom-dock-safe flex gap-3">
         {isPerp ? (
           <>
             <button

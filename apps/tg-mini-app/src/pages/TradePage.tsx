@@ -474,7 +474,7 @@ export function TradePage() {
         />
       </div>
 
-      <div className="flex-none px-4 pt-2 pb-4 safe-area-bottom bg-white border-t border-separator">
+      <div className="flex-none px-4 pt-2 pb-4 bottom-dock-safe bg-white border-t border-separator">
         {orderType === 'limit' && step === 'amount' ? (
           <button
             type="button"

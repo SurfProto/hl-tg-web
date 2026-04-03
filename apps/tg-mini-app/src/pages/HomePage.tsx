@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { type ComponentType, Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   CATEGORY_LABELS,
@@ -12,22 +12,22 @@ import {
   useMids,
 } from '@repo/hyperliquid-sdk';
 import type { AnyMarket, MarketCategory, MarketSubCategory } from '@repo/types';
+import { BalanceHero } from '../components/BalanceHero';
 import { CategoryPills } from '../components/CategoryPills';
 import { MarketListItem } from '../components/MarketListItem';
 import { MarketListItemSkeleton } from '../components/MarketListItemSkeleton';
 import { formatPrice } from '../utils/format';
 
-function lazyNamedModule<T extends Record<string, React.ComponentType<any>>>(
+function lazyNamedModule<T extends Record<string, ComponentType<any>>>(
   loader: () => Promise<T>,
   exportName: keyof T,
 ) {
   return lazy(async () => {
     const module = await loader();
-    return { default: module[exportName] as React.ComponentType<any> };
+    return { default: module[exportName] as ComponentType<any> };
   });
 }
 
-const BalanceHero = lazyNamedModule(() => import('../components/BalanceHero'), 'BalanceHero');
 const SearchSheet = lazyNamedModule(() => import('../components/SearchSheet'), 'SearchSheet');
 const AllMarketsSheet = lazyNamedModule(() => import('../components/AllMarketsSheet'), 'AllMarketsSheet');
 const HOME_ROW_COUNT = 6;
@@ -51,7 +51,6 @@ export function HomePage() {
   const [selectedSubCategory, setSelectedSubCategory] = useState<MarketSubCategory | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [allMarketsOpen, setAllMarketsOpen] = useState(false);
-  const [showDeferredContent, setShowDeferredContent] = useState(false);
 
   const { data: markets, isLoading: marketsLoading } = useMarketData();
   const { data: mids, isLoading: midsLoading } = useMids();
@@ -65,13 +64,9 @@ export function HomePage() {
   }, [selectedCategory]);
 
   useEffect(() => {
-    if (isLoading) {
-      setShowDeferredContent(false);
-      return;
-    }
+    if (isLoading) return;
 
-    const prefetchDeferredContent = () => {
-      setShowDeferredContent(true);
+    const prefetchDeferredRoutes = () => {
       for (const prefetchRoute of DEFERRED_ROUTE_PREFETCHERS) {
         void prefetchRoute();
       }
@@ -81,11 +76,11 @@ export function HomePage() {
     const cancelIdleCallback = window.cancelIdleCallback?.bind(window);
 
     if (requestIdleCallback && cancelIdleCallback) {
-      const idleId = requestIdleCallback(prefetchDeferredContent, { timeout: 500 });
+      const idleId = requestIdleCallback(prefetchDeferredRoutes, { timeout: 500 });
       return () => cancelIdleCallback(idleId);
     }
 
-    const timeoutId = window.setTimeout(prefetchDeferredContent, 120);
+    const timeoutId = window.setTimeout(prefetchDeferredRoutes, 120);
     return () => window.clearTimeout(timeoutId);
   }, [isLoading]);
 
@@ -131,6 +126,8 @@ export function HomePage() {
 
   return (
     <div className="min-h-full bg-background">
+      <BalanceHero />
+
       <div className="px-4 pt-5 mb-2">
         <CategoryPills
           categories={CATEGORY_ORDER}
@@ -213,16 +210,10 @@ export function HomePage() {
         )}
       </div>
 
-      {showDeferredContent && (
-        <Suspense fallback={<div className="h-px bg-separator mt-4" />}>
-          <BalanceHero />
-        </Suspense>
-      )}
-
       <button
         type="button"
         onClick={() => setSearchOpen(true)}
-        className="fixed bottom-24 right-4 w-12 h-12 bg-primary text-white rounded-full shadow-lg flex items-center justify-center z-40 active:bg-primary-dark transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+        className="fixed floating-above-bottom-nav right-4 w-12 h-12 bg-primary text-white rounded-full shadow-lg flex items-center justify-center z-40 active:bg-primary-dark transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
         aria-label="Search markets"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">

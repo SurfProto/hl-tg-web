@@ -68,12 +68,12 @@ export function Layout({ children }: LayoutProps) {
 
   return (
     <div className="tg-root-height bg-background text-foreground flex flex-col">
-      <main className={`flex-1 overflow-y-auto ${hideNav ? '' : 'pb-20'}`}>
+      <main className={`flex-1 overflow-y-auto ${hideNav ? '' : 'page-above-bottom-nav'}`}>
         {children}
       </main>
 
       {!hideNav && (
-        <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 py-2 z-50 safe-area-bottom">
+        <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 py-2 z-50 bottom-nav-safe">
           <div className="flex justify-around max-w-lg mx-auto">
             <NavLink
               to="/"

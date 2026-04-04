@@ -56,7 +56,8 @@ export function AccountPage() {
   const approveBuilderFee = useApproveBuilderFee();
 
   const walletAddress = user?.wallet?.address ?? wallets.find((wallet) => wallet.walletClientType === 'privy')?.address;
-  const displayName = user?.telegram?.username
+  const telegramUsername = user?.telegram?.username ?? null;
+  const displayName = telegramUsername
     ?? user?.email?.address
     ?? user?.wallet?.address
     ?? 'Trader';
@@ -103,7 +104,10 @@ export function AccountPage() {
   const pnlColorClass =
     rangePnl > 0 ? 'text-positive' : rangePnl < 0 ? 'text-negative' : 'text-foreground';
   const drawdownColorClass = maxDrawdown > 0 ? 'text-negative' : 'text-foreground';
-  const showPortfolioMetricPlaceholder = portfolioLoading || !portfolioPeriod;
+  const hasRangeHistory =
+    (portfolioPeriod?.accountValueHistory?.length ?? 0) > 1
+    && (portfolioPeriod?.pnlHistory?.length ?? 0) > 0;
+  const showPortfolioMetricPlaceholder = portfolioLoading || !portfolioPeriod || !hasRangeHistory;
   const portfolioRanges: Array<{ key: PortfolioRange; label: string }> = [
     { key: '1d', label: '1D' },
     { key: '7d', label: '1W' },
@@ -116,7 +120,9 @@ export function AccountPage() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-sm text-muted">Account</p>
-            <h1 className="mt-1 text-2xl font-bold text-foreground">@{displayName}</h1>
+            <h1 className="mt-1 text-2xl font-bold text-foreground">
+              {telegramUsername ? `@${displayName}` : displayName}
+            </h1>
             <p className="mt-1 text-sm text-muted">
               {user?.email?.address ?? 'Telegram and embedded wallet connected'}
             </p>

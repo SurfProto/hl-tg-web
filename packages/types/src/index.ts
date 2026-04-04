@@ -213,9 +213,18 @@ export interface MarketStats {
 
 export interface AssetCtx extends MarketStats {}
 
+export type PortfolioRange = '1d' | '7d' | '30d';
+
 export interface PortfolioHistoryPoint {
   time: number;  // unix ms
-  value: number; // account value in USD
+  value: number; // series value in USD
+}
+
+export interface PortfolioPeriodData {
+  period: PortfolioRange;
+  accountValueHistory: PortfolioHistoryPoint[];
+  pnlHistory: PortfolioHistoryPoint[];
+  volume: number;
 }
 
 // Telegram types

@@ -1,28 +1,17 @@
-import { useMemo, useState } from 'react';
-import { usePortfolioHistory } from '@repo/hyperliquid-sdk';
+import { useMemo } from 'react';
+import { usePortfolioPeriod } from '@repo/hyperliquid-sdk';
 import { Chart } from '@repo/ui';
+import { usePortfolioRange } from '../hooks/usePortfolioRange';
+import { getPortfolioChangePct, getPortfolioTone } from '../lib/portfolio';
 
 export function BalanceHeroChart() {
-  const [period, setPeriod] = useState<'1d' | '7d' | '30d'>('7d');
-  const { data: portfolioHistory, isError, isLoading } = usePortfolioHistory(period);
-  const historyPoints = portfolioHistory ?? [];
+  const { period, setPeriod } = usePortfolioRange();
+  const { data: portfolioPeriod, isError, isLoading } = usePortfolioPeriod(period);
+  const historyPoints = portfolioPeriod?.accountValueHistory ?? [];
 
   const performance = useMemo(() => {
-    if (historyPoints.length < 2) {
-      return { changePct: 0, tone: 'neutral' as const };
-    }
-
-    const first = historyPoints[0]?.value ?? 0;
-    const last = historyPoints[historyPoints.length - 1]?.value ?? 0;
-    if (!Number.isFinite(first) || first <= 0 || !Number.isFinite(last)) {
-      return { changePct: 0, tone: 'neutral' as const };
-    }
-
-    const changePct = ((last - first) / first) * 100;
-    const tone: 'positive' | 'negative' | 'neutral' =
-      changePct > 0.05 ? 'positive' : changePct < -0.05 ? 'negative' : 'neutral';
-
-    return { changePct, tone };
+    const changePct = getPortfolioChangePct(historyPoints);
+    return { changePct, tone: getPortfolioTone(historyPoints) };
   }, [historyPoints]);
 
   const periodCopy =
@@ -79,7 +68,7 @@ export function BalanceHeroChart() {
         <Chart
           candles={[]}
           interval={period}
-          onIntervalChange={(value) => setPeriod(value as '1d' | '7d' | '30d')}
+          onIntervalChange={(value) => setPeriod(value as typeof period)}
           mode="area"
           variant="lite-area"
           tone={performance.tone}

@@ -8,6 +8,7 @@ import { HomePage } from './pages/HomePage';
 import { ensureUser, getTelegramProfile } from './lib/supabase';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider } from './components/Toast';
+import { PortfolioRangeProvider } from './hooks/usePortfolioRange';
 import './index.css';
 
 interface PrivyWithTelegram {
@@ -204,9 +205,11 @@ function App() {
         }}
       >
         <QueryClientProvider client={queryClient}>
-          <ToastProvider>
-            <AppContent />
-          </ToastProvider>
+          <PortfolioRangeProvider>
+            <ToastProvider>
+              <AppContent />
+            </ToastProvider>
+          </PortfolioRangeProvider>
         </QueryClientProvider>
       </PrivyProvider>
     </ErrorBoundary>

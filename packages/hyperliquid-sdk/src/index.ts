@@ -45,6 +45,7 @@ export {
   // Market stats hooks
   useMarketStats,
   useAssetCtx,
+  usePortfolioPeriod,
   usePortfolioHistory,
   // WebSocket hooks
   useOrderbookWs,

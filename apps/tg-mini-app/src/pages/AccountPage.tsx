@@ -9,10 +9,17 @@ import {
   useBuilderFeeApproval,
   useFills,
   useMids,
+  usePortfolioPeriod,
   useSpotBalance,
   useUserState,
 } from '@repo/hyperliquid-sdk';
+import type { PortfolioRange } from '@repo/types';
 import { useHaptics } from '../hooks/useHaptics';
+import { usePortfolioRange } from '../hooks/usePortfolioRange';
+import {
+  getPortfolioMaxDrawdownPct,
+  getPortfolioRangePnl,
+} from '../lib/portfolio';
 
 type SpotBalance = { coin: string; total: string; hold: string; entryNtl: string };
 
@@ -25,15 +32,26 @@ function formatAddress(address?: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
+function formatSignedUsd(value: number) {
+  const sign = value > 0 ? '+' : value < 0 ? '-' : '';
+  return `${sign}${formatUsd(Math.abs(value))}`;
+}
+
+function formatDrawdownPercent(value: number) {
+  return value > 0 ? `-${value.toFixed(2)}%` : '0.00%';
+}
+
 export function AccountPage() {
   const haptics = useHaptics();
   const privy = usePrivy() as any;
   const { user, authenticated } = privy;
+  const { period, setPeriod } = usePortfolioRange();
   const { wallets } = useWallets();
   const { data: userState } = useUserState();
   const { data: spotBalance } = useSpotBalance();
   const { data: mids } = useMids();
   const { data: fills } = useFills();
+  const { data: portfolioPeriod, isLoading: portfolioLoading } = usePortfolioPeriod(period);
   const { data: maxFee, isLoading: builderApprovalLoading } = useBuilderFeeApproval();
   const approveBuilderFee = useApproveBuilderFee();
 
@@ -73,6 +91,24 @@ export function AccountPage() {
   const recentFills = fills?.slice(0, 3) ?? [];
   const builderConfigured = isBuilderConfigured();
   const builderApproved = (maxFee ?? 0) > 0;
+  const rangePnl = useMemo(
+    () => getPortfolioRangePnl(portfolioPeriod?.pnlHistory ?? []),
+    [portfolioPeriod?.pnlHistory],
+  );
+  const maxDrawdown = useMemo(
+    () => getPortfolioMaxDrawdownPct(portfolioPeriod?.accountValueHistory ?? []),
+    [portfolioPeriod?.accountValueHistory],
+  );
+  const metricRangeLabel = period === '1d' ? '1D' : period === '7d' ? '1W' : '1M';
+  const pnlColorClass =
+    rangePnl > 0 ? 'text-positive' : rangePnl < 0 ? 'text-negative' : 'text-foreground';
+  const drawdownColorClass = maxDrawdown > 0 ? 'text-negative' : 'text-foreground';
+  const showPortfolioMetricPlaceholder = portfolioLoading || !portfolioPeriod;
+  const portfolioRanges: Array<{ key: PortfolioRange; label: string }> = [
+    { key: '1d', label: '1D' },
+    { key: '7d', label: '1W' },
+    { key: '30d', label: '1M' },
+  ];
 
   return (
     <div className="min-h-full bg-background px-4 py-5 space-y-4">
@@ -138,14 +174,48 @@ export function AccountPage() {
         </div>
       </div>
 
+      <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-foreground">Portfolio metrics</p>
+            <p className="mt-1 text-xs text-muted">Synced with the home portfolio range</p>
+          </div>
+          <div className="chart-range-pill inline-flex items-center gap-1 rounded-full px-1.5 py-1">
+            {portfolioRanges.map((range) => {
+              const active = period === range.key;
+
+              return (
+                <button
+                  key={range.key}
+                  type="button"
+                  onClick={() => setPeriod(range.key)}
+                  aria-pressed={active}
+                  className={`min-w-[42px] rounded-full px-3 py-1.5 text-sm font-semibold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 ${
+                    active ? 'bg-white text-foreground shadow-sm' : 'text-gray-400'
+                  }`}
+                >
+                  {range.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
           <p className="text-xs text-muted">Profit &amp; Loss</p>
-          <p className="mt-2 text-lg font-semibold text-foreground">$0.00</p>
+          <p className={`mt-2 text-lg font-semibold ${showPortfolioMetricPlaceholder ? 'text-foreground' : pnlColorClass}`}>
+            {showPortfolioMetricPlaceholder ? '\u2014' : formatSignedUsd(rangePnl)}
+          </p>
+          <p className="mt-1 text-xs text-muted">{metricRangeLabel} range</p>
         </div>
         <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
           <p className="text-xs text-muted">Max Drawdown</p>
-          <p className="mt-2 text-lg font-semibold text-foreground">0.00%</p>
+          <p className={`mt-2 text-lg font-semibold ${showPortfolioMetricPlaceholder ? 'text-foreground' : drawdownColorClass}`}>
+            {showPortfolioMetricPlaceholder ? '\u2014' : formatDrawdownPercent(maxDrawdown)}
+          </p>
+          <p className="mt-1 text-xs text-muted">{metricRangeLabel} range</p>
         </div>
         <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
           <p className="text-xs text-muted">Perps Equity</p>

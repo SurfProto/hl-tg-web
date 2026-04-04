@@ -15,7 +15,15 @@ import {
   storeAgentExpiry,
   isAgentKeyExpired,
 } from './agent';
-import type { AssetCtx, MarketStats, Order, PortfolioHistoryPoint, WsMessage } from '@repo/types';
+import type {
+  AssetCtx,
+  MarketStats,
+  Order,
+  PortfolioHistoryPoint,
+  PortfolioPeriodData,
+  PortfolioRange,
+  WsMessage,
+} from '@repo/types';
 import { USDC_ARBITRUM, HL_BRIDGE_ARBITRUM } from './constants';
 
 const publicClientCache = new Map<'mainnet' | 'testnet', HyperliquidClient>();
@@ -914,7 +922,21 @@ export function useAssetCtx(coin: string) {
 /**
  * Hook to fetch portfolio value history for area chart display.
  */
-export function usePortfolioHistory(period: '1d' | '7d' | '30d' = '7d') {
+export function usePortfolioPeriod(period: PortfolioRange = '7d') {
+  const { client } = useHyperliquid();
+
+  return useQuery<PortfolioPeriodData>({
+    queryKey: ['portfolioPeriod', period],
+    queryFn: () => {
+      if (!client) throw new Error('Client not connected');
+      return client.getPortfolioPeriod(period);
+    },
+    enabled: !!client,
+    staleTime: 60_000,
+  });
+}
+
+export function usePortfolioHistory(period: PortfolioRange = '7d') {
   const { client } = useHyperliquid();
 
   return useQuery<PortfolioHistoryPoint[]>({

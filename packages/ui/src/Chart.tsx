@@ -3,6 +3,7 @@ import {
   ColorType,
   CrosshairMode,
   LineStyle,
+  TrackingModeExitMode,
   type MouseEventParams,
   createChart,
   type AreaData,
@@ -89,24 +90,24 @@ function getLiteToneClass(tone: ChartTone): string {
 function getAreaSeriesColors(tone: ChartTone) {
   if (tone === "positive") {
     return {
-      topColor: "rgba(255, 255, 255, 0.38)",
-      bottomColor: "rgba(255, 255, 255, 0.02)",
-      lineColor: "#ffffff",
+      topColor: "rgba(34, 197, 94, 0.26)",
+      bottomColor: "rgba(34, 197, 94, 0.04)",
+      lineColor: "#16a34a",
     };
   }
 
   if (tone === "negative") {
     return {
-      topColor: "rgba(255, 255, 255, 0.34)",
-      bottomColor: "rgba(255, 255, 255, 0.02)",
-      lineColor: "#ffffff",
+      topColor: "rgba(239, 68, 68, 0.24)",
+      bottomColor: "rgba(239, 68, 68, 0.05)",
+      lineColor: "#dc2626",
     };
   }
 
   return {
-    topColor: "rgba(255, 255, 255, 0.36)",
-    bottomColor: "rgba(255, 255, 255, 0.02)",
-    lineColor: "#ffffff",
+    topColor: "rgba(59, 130, 246, 0.2)",
+    bottomColor: "rgba(59, 130, 246, 0.04)",
+    lineColor: "#2563eb",
   };
 }
 
@@ -196,6 +197,7 @@ export function Chart({
   const onLiteCandleInspectRef = useRef(onLiteCandleInspect);
   const candlesByTimeRef = useRef<Map<number, Candle>>(new Map());
   const isLiteCandleInspectingRef = useRef(false);
+  const activeTouchInspectRef = useRef(false);
 
   const liteCandleInspectEnabled =
     variant === "lite-candles" && enableLiteCandleInspect;
@@ -258,6 +260,9 @@ export function Chart({
         vertLine: { visible: variant === "trading" },
         horzLine: { visible: variant === "trading" },
       },
+      trackingMode: liteCandleInspectEnabled
+        ? { exitMode: TrackingModeExitMode.OnTouchEnd }
+        : undefined,
       rightPriceScale: {
         visible: showAxes,
         borderVisible: false,
@@ -287,7 +292,7 @@ export function Chart({
         axisPressedMouseMove: variant === "trading",
       },
     };
-  }, [interval, resolvedShowGrid, variant]);
+  }, [interval, liteCandleInspectEnabled, resolvedShowGrid, variant]);
 
   const areaSeriesOptions = useMemo(() => {
     if (variant === "lite-area") {
@@ -370,6 +375,25 @@ export function Chart({
   function publishLiteCandleInspect(inspection: LiteCandleInspection | null) {
     updateLiteCandleInspecting(inspection !== null);
     onLiteCandleInspectRef.current?.(inspection);
+  }
+
+  function publishLiteCandleInspectAtPoint(
+    candle: Candle,
+    x: number,
+    fallbackY: number,
+    containerWidth: number,
+    containerHeight: number,
+  ) {
+    const coordinate =
+      candlestickSeriesRef.current?.priceToCoordinate(candle.c) ?? fallbackY;
+
+    publishLiteCandleInspect({
+      candle,
+      x,
+      y: coordinate,
+      containerWidth,
+      containerHeight,
+    });
   }
 
   // Uses refs so it's safe to call from ResizeObserver or any async context.
@@ -546,6 +570,7 @@ export function Chart({
   }, [candles, currentPrice, interval, lastPrice, showLastPrice, variant]);
 
   useEffect(() => {
+    activeTouchInspectRef.current = false;
     publishLiteCandleInspect(null);
   }, [candles, interval, liteCandleInspectEnabled]);
 
@@ -564,9 +589,51 @@ export function Chart({
     const series = candlestickSeriesRef.current;
     const container = chartContainerRef.current;
 
-    const clearInspection = () => publishLiteCandleInspect(null);
+    const clearInspection = () => {
+      activeTouchInspectRef.current = false;
+      chart.clearCrosshairPosition();
+      publishLiteCandleInspect(null);
+    };
+
+    const publishInspectionFromClientX = (clientX: number, clientY: number) => {
+      const rect = container.getBoundingClientRect();
+      const relativeX = clientX - rect.left;
+      const relativeY = clientY - rect.top;
+
+      if (relativeX < 0 || relativeX > rect.width) {
+        clearInspection();
+        return;
+      }
+
+      const logical = chart.timeScale().coordinateToLogical(relativeX);
+      if (logical == null) {
+        clearInspection();
+        return;
+      }
+
+      const nearestIndex = Math.max(
+        0,
+        Math.min(candles.length - 1, Math.round(Number(logical))),
+      );
+      const candle = candles[nearestIndex];
+
+      if (!candle) {
+        clearInspection();
+        return;
+      }
+
+      chart.setCrosshairPosition(candle.c, (candle.t / 1000) as Time, series);
+      publishLiteCandleInspectAtPoint(
+        candle,
+        relativeX,
+        relativeY,
+        rect.width,
+        rect.height,
+      );
+    };
 
     const handleCrosshairMove = (param: MouseEventParams<Time>) => {
+      if (activeTouchInspectRef.current) return;
       if (!liteCandleInspectRef.current) {
         clearInspection();
         return;
@@ -608,26 +675,42 @@ export function Chart({
         return;
       }
 
-      const coordinate = series.priceToCoordinate(seriesData.close);
-      publishLiteCandleInspect({
+      publishLiteCandleInspectAtPoint(
         candle,
-        x: point.x,
-        y: coordinate ?? point.y,
-        containerWidth: container.clientWidth,
-        containerHeight: container.clientHeight,
-      });
+        point.x,
+        point.y,
+        container.clientWidth,
+        container.clientHeight,
+      );
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.pointerType === "mouse") return;
+      activeTouchInspectRef.current = true;
+      publishInspectionFromClientX(event.clientX, event.clientY);
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (event.pointerType === "mouse" || !activeTouchInspectRef.current) return;
+      publishInspectionFromClientX(event.clientX, event.clientY);
     };
 
     chart.subscribeCrosshairMove(handleCrosshairMove);
+    container.addEventListener("pointerdown", handlePointerDown);
+    container.addEventListener("pointermove", handlePointerMove);
     container.addEventListener("pointerleave", clearInspection);
     container.addEventListener("pointerup", clearInspection);
+    container.addEventListener("pointercancel", clearInspection);
     container.addEventListener("touchend", clearInspection);
     container.addEventListener("touchcancel", clearInspection);
 
     return () => {
       chart.unsubscribeCrosshairMove(handleCrosshairMove);
+      container.removeEventListener("pointerdown", handlePointerDown);
+      container.removeEventListener("pointermove", handlePointerMove);
       container.removeEventListener("pointerleave", clearInspection);
       container.removeEventListener("pointerup", clearInspection);
+      container.removeEventListener("pointercancel", clearInspection);
       container.removeEventListener("touchend", clearInspection);
       container.removeEventListener("touchcancel", clearInspection);
     };
@@ -703,7 +786,11 @@ export function Chart({
               : "chart-surface chart-surface--lite-candles rounded-[28px]",
         ].join(" ")}
       >
-        <div ref={chartContainerRef} className="absolute inset-0" />
+        <div
+          ref={chartContainerRef}
+          className="absolute inset-0"
+          style={{ touchAction: liteCandleInspectEnabled ? "pan-y" : undefined }}
+        />
 
         {showLastPrice &&
           variant === "lite-candles" &&

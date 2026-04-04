@@ -11,6 +11,8 @@ import type {
   OrderSide,
   OrderValidationResult,
   PortfolioHistoryPoint,
+  PortfolioPeriodData,
+  PortfolioRange,
   WsMessage,
 } from '@repo/types';
 import { getBuilderAddress, getBuilderFeeTenthsBp, getBuilderConfig, isBuilderConfigured } from './builder';
@@ -44,6 +46,12 @@ interface CachedMarket {
   isHip3?: boolean;
   onlyIsolated?: boolean;
 }
+
+const PORTFOLIO_PERIOD_KEY: Record<PortfolioRange, 'day' | 'week' | 'month'> = {
+  '1d': 'day',
+  '7d': 'week',
+  '30d': 'month',
+};
 
 interface MarketCache {
   perp: Record<string, CachedMarket>;
@@ -1321,11 +1329,26 @@ export class HyperliquidClient {
     return stats[coin] ?? null;
   }
 
-  // Get portfolio value history for area chart
-  async getPortfolioHistory(period: '1d' | '7d' | '30d' = '7d'): Promise<PortfolioHistoryPoint[]> {
+  private parsePortfolioSeries(series: unknown): PortfolioHistoryPoint[] {
+    if (!Array.isArray(series)) return [];
+
+    return series
+      .map((point: unknown) => {
+        if (!Array.isArray(point) || point.length < 2) return null;
+        const time = Number(point[0]);
+        const value = parseFloat(String(point[1] ?? '0'));
+        if (!Number.isFinite(time) || !Number.isFinite(value)) return null;
+        return { time, value };
+      })
+      .filter((point: PortfolioHistoryPoint | null): point is PortfolioHistoryPoint => point !== null)
+      .sort((left: PortfolioHistoryPoint, right: PortfolioHistoryPoint) => left.time - right.time);
+  }
+
+  // Get parsed portfolio series for a selected timeframe.
+  async getPortfolioPeriod(period: PortfolioRange = '7d'): Promise<PortfolioPeriodData> {
     const client = await this.getPublicClient();
     const portfolio = await client.portfolio({ user: this.walletAddress as `0x${string}` });
-    const periodKey = period === '1d' ? 'day' : period === '7d' ? 'week' : 'month';
+    const periodKey = PORTFOLIO_PERIOD_KEY[period];
     const portfolioSeries = Array.isArray(portfolio)
       ? portfolio
       : Array.isArray(portfolio?.portfolio)
@@ -1334,25 +1357,34 @@ export class HyperliquidClient {
     const periodEntry = portfolioSeries.find((entry: any) =>
       Array.isArray(entry) && entry[0] === periodKey,
     );
-    const accountValueHistory = Array.isArray(periodEntry?.[1]?.accountValueHistory)
-      ? periodEntry[1].accountValueHistory
-      : [];
-    const parsedHistory = accountValueHistory
-      .map((point: any) => {
-        if (!Array.isArray(point) || point.length < 2) return null;
-        const time = Number(point[0]);
-        const value = parseFloat(point[1] ?? '0');
-        if (!Number.isFinite(time) || !Number.isFinite(value)) return null;
-        return { time, value };
-      })
-      .filter((point: PortfolioHistoryPoint | null): point is PortfolioHistoryPoint => point !== null)
-      .sort((left: PortfolioHistoryPoint, right: PortfolioHistoryPoint) => left.time - right.time);
-    if (parsedHistory.length > 0) {
-      return parsedHistory;
+    const accountValueHistory = this.parsePortfolioSeries(periodEntry?.[1]?.accountValueHistory);
+    const pnlHistory = this.parsePortfolioSeries(periodEntry?.[1]?.pnlHistory);
+    const volume = parseFloat(String(periodEntry?.[1]?.vlm ?? periodEntry?.[1]?.volume ?? '0'));
+
+    if (accountValueHistory.length > 0 || pnlHistory.length > 0) {
+      return {
+        period,
+        accountValueHistory,
+        pnlHistory,
+        volume: Number.isFinite(volume) ? volume : 0,
+      };
     }
+
     const userState = await this.getUserState();
     const accountValue = userState?.marginSummary?.accountValue ?? 0;
-    return [{ time: Date.now(), value: accountValue }];
+
+    return {
+      period,
+      accountValueHistory: [{ time: Date.now(), value: accountValue }],
+      pnlHistory: [{ time: Date.now(), value: 0 }],
+      volume: Number.isFinite(volume) ? volume : 0,
+    };
+  }
+
+  // Get portfolio value history for area chart
+  async getPortfolioHistory(period: PortfolioRange = '7d'): Promise<PortfolioHistoryPoint[]> {
+    const portfolioPeriod = await this.getPortfolioPeriod(period);
+    return portfolioPeriod.accountValueHistory;
   }
 
   // Get spot account balance (HL L1 spot)

@@ -13,7 +13,7 @@ export interface Market {
 }
 
 export interface SpotMarket extends Market {
-  type: 'spot';
+  type: "spot";
   tokens: [number, number];
   index: number;
   baseName: string;
@@ -21,19 +21,37 @@ export interface SpotMarket extends Market {
 }
 
 export interface PerpMarket extends Market {
-  type: 'perp';
+  type: "perp";
   index: number;
 }
 
 export type AnyMarket = SpotMarket | PerpMarket;
 
 // Market classification types
-export type MarketCategory = 'all' | 'perps' | 'spot' | 'crypto' | 'tradfi' | 'trending' | 'prelaunch';
-export type MarketTag = 'PERP' | 'SPOT' | 'TRADFI' | 'CASH';
+export type MarketCategory =
+  | "all"
+  | "perps"
+  | "spot"
+  | "crypto"
+  | "tradfi"
+  | "trending"
+  | "prelaunch";
+export type MarketTag = "PERP" | "SPOT" | "TRADFI" | "CASH";
 export type MarketSubCategory =
-  | 'stocks' | 'indices' | 'commodities' | 'fx' | 'pre-ipo'
-  | 'ai' | 'defi' | 'gaming' | 'layer1' | 'layer2' | 'meme'
-  | 'usdc' | 'usdh' | 'usdt';
+  | "stocks"
+  | "indices"
+  | "commodities"
+  | "fx"
+  | "pre-ipo"
+  | "ai"
+  | "defi"
+  | "gaming"
+  | "layer1"
+  | "layer2"
+  | "meme"
+  | "usdc"
+  | "usdh"
+  | "usdt";
 
 export interface EnrichedMarket {
   market: AnyMarket;
@@ -43,9 +61,10 @@ export interface EnrichedMarket {
 }
 
 // Order types
-export type OrderType = 'market' | 'limit';
-export type OrderSide = 'buy' | 'sell';
-export type MarketType = 'perp' | 'spot';
+export type OrderType = "market" | "limit";
+export type OrderSide = "buy" | "sell";
+export type MarketType = "perp" | "spot";
+export type TriggerOrderKind = "stopLoss" | "takeProfit";
 
 export interface Order {
   coin: string;
@@ -56,8 +75,25 @@ export interface Order {
   reduceOnly: boolean;
   leverage?: number;
   marketType?: MarketType;
-  tif?: 'Gtc' | 'Alo' | 'Ioc' | null;
+  tif?: "Gtc" | "Alo" | "Ioc" | null;
   cloid?: string;
+}
+
+export interface TriggerOrderRequest {
+  coin: string;
+  side: OrderSide;
+  size: number;
+  triggerPx: number;
+  triggerKind: TriggerOrderKind;
+  reduceOnly: true;
+  marketType: "perp";
+  cloid?: string;
+}
+
+export interface PositionProtectionRequest {
+  coin: string;
+  stopLossPx?: number | null;
+  takeProfitPx?: number | null;
 }
 
 export interface OrderValidationResult {
@@ -91,6 +127,7 @@ export interface OpenOrder {
   tif?: string | null;
   triggerPx?: number | null;
   isTrigger?: boolean;
+  isPositionTpsl?: boolean;
   cloid?: string | null;
 }
 
@@ -99,7 +136,7 @@ export interface Position {
   coin: string;
   szi: number;
   leverage: {
-    type: 'isolated' | 'cross';
+    type: "isolated" | "cross";
     value: number;
   };
   entryPx: number;
@@ -127,9 +164,10 @@ export interface AccountState {
   };
   crossMaintenanceMarginUsed: number;
   withdrawable: number;
+  dexWithdrawable?: Record<string, number>;
   assetPositions: Array<{
     position: Position;
-    type: 'oneWay';
+    type: "oneWay";
   }>;
 }
 
@@ -171,7 +209,7 @@ export interface Fill {
   side: OrderSide;
   time: number;
   startPosition: number;
-  dir: 'Open' | 'Close' | 'Flip';
+  dir: "Open" | "Close" | "Flip";
   closedPnl: number;
   hash: string;
   oid: number;
@@ -190,14 +228,45 @@ export interface BuilderCode {
 
 // WebSocket message types
 export type WsMessage =
-  | { channel: 'allMids'; data: Record<string, string> }
-  | { channel: 'l2Book'; data: { coin: string; levels: [OrderbookLevel[], OrderbookLevel[]]; time: number } }
-  | { channel: 'trades'; data: Array<{ coin: string; side: OrderSide; px: number; sz: number; time: number; hash: string }> }
-  | { channel: 'candle'; data: Candle }
-  | { channel: 'orderUpdates'; data: Array<{ order: PlacedOrder; status: 'open' | 'filled' | 'canceled' | 'rejected' | 'marginCanceled' }> }
-  | { channel: 'userFills'; data: Fill[] }
-  | { channel: 'userFundings'; data: Array<{ coin: string; fundingRate: number; premium: number; time: number }> }
-  | { channel: 'userNonFundingLedgerUpdates'; data: unknown[] };
+  | { channel: "allMids"; data: Record<string, string> }
+  | {
+      channel: "l2Book";
+      data: {
+        coin: string;
+        levels: [OrderbookLevel[], OrderbookLevel[]];
+        time: number;
+      };
+    }
+  | {
+      channel: "trades";
+      data: Array<{
+        coin: string;
+        side: OrderSide;
+        px: number;
+        sz: number;
+        time: number;
+        hash: string;
+      }>;
+    }
+  | { channel: "candle"; data: Candle }
+  | {
+      channel: "orderUpdates";
+      data: Array<{
+        order: PlacedOrder;
+        status: "open" | "filled" | "canceled" | "rejected" | "marginCanceled";
+      }>;
+    }
+  | { channel: "userFills"; data: Fill[] }
+  | {
+      channel: "userFundings";
+      data: Array<{
+        coin: string;
+        fundingRate: number;
+        premium: number;
+        time: number;
+      }>;
+    }
+  | { channel: "userNonFundingLedgerUpdates"; data: unknown[] };
 
 // Market stats types (derived from metaAndAssetCtxs response)
 export interface MarketStats {
@@ -213,10 +282,10 @@ export interface MarketStats {
 
 export interface AssetCtx extends MarketStats {}
 
-export type PortfolioRange = '1d' | '7d' | '30d';
+export type PortfolioRange = "1d" | "7d" | "30d";
 
 export interface PortfolioHistoryPoint {
-  time: number;  // unix ms
+  time: number; // unix ms
   value: number; // series value in USD
 }
 

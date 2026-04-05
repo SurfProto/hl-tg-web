@@ -1,12 +1,17 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useFundWallet, usePrivy, useSendTransaction, useWallets } from '@privy-io/react-auth';
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { HyperliquidClient } from './client';
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useFundWallet,
+  usePrivy,
+  useSendTransaction,
+  useWallets,
+} from "@privy-io/react-auth";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { HyperliquidClient } from "./client";
 import {
   getBuilderAddress,
   approveBuilderFee as approveBuilderFeeAction,
   isBuilderConfigured,
-} from './builder';
+} from "./builder";
 import {
   generateAgentKey,
   getAgentAddress,
@@ -14,22 +19,24 @@ import {
   storeAgentKey,
   storeAgentExpiry,
   isAgentKeyExpired,
-} from './agent';
+} from "./agent";
 import type {
   AssetCtx,
   MarketStats,
   Order,
+  PositionProtectionRequest,
   PortfolioHistoryPoint,
   PortfolioPeriodData,
   PortfolioRange,
+  TriggerOrderRequest,
   WsMessage,
-} from '@repo/types';
-import { USDC_ARBITRUM, HL_BRIDGE_ARBITRUM } from './constants';
+} from "@repo/types";
+import { USDC_ARBITRUM, HL_BRIDGE_ARBITRUM } from "./constants";
 
-const publicClientCache = new Map<'mainnet' | 'testnet', HyperliquidClient>();
+const publicClientCache = new Map<"mainnet" | "testnet", HyperliquidClient>();
 
 function getSharedPublicHyperliquidClient(testnet: boolean) {
-  const cacheKey = testnet ? 'testnet' : 'mainnet';
+  const cacheKey = testnet ? "testnet" : "mainnet";
   let client = publicClientCache.get(cacheKey);
 
   if (!client) {
@@ -46,8 +53,11 @@ function getSharedPublicHyperliquidClient(testnet: boolean) {
  * Instance is memoized per testnet flag — recreated only when it changes.
  */
 function usePublicHyperliquid() {
-  const testnet = import.meta.env.VITE_HYPERLIQUID_TESTNET === 'true';
-  const client = useMemo(() => getSharedPublicHyperliquidClient(testnet), [testnet]);
+  const testnet = import.meta.env.VITE_HYPERLIQUID_TESTNET === "true";
+  const client = useMemo(
+    () => getSharedPublicHyperliquidClient(testnet),
+    [testnet],
+  );
   return { client };
 }
 
@@ -61,11 +71,11 @@ export function useHyperliquid() {
   const { user } = usePrivy();
   const { wallets } = useWallets();
   const [provider, setProvider] = useState<unknown>(null);
-  const testnet = import.meta.env.VITE_HYPERLIQUID_TESTNET === 'true';
+  const testnet = import.meta.env.VITE_HYPERLIQUID_TESTNET === "true";
   const walletAddress = user?.wallet?.address ?? null;
 
   // getEthereumProvider() is async on ConnectedWallet — resolve it once and store
-  const embeddedWallet = wallets.find(w => w.walletClientType === 'privy');
+  const embeddedWallet = wallets.find((w) => w.walletClientType === "privy");
   useEffect(() => {
     if (!embeddedWallet) return;
     embeddedWallet.getEthereumProvider().then(setProvider);
@@ -100,7 +110,7 @@ export function useMarketData() {
   const { client } = usePublicHyperliquid();
 
   return useQuery({
-    queryKey: ['markets'],
+    queryKey: ["markets"],
     queryFn: () => client.getMarkets(),
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
@@ -113,7 +123,7 @@ export function useMids() {
   const { client } = usePublicHyperliquid();
 
   return useQuery({
-    queryKey: ['mids'],
+    queryKey: ["mids"],
     queryFn: () => client.getMids(),
     refetchInterval: 4000, // Refetch every 4 seconds
   });
@@ -126,7 +136,7 @@ export function useOrderbook(coin: string) {
   const { client } = usePublicHyperliquid();
 
   return useQuery({
-    queryKey: ['orderbook', coin],
+    queryKey: ["orderbook", coin],
     queryFn: () => client.getOrderbook(coin),
     enabled: !!coin,
     refetchInterval: 2000, // Refetch every 2 seconds
@@ -136,11 +146,11 @@ export function useOrderbook(coin: string) {
 /**
  * Hook to fetch candles
  */
-export function useCandles(coin: string, interval: string = '1h') {
+export function useCandles(coin: string, interval: string = "1h") {
   const { client } = usePublicHyperliquid();
 
   return useQuery({
-    queryKey: ['candles', coin, interval],
+    queryKey: ["candles", coin, interval],
     queryFn: () => client.getCandles(coin, interval),
     enabled: !!coin,
     staleTime: 1000 * 60, // 1 minute
@@ -154,7 +164,7 @@ export function useUserState() {
   const { client } = useHyperliquid();
 
   return useQuery({
-    queryKey: ['userState'],
+    queryKey: ["userState"],
     queryFn: () => client?.getUserState(),
     enabled: !!client,
     refetchInterval: 5000, // Refetch every 5 seconds
@@ -170,14 +180,14 @@ export function usePlaceOrder() {
 
   return useMutation({
     mutationFn: (order: Order) => {
-      if (!client) throw new Error('Client not connected');
+      if (!client) throw new Error("Client not connected");
       return client.placeOrder(order);
     },
     onSuccess: () => {
       // Invalidate user state to refresh positions/orders
-      queryClient.invalidateQueries({ queryKey: ['userState'] });
-      queryClient.invalidateQueries({ queryKey: ['openOrders'] });
-      queryClient.invalidateQueries({ queryKey: ['fills'] });
+      queryClient.invalidateQueries({ queryKey: ["userState"] });
+      queryClient.invalidateQueries({ queryKey: ["openOrders"] });
+      queryClient.invalidateQueries({ queryKey: ["fills"] });
     },
   });
 }
@@ -191,14 +201,74 @@ export function usePlaceSpotOrder() {
 
   return useMutation({
     mutationFn: (order: Order) => {
-      if (!client) throw new Error('Client not connected');
+      if (!client) throw new Error("Client not connected");
       return client.placeSpotOrder(order);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['spotBalance'] });
-      queryClient.invalidateQueries({ queryKey: ['userState'] });
-      queryClient.invalidateQueries({ queryKey: ['openOrders'] });
-      queryClient.invalidateQueries({ queryKey: ['fills'] });
+      queryClient.invalidateQueries({ queryKey: ["spotBalance"] });
+      queryClient.invalidateQueries({ queryKey: ["userState"] });
+      queryClient.invalidateQueries({ queryKey: ["openOrders"] });
+      queryClient.invalidateQueries({ queryKey: ["fills"] });
+    },
+  });
+}
+
+/**
+ * Hook to place a trigger order.
+ */
+export function usePlaceTriggerOrder() {
+  const { client } = useHyperliquid();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (order: TriggerOrderRequest) => {
+      if (!client) throw new Error("Client not connected");
+      return client.placeTriggerOrder(order);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["userState"] });
+      queryClient.invalidateQueries({ queryKey: ["openOrders"] });
+      queryClient.invalidateQueries({ queryKey: ["fills"] });
+    },
+  });
+}
+
+/**
+ * Hook to create or replace SL/TP protection for a position.
+ */
+export function useUpsertPositionProtection() {
+  const { client } = useHyperliquid();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: PositionProtectionRequest) => {
+      if (!client) throw new Error("Client not connected");
+      return client.upsertPositionProtection(request);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["userState"] });
+      queryClient.invalidateQueries({ queryKey: ["openOrders"] });
+      queryClient.invalidateQueries({ queryKey: ["fills"] });
+    },
+  });
+}
+
+/**
+ * Hook to cancel protection orders for a position.
+ */
+export function useCancelPositionProtection() {
+  const { client } = useHyperliquid();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (coin: string) => {
+      if (!client) throw new Error("Client not connected");
+      return client.cancelPositionProtection(coin);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["userState"] });
+      queryClient.invalidateQueries({ queryKey: ["openOrders"] });
+      queryClient.invalidateQueries({ queryKey: ["fills"] });
     },
   });
 }
@@ -212,13 +282,13 @@ export function useClosePosition() {
 
   return useMutation({
     mutationFn: (coin: string) => {
-      if (!client) throw new Error('Client not connected');
+      if (!client) throw new Error("Client not connected");
       return client.closePosition(coin);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['userState'] });
-      queryClient.invalidateQueries({ queryKey: ['openOrders'] });
-      queryClient.invalidateQueries({ queryKey: ['fills'] });
+      queryClient.invalidateQueries({ queryKey: ["userState"] });
+      queryClient.invalidateQueries({ queryKey: ["openOrders"] });
+      queryClient.invalidateQueries({ queryKey: ["fills"] });
     },
   });
 }
@@ -232,13 +302,13 @@ export function useCancelOrder() {
 
   return useMutation({
     mutationFn: ({ coin, oid }: { coin: string; oid: number }) => {
-      if (!client) throw new Error('Client not connected');
+      if (!client) throw new Error("Client not connected");
       return client.cancelOrder(coin, oid);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['userState'] });
-      queryClient.invalidateQueries({ queryKey: ['openOrders'] });
-      queryClient.invalidateQueries({ queryKey: ['fills'] });
+      queryClient.invalidateQueries({ queryKey: ["userState"] });
+      queryClient.invalidateQueries({ queryKey: ["openOrders"] });
+      queryClient.invalidateQueries({ queryKey: ["fills"] });
     },
   });
 }
@@ -252,13 +322,13 @@ export function useCancelAllOrders() {
 
   return useMutation({
     mutationFn: (coin?: string) => {
-      if (!client) throw new Error('Client not connected');
+      if (!client) throw new Error("Client not connected");
       return client.cancelAllOrders(coin);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['userState'] });
-      queryClient.invalidateQueries({ queryKey: ['openOrders'] });
-      queryClient.invalidateQueries({ queryKey: ['fills'] });
+      queryClient.invalidateQueries({ queryKey: ["userState"] });
+      queryClient.invalidateQueries({ queryKey: ["openOrders"] });
+      queryClient.invalidateQueries({ queryKey: ["fills"] });
     },
   });
 }
@@ -272,13 +342,13 @@ export function useModifyOrder() {
 
   return useMutation({
     mutationFn: ({ oid, order }: { oid: number; order: Order }) => {
-      if (!client) throw new Error('Client not connected');
+      if (!client) throw new Error("Client not connected");
       return client.modifyOrder(oid, order);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['userState'] });
-      queryClient.invalidateQueries({ queryKey: ['openOrders'] });
-      queryClient.invalidateQueries({ queryKey: ['fills'] });
+      queryClient.invalidateQueries({ queryKey: ["userState"] });
+      queryClient.invalidateQueries({ queryKey: ["openOrders"] });
+      queryClient.invalidateQueries({ queryKey: ["fills"] });
     },
   });
 }
@@ -290,7 +360,7 @@ export function useOpenOrders() {
   const { client } = useHyperliquid();
 
   return useQuery({
-    queryKey: ['openOrders'],
+    queryKey: ["openOrders"],
     queryFn: () => client?.getOpenOrders(),
     enabled: !!client,
     refetchInterval: 5000,
@@ -304,7 +374,7 @@ export function useFills() {
   const { client } = useHyperliquid();
 
   return useQuery({
-    queryKey: ['fills'],
+    queryKey: ["fills"],
     queryFn: () => client?.getFills(),
     enabled: !!client,
     refetchInterval: 10000,
@@ -318,7 +388,7 @@ export function useHistoricalOrders() {
   const { client } = useHyperliquid();
 
   return useQuery({
-    queryKey: ['historicalOrders'],
+    queryKey: ["historicalOrders"],
     queryFn: () => client?.getHistoricalOrders(),
     enabled: !!client,
     staleTime: 1000 * 60, // 1 minute
@@ -332,7 +402,7 @@ export function useFundingHistory(coin: string, startTime?: number) {
   const { client } = usePublicHyperliquid();
 
   return useQuery({
-    queryKey: ['fundingHistory', coin, startTime],
+    queryKey: ["fundingHistory", coin, startTime],
     queryFn: () => client.getFundingHistory(coin, startTime),
     enabled: !!coin,
     staleTime: 1000 * 60 * 5, // 5 minutes
@@ -346,7 +416,7 @@ export function usePredictedFundingRates() {
   const { client } = usePublicHyperliquid();
 
   return useQuery({
-    queryKey: ['predictedFundingRates'],
+    queryKey: ["predictedFundingRates"],
     queryFn: () => client.getPredictedFundingRates(),
     refetchInterval: 30000, // Refetch every 30 seconds
   });
@@ -360,13 +430,21 @@ export function useUpdateLeverage() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ coin, leverage, isCross = true }: { coin: string; leverage: number; isCross?: boolean }) => {
-      if (!client) throw new Error('Client not connected');
+    mutationFn: ({
+      coin,
+      leverage,
+      isCross = true,
+    }: {
+      coin: string;
+      leverage: number;
+      isCross?: boolean;
+    }) => {
+      if (!client) throw new Error("Client not connected");
       return client.updateLeverage(coin, leverage, isCross);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['userState'] });
-      queryClient.invalidateQueries({ queryKey: ['fills'] });
+      queryClient.invalidateQueries({ queryKey: ["userState"] });
+      queryClient.invalidateQueries({ queryKey: ["fills"] });
     },
   });
 }
@@ -380,11 +458,11 @@ export function useUpdateIsolatedMargin() {
 
   return useMutation({
     mutationFn: ({ coin, amount }: { coin: string; amount: number }) => {
-      if (!client) throw new Error('Client not connected');
+      if (!client) throw new Error("Client not connected");
       return client.updateIsolatedMargin(coin, amount);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['userState'] });
+      queryClient.invalidateQueries({ queryKey: ["userState"] });
     },
   });
 }
@@ -396,7 +474,7 @@ export function usePortfolio() {
   const { client } = useHyperliquid();
 
   return useQuery({
-    queryKey: ['portfolio'],
+    queryKey: ["portfolio"],
     queryFn: () => client?.getPortfolio(),
     enabled: !!client,
     staleTime: 1000 * 60 * 5, // 5 minutes
@@ -410,7 +488,7 @@ export function useSpotBalance() {
   const { client } = useHyperliquid();
 
   return useQuery({
-    queryKey: ['spotBalance'],
+    queryKey: ["spotBalance"],
     queryFn: () => client?.getSpotBalance(),
     enabled: !!client,
     refetchInterval: 5000,
@@ -426,12 +504,12 @@ export function useUsdClassTransfer() {
 
   return useMutation({
     mutationFn: ({ amount, toPerp }: { amount: string; toPerp: boolean }) => {
-      if (!client) throw new Error('Client not connected');
+      if (!client) throw new Error("Client not connected");
       return client.usdClassTransfer(amount, toPerp);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['userState'] });
-      queryClient.invalidateQueries({ queryKey: ['spotBalance'] });
+      queryClient.invalidateQueries({ queryKey: ["userState"] });
+      queryClient.invalidateQueries({ queryKey: ["spotBalance"] });
     },
   });
 }
@@ -444,12 +522,18 @@ export function useWithdraw() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ destination, amount }: { destination: string; amount: string }) => {
-      if (!client) throw new Error('Client not connected');
+    mutationFn: ({
+      destination,
+      amount,
+    }: {
+      destination: string;
+      amount: string;
+    }) => {
+      if (!client) throw new Error("Client not connected");
       return client.withdraw(destination, amount);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['userState'] });
+      queryClient.invalidateQueries({ queryKey: ["userState"] });
     },
   });
 }
@@ -459,15 +543,15 @@ export function useWithdraw() {
  */
 export function useArbitrumUsdcBalance(address: string | undefined) {
   return useQuery({
-    queryKey: ['arbitrumUsdc', address],
+    queryKey: ["arbitrumUsdc", address],
     queryFn: async () => {
-      const { createPublicClient, http, erc20Abi } = await import('viem');
-      const { arbitrum } = await import('viem/chains');
+      const { createPublicClient, http, erc20Abi } = await import("viem");
+      const { arbitrum } = await import("viem/chains");
       const client = createPublicClient({ chain: arbitrum, transport: http() });
       const raw = await client.readContract({
         address: USDC_ARBITRUM,
         abi: erc20Abi,
-        functionName: 'balanceOf',
+        functionName: "balanceOf",
         args: [address as `0x${string}`],
       });
       return Number(raw) / 1e6; // USDC has 6 decimals
@@ -477,7 +561,6 @@ export function useArbitrumUsdcBalance(address: string | undefined) {
   });
 }
 
-
 export function useFundArbitrumUsdc() {
   const { user } = usePrivy();
   const { fundWallet } = useFundWallet();
@@ -485,12 +568,12 @@ export function useFundArbitrumUsdc() {
   return useMutation({
     mutationFn: async ({ address }: { address?: string } = {}) => {
       const walletAddress = address ?? user?.wallet?.address;
-      if (!walletAddress) throw new Error('No wallet connected');
+      if (!walletAddress) throw new Error("No wallet connected");
 
       await fundWallet(walletAddress, {
         chain: { id: 42161 },
-        amount: '10',
-        asset: 'USDC',
+        amount: "10",
+        asset: "USDC",
       });
     },
   });
@@ -509,36 +592,42 @@ export function useBridgeToHyperliquid() {
 
   return useMutation({
     mutationFn: async ({ amount }: { amount: number }) => {
-      if (amount < 5) throw new Error('Minimum deposit is 5 USDC');
+      if (amount < 5) throw new Error("Minimum deposit is 5 USDC");
 
-      const { createPublicClient, encodeFunctionData, erc20Abi, http } = await import('viem');
-      const { arbitrum } = await import('viem/chains');
+      const { createPublicClient, encodeFunctionData, erc20Abi, http } =
+        await import("viem");
+      const { arbitrum } = await import("viem/chains");
 
       // Preflight: check Arbitrum USDC balance before sending the transaction
       const walletAddr = user?.wallet?.address;
-      if (!walletAddr) throw new Error('No wallet connected');
-      const publicClient = createPublicClient({ chain: arbitrum, transport: http() });
+      if (!walletAddr) throw new Error("No wallet connected");
+      const publicClient = createPublicClient({
+        chain: arbitrum,
+        transport: http(),
+      });
       const rawBalance = await publicClient.readContract({
         address: USDC_ARBITRUM,
         abi: erc20Abi,
-        functionName: 'balanceOf',
+        functionName: "balanceOf",
         args: [walletAddr as `0x${string}`],
       });
       const usdcBalance = Number(rawBalance) / 1e6;
       if (usdcBalance < amount) {
         throw new Error(
-          `Insufficient USDC on Arbitrum. You have ${usdcBalance.toFixed(2)} USDC but need ${amount.toFixed(2)} USDC.`
+          `Insufficient USDC on Arbitrum. You have ${usdcBalance.toFixed(2)} USDC but need ${amount.toFixed(2)} USDC.`,
         );
       }
 
-      const embeddedWallet = wallets.find(w => w.walletClientType === 'privy');
-      if (!embeddedWallet) throw new Error('No embedded wallet found');
+      const embeddedWallet = wallets.find(
+        (w) => w.walletClientType === "privy",
+      );
+      if (!embeddedWallet) throw new Error("No embedded wallet found");
       const account = embeddedWallet.address as `0x${string}`;
       const amountRaw = BigInt(Math.floor(amount * 1e6));
 
       const data = encodeFunctionData({
         abi: erc20Abi,
-        functionName: 'transfer',
+        functionName: "transfer",
         args: [HL_BRIDGE_ARBITRUM, amountRaw],
       });
 
@@ -550,17 +639,18 @@ export function useBridgeToHyperliquid() {
           chainId: arbitrum.id,
         },
         {
-          header: 'Review Hyperliquid deposit',
+          header: "Review Hyperliquid deposit",
           description: `Bridge ${amount.toFixed(2)} USDC from Arbitrum into your Hyperliquid trading balance. Sponsored by Tsunami with love.`,
-          buttonText: 'Confirm deposit',
-          successHeader: 'Deposit submitted',
-          successDescription: 'Your USDC transfer to Hyperliquid is on the way.',
+          buttonText: "Confirm deposit",
+          successHeader: "Deposit submitted",
+          successDescription:
+            "Your USDC transfer to Hyperliquid is on the way.",
           transactionInfo: {
-            title: 'Deposit details',
-            action: 'Bridge USDC',
+            title: "Deposit details",
+            action: "Bridge USDC",
             contractInfo: {
-              name: 'Sponsored by Tsunami with love',
-              url: 'https://arbiscan.io/token/0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+              name: "Sponsored by Tsunami with love",
+              url: "https://arbiscan.io/token/0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
             },
           },
         },
@@ -569,8 +659,8 @@ export function useBridgeToHyperliquid() {
       );
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['userState'] });
-      queryClient.invalidateQueries({ queryKey: ['arbitrumUsdc'] });
+      queryClient.invalidateQueries({ queryKey: ["userState"] });
+      queryClient.invalidateQueries({ queryKey: ["arbitrumUsdc"] });
     },
   });
 }
@@ -583,21 +673,27 @@ export function useSwapUsdcUsdh() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ amount, direction }: { amount: number; direction: 'buy' | 'sell' }) => {
-      if (!client) throw new Error('Client not connected');
+    mutationFn: ({
+      amount,
+      direction,
+    }: {
+      amount: number;
+      direction: "buy" | "sell";
+    }) => {
+      if (!client) throw new Error("Client not connected");
       // buy = buy USDH with USDC, sell = sell USDH for USDC
       return client.placeSpotOrder({
-        coin: '@107', // USDH/USDC spot pair symbol in allMids
+        coin: "@107", // USDH/USDC spot pair symbol in allMids
         side: direction,
         sizeUsd: amount,
-        orderType: 'market',
+        orderType: "market",
         reduceOnly: false,
-        marketType: 'spot',
+        marketType: "spot",
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['spotBalance'] });
-      queryClient.invalidateQueries({ queryKey: ['userState'] });
+      queryClient.invalidateQueries({ queryKey: ["spotBalance"] });
+      queryClient.invalidateQueries({ queryKey: ["userState"] });
     },
   });
 }
@@ -609,7 +705,7 @@ export function useBuilderFeeApproval() {
   const { client } = useHyperliquid();
 
   return useQuery({
-    queryKey: ['builderFeeApproval', getBuilderAddress()],
+    queryKey: ["builderFeeApproval", getBuilderAddress()],
     queryFn: () => client!.getMaxBuilderFee(getBuilderAddress()),
     enabled: !!client && isBuilderConfigured(),
     staleTime: 1000 * 60 * 5, // 5 minutes - approval doesn't change often
@@ -625,12 +721,12 @@ export function useApproveBuilderFee() {
 
   return useMutation({
     mutationFn: async () => {
-      if (!client) throw new Error('Client not connected');
+      if (!client) throw new Error("Client not connected");
       return approveBuilderFeeAction(client);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['builderFeeApproval'] });
-      queryClient.invalidateQueries({ queryKey: ['openOrders'] });
+      queryClient.invalidateQueries({ queryKey: ["builderFeeApproval"] });
+      queryClient.invalidateQueries({ queryKey: ["openOrders"] });
     },
   });
 }
@@ -674,7 +770,7 @@ export function useSetupTrading() {
 
   const setup = useMutation({
     mutationFn: async () => {
-      if (!client || !walletAddress) throw new Error('Not connected');
+      if (!client || !walletAddress) throw new Error("Not connected");
       const privateKey = generateAgentKey();
       const agentAddress = getAgentAddress(privateKey);
       const { expiryMs } = await client.approveAgent(agentAddress);
@@ -688,7 +784,7 @@ export function useSetupTrading() {
     onSuccess: () => {
       setIsReady(true);
       setIsExpired(false);
-      queryClient.invalidateQueries({ queryKey: ['builderFeeApproval'] });
+      queryClient.invalidateQueries({ queryKey: ["builderFeeApproval"] });
     },
   });
 
@@ -712,7 +808,7 @@ export function useOrderbookWs(coin: string) {
     const setupSubscription = async () => {
       await client.connectWs();
       unsubscribe = client.subscribeToOrderbook(coin, (data: WsMessage) => {
-        if (data.channel === 'l2Book') {
+        if (data.channel === "l2Book") {
           setOrderbook(data.data);
         }
       });
@@ -745,7 +841,7 @@ export function useTradesWs(coin: string) {
     const setupSubscription = async () => {
       await client.connectWs();
       unsubscribe = client.subscribeToTrades(coin, (data: WsMessage) => {
-        if (data.channel === 'trades') {
+        if (data.channel === "trades") {
           setTrades((prev) => [...data.data, ...prev].slice(0, 100)); // Keep last 100 trades
         }
       });
@@ -766,7 +862,7 @@ export function useTradesWs(coin: string) {
 /**
  * Hook to subscribe to real-time candle updates
  */
-export function useCandlesWs(coin: string, interval: string = '1m') {
+export function useCandlesWs(coin: string, interval: string = "1m") {
   const { client } = usePublicHyperliquid();
   const [candle, setCandle] = useState<any>(null);
 
@@ -777,11 +873,15 @@ export function useCandlesWs(coin: string, interval: string = '1m') {
 
     const setupSubscription = async () => {
       await client.connectWs();
-      unsubscribe = client.subscribeToCandles(coin, interval, (data: WsMessage) => {
-        if (data.channel === 'candle') {
-          setCandle(data.data);
-        }
-      });
+      unsubscribe = client.subscribeToCandles(
+        coin,
+        interval,
+        (data: WsMessage) => {
+          if (data.channel === "candle") {
+            setCandle(data.data);
+          }
+        },
+      );
     };
 
     setupSubscription();
@@ -835,13 +935,12 @@ export function useMidsWs() {
   const [mids, setMids] = useState<Record<string, string>>({});
 
   useEffect(() => {
-
     let unsubscribe: (() => void) | undefined;
 
     const setupSubscription = async () => {
       await client.connectWs();
       unsubscribe = client.subscribeToAllMids((data: WsMessage) => {
-        if (data.channel === 'allMids') {
+        if (data.channel === "allMids") {
           setMids(data.data);
         }
       });
@@ -898,7 +997,7 @@ export function useMarketStats() {
   const { client } = usePublicHyperliquid();
 
   return useQuery<Record<string, MarketStats>>({
-    queryKey: ['marketStats'],
+    queryKey: ["marketStats"],
     queryFn: () => client.getMarketStats(),
     staleTime: 30_000,
     refetchInterval: 30_000,
@@ -912,7 +1011,7 @@ export function useAssetCtx(coin: string) {
   const { client } = usePublicHyperliquid();
 
   return useQuery<AssetCtx | null>({
-    queryKey: ['assetCtx', coin],
+    queryKey: ["assetCtx", coin],
     queryFn: () => client.getAssetCtx(coin),
     enabled: !!coin,
     staleTime: 30_000,
@@ -922,13 +1021,13 @@ export function useAssetCtx(coin: string) {
 /**
  * Hook to fetch portfolio value history for area chart display.
  */
-export function usePortfolioPeriod(period: PortfolioRange = '7d') {
+export function usePortfolioPeriod(period: PortfolioRange = "7d") {
   const { client } = useHyperliquid();
 
   return useQuery<PortfolioPeriodData>({
-    queryKey: ['portfolioPeriod', period],
+    queryKey: ["portfolioPeriod", period],
     queryFn: () => {
-      if (!client) throw new Error('Client not connected');
+      if (!client) throw new Error("Client not connected");
       return client.getPortfolioPeriod(period);
     },
     enabled: !!client,
@@ -936,13 +1035,13 @@ export function usePortfolioPeriod(period: PortfolioRange = '7d') {
   });
 }
 
-export function usePortfolioHistory(period: PortfolioRange = '7d') {
+export function usePortfolioHistory(period: PortfolioRange = "7d") {
   const { client } = useHyperliquid();
 
   return useQuery<PortfolioHistoryPoint[]>({
-    queryKey: ['portfolioHistory', period],
+    queryKey: ["portfolioHistory", period],
     queryFn: () => {
-      if (!client) throw new Error('Client not connected');
+      if (!client) throw new Error("Client not connected");
       return client.getPortfolioHistory(period);
     },
     enabled: !!client,

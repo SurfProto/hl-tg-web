@@ -10,6 +10,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider } from './components/Toast';
 import { PortfolioRangeProvider } from './hooks/usePortfolioRange';
 import './index.css';
+import './lib/i18n';
 
 interface PrivyWithTelegram {
   ready: boolean;

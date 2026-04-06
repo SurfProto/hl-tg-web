@@ -1,15 +1,30 @@
 import { useEffect, useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../lib/i18n';
 import { getCurrentUserRecord, supabase } from '../../lib/supabase';
 
 const LANGUAGE_KEY = 'hl-tma-language';
 
+type LangKey = 'en' | 'ru' | 'es' | 'zh';
+
+const LANGUAGES: { key: LangKey; labelKey: string }[] = [
+  { key: 'en', labelKey: 'language.english' },
+  { key: 'ru', labelKey: 'language.russian' },
+  { key: 'es', labelKey: 'language.spanish' },
+  { key: 'zh', labelKey: 'language.chinese' },
+];
+
 export function LanguagePage() {
   const { user } = usePrivy();
-  const [language, setLanguage] = useState(() => localStorage.getItem(LANGUAGE_KEY) ?? 'en');
+  const { t } = useTranslation();
+  const [language, setLanguage] = useState<LangKey>(
+    () => (localStorage.getItem(LANGUAGE_KEY) as LangKey) ?? 'en',
+  );
 
   useEffect(() => {
     localStorage.setItem(LANGUAGE_KEY, language);
+    void i18n.changeLanguage(language);
 
     void (async () => {
       const record = await getCurrentUserRecord(user?.wallet?.address);
@@ -20,13 +35,9 @@ export function LanguagePage() {
 
   return (
     <div className="min-h-full bg-background px-4 py-5 space-y-4">
-      <h1 className="text-2xl font-bold text-foreground">Language</h1>
+      <h1 className="text-2xl font-bold text-foreground">{t('language.title')}</h1>
       <div className="space-y-3">
-        {([
-          { key: 'en', label: 'English' },
-          { key: 'es', label: 'Español' },
-          { key: 'zh', label: '中文' },
-        ] as const).map((option) => (
+        {LANGUAGES.map((option) => (
           <button
             key={option.key}
             onClick={() => setLanguage(option.key)}
@@ -36,8 +47,12 @@ export function LanguagePage() {
                 : 'border-separator bg-white'
             }`}
           >
-            <span className="text-sm font-semibold text-foreground">{option.label}</span>
-            <span className={`h-4 w-4 rounded-full border ${language === option.key ? 'border-primary bg-primary' : 'border-gray-300 bg-white'}`} />
+            <span className="text-sm font-semibold text-foreground">{t(option.labelKey)}</span>
+            <span
+              className={`h-4 w-4 rounded-full border ${
+                language === option.key ? 'border-primary bg-primary' : 'border-gray-300 bg-white'
+              }`}
+            />
           </button>
         ))}
       </div>

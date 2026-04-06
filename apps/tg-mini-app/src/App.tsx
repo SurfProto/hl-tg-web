@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PrivyProvider, usePrivy, type User } from '@privy-io/react-auth';
+import { useTranslation } from 'react-i18next';
 import { arbitrum } from 'viem/chains';
 import { Layout } from './components/Layout';
 import { HomePage } from './pages/HomePage';
@@ -84,6 +85,7 @@ function RouteFallback() {
 
 function TelegramAuthGate({ children }: { children: React.ReactNode }) {
   const privy = usePrivy() as unknown as PrivyWithTelegram;
+  const { t } = useTranslation();
   const { ready, authenticated, user, loginWithTelegram } = privy;
   const [loginError, setLoginError] = useState<string | null>(null);
 
@@ -94,10 +96,10 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
 
     setLoginError(null);
     loginWithTelegram().catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : 'Login failed. Please try again.';
+      const message = err instanceof Error ? err.message : t('errors.loginFailed');
       setLoginError(message);
     });
-  }, [authenticated, isTMA, loginWithTelegram, ready]);
+  }, [authenticated, isTMA, loginWithTelegram, ready, t]);
 
   useEffect(() => {
     if (!ready || !authenticated) return;
@@ -128,12 +130,12 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
           onClick={() => {
             setLoginError(null);
             loginWithTelegram().catch((err: unknown) => {
-              const message = err instanceof Error ? err.message : 'Login failed. Please try again.';
+              const message = err instanceof Error ? err.message : t('errors.loginFailed');
               setLoginError(message);
             });
           }}
         >
-          Retry
+          {t('common.retry')}
         </button>
       </div>
     );

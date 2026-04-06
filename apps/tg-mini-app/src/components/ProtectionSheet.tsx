@@ -200,7 +200,7 @@ export function ProtectionSheet({
         className="relative mt-auto max-h-[88vh] overflow-hidden rounded-t-[28px] bg-white animate-slide-up motion-reduce:animate-none"
       >
         <div className="flex max-h-[88vh] flex-col">
-          <div className="min-h-0 overflow-y-auto overscroll-contain px-4 pt-4">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-4 pb-4">
             <div className="flex justify-center">
               <div className="h-1 w-10 rounded-full bg-gray-300" />
             </div>

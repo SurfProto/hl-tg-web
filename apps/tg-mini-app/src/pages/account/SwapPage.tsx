@@ -1,75 +1,230 @@
-import { useState } from 'react';
-import { useSpotBalance, useSwapUsdcUsdh } from '@repo/hyperliquid-sdk';
+import { useMemo, useState } from "react";
+import {
+  SUPPORTED_STABLE_SWAP_ASSETS,
+  useSpotBalance,
+  useStableSwap,
+  useUserState,
+} from "@repo/hyperliquid-sdk";
+import { useTranslation } from "react-i18next";
+import type { StableSwapAsset } from "@repo/types";
+
+function StableAssetPicker({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: StableSwapAsset;
+  onChange: (asset: StableSwapAsset) => void;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+        {label}
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {SUPPORTED_STABLE_SWAP_ASSETS.map((asset) => {
+          const active = asset === value;
+
+          return (
+            <button
+              key={asset}
+              type="button"
+              onClick={() => onChange(asset)}
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                active
+                  ? "bg-primary text-white"
+                  : "border border-separator bg-white text-foreground active:bg-surface"
+              }`}
+            >
+              {asset}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export function SwapPage() {
-  const [direction, setDirection] = useState<'buy' | 'sell'>('buy');
-  const [amount, setAmount] = useState('');
-  const swap = useSwapUsdcUsdh();
+  const { t, i18n } = useTranslation();
+  const [fromAsset, setFromAsset] = useState<StableSwapAsset>("USDC");
+  const [toAsset, setToAsset] = useState<StableSwapAsset>("USDH");
+  const [amount, setAmount] = useState("");
+  const swap = useStableSwap();
+  const { data: userState } = useUserState();
   const { data: spotBalance } = useSpotBalance();
 
-  const usdcBalance = parseFloat(
-    spotBalance?.balances?.find((balance: any) => balance.coin === 'USDC')?.total ?? '0',
-  ) || 0;
-  const usdhBalance = parseFloat(
-    spotBalance?.balances?.find((balance: any) => balance.coin === 'USDH')?.total ?? '0',
-  ) || 0;
+  const perpUsdcBalance = userState?.withdrawable ?? 0;
+  const spotBalances = useMemo(() => {
+    const next = new Map<StableSwapAsset, number>();
 
-  const fromBalance = direction === 'buy' ? usdcBalance : usdhBalance;
-  const fromLabel = direction === 'buy' ? 'USDC' : 'USDH';
-  const toLabel = direction === 'buy' ? 'USDH' : 'USDC';
+    for (const asset of SUPPORTED_STABLE_SWAP_ASSETS) {
+      const entry = spotBalance?.balances?.find(
+        (balance: any) => balance.coin?.toUpperCase() === asset,
+      );
+      const total = Number.parseFloat(entry?.total ?? "0") || 0;
+      const hold = Number.parseFloat(entry?.hold ?? "0") || 0;
+      next.set(asset, Math.max(0, total - hold));
+    }
+
+    return next;
+  }, [spotBalance]);
+  const numberFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat(i18n.language, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 6,
+      }),
+    [i18n.language],
+  );
+
+  const sourceBalance =
+    fromAsset === "USDC" ? perpUsdcBalance : (spotBalances.get(fromAsset) ?? 0);
+  const destinationLabel =
+    toAsset === "USDC"
+      ? t("swap.returnToPerps")
+      : t("swap.stayInSpot", { asset: toAsset });
+  const parsedAmount = Number.parseFloat(amount);
+  const isInvalidAmount =
+    !amount || Number.isNaN(parsedAmount) || parsedAmount <= 0;
+  const isSameAsset = fromAsset === toAsset;
 
   return (
     <div className="min-h-full bg-background px-4 py-5 space-y-4">
-      <h1 className="text-2xl font-bold text-foreground">Swap USDC / USDH</h1>
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">{t("swap.title")}</h1>
+        <p className="mt-1 text-sm text-muted">
+          {t("swap.description")}
+        </p>
+      </div>
 
-      <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm space-y-4">
-        <div className="flex items-center justify-center gap-3">
-          <span className="text-sm font-semibold text-foreground">{fromLabel}</span>
+      <div className="rounded-3xl border border-separator bg-white p-4 shadow-sm">
+        <StableAssetPicker
+          label={t("swap.from")}
+          value={fromAsset}
+          onChange={(asset) => {
+            setFromAsset(asset);
+            if (asset === toAsset) {
+              setToAsset(fromAsset);
+            }
+          }}
+        />
+
+        <div className="mt-4 flex justify-center">
           <button
             type="button"
             onClick={() => {
-              setDirection((current) => current === 'buy' ? 'sell' : 'buy');
-              setAmount('');
+              setFromAsset(toAsset);
+              setToAsset(fromAsset);
+              setAmount("");
             }}
-            className="rounded-full bg-surface px-4 py-2 text-sm font-semibold text-primary"
-            aria-label="Swap asset direction"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-surface text-lg text-foreground transition-colors active:bg-gray-200"
+            aria-label={t("swap.flipDirection")}
           >
-            {'\u21c4'}
+            {"\u21c5"}
           </button>
-          <span className="text-sm font-semibold text-foreground">{toLabel}</span>
         </div>
 
-        <div className="flex items-center justify-between">
-          <label htmlFor="swap-amount" className="text-sm font-semibold text-foreground">Amount ({fromLabel})</label>
-          <span className="text-xs text-muted">Balance {fromBalance.toFixed(2)}</span>
+        <StableAssetPicker
+          label={t("swap.to")}
+          value={toAsset}
+          onChange={(asset) => {
+            setToAsset(asset);
+            if (asset === fromAsset) {
+              setFromAsset(toAsset);
+            }
+          }}
+        />
+
+        <div className="mt-5 rounded-2xl bg-surface p-4">
+          <div className="flex items-center justify-between gap-3">
+            <label
+              htmlFor="swap-amount"
+              className="text-sm font-semibold text-foreground"
+            >
+              {t("swap.amount", { asset: fromAsset })}
+            </label>
+            <span className="text-xs text-muted">
+              {t("swap.availableBalance", {
+                amount: numberFormatter.format(sourceBalance),
+                asset: fromAsset === "USDC" ? t("swap.perpUsdc") : fromAsset,
+              })}
+            </span>
+          </div>
+
+          <div className="mt-3 flex gap-2">
+            <input
+              id="swap-amount"
+              type="number"
+              name="swap-amount"
+              inputMode="decimal"
+              autoComplete="off"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              placeholder="0.00"
+              className="flex-1 rounded-2xl border border-separator bg-white px-4 py-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+            <button
+              type="button"
+              onClick={() =>
+                setAmount(
+                  sourceBalance > 0
+                    ? sourceBalance.toFixed(6).replace(/\.?0+$/, "")
+                    : "",
+                )
+              }
+              className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-primary transition-colors active:bg-gray-50"
+            >
+              MAX
+            </button>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-separator bg-white px-4 py-3">
+            <p className="text-xs uppercase tracking-wide text-muted">
+              {t("swap.routing")}
+            </p>
+            <p className="mt-2 text-sm font-semibold text-foreground">
+              {fromAsset === "USDC"
+                ? t("swap.routePerpToSpot")
+                : toAsset === "USDC"
+                  ? t("swap.routeSpotToPerps", { fromAsset })
+                  : t("swap.routeSpotToSpot", { fromAsset, toAsset })}
+            </p>
+            <p className="mt-1 text-xs text-muted">{destinationLabel}</p>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <input
-            id="swap-amount"
-            type="number"
-            name="swap-amount"
-            inputMode="decimal"
-            autoComplete="off"
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            placeholder="0.00"
-            className="flex-1 rounded-2xl border border-separator bg-surface px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-          />
-          <button type="button" onClick={() => setAmount(fromBalance.toFixed(2))} className="rounded-2xl bg-surface px-4 py-3 text-sm font-semibold text-primary">
-            MAX
-          </button>
-        </div>
+
         <button
           type="button"
-          onClick={() => swap.mutate({ amount: parseFloat(amount), direction })}
-          disabled={!amount || parseFloat(amount) <= 0 || swap.isPending}
-          className="w-full rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+          onClick={() =>
+            swap.mutate({
+              fromAsset,
+              toAsset,
+              amount: parsedAmount,
+            })
+          }
+          disabled={isInvalidAmount || isSameAsset || swap.isPending}
+          className="mt-5 w-full rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white transition-colors disabled:opacity-50"
         >
-          {swap.isPending ? 'Swapping…' : `Swap ${fromLabel} to ${toLabel}`}
+          {swap.isPending
+            ? t("swap.swapping")
+            : t("swap.cta", { fromAsset, toAsset })}
         </button>
-        {swap.isSuccess && <p className="text-sm text-positive">Swap completed successfully.</p>}
-        {swap.isError && <p className="text-sm text-negative">{swap.error instanceof Error ? swap.error.message : 'Swap failed'}</p>}
-        <p className="text-xs text-muted">USDH is expected to trade close to 1 USDC and uses a market order under the hood.</p>
+
+        {isSameAsset && (
+          <p className="mt-3 text-sm text-negative">
+            {t("swap.selectDifferentAssets")}
+          </p>
+        )}
+        {swap.isSuccess && (
+          <p className="mt-3 text-sm text-positive">{swap.data.message}</p>
+        )}
+        {swap.isError && (
+          <p className="mt-3 text-sm text-negative">
+            {swap.error instanceof Error ? swap.error.message : t("swap.failed")}
+          </p>
+        )}
       </div>
     </div>
   );

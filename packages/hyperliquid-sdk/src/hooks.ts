@@ -28,12 +28,123 @@ import type {
   PortfolioHistoryPoint,
   PortfolioPeriodData,
   PortfolioRange,
+  StableSwapAsset,
+  StableSwapRequest,
+  StableSwapResult,
   TriggerOrderRequest,
   WsMessage,
 } from "@repo/types";
 import { USDC_ARBITRUM, HL_BRIDGE_ARBITRUM } from "./constants";
 
 const publicClientCache = new Map<"mainnet" | "testnet", HyperliquidClient>();
+const STABLE_SWAP_ASSETS = ["USDC", "USDH", "USDT", "USDE"] as const;
+const STABLE_TRANSFER_PRECISION = 1_000_000;
+const SPOT_USDC_DUST_THRESHOLD = 0.01;
+
+type StableSpotMarket = {
+  index: number;
+  baseName: string;
+  quoteName: string;
+};
+
+type ResolvedStableSwapLeg = {
+  coin: string;
+  side: "buy" | "sell";
+  marketName: string;
+};
+
+function roundStableAmount(amount: number) {
+  return (
+    Math.floor(amount * STABLE_TRANSFER_PRECISION) / STABLE_TRANSFER_PRECISION
+  );
+}
+
+function formatStableAmount(amount: number) {
+  return roundStableAmount(amount)
+    .toFixed(6)
+    .replace(/\.?0+$/, "");
+}
+
+function parseBalanceAmount(value: unknown) {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? parseFloat(value)
+        : NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getSpotAvailableBalance(spotBalance: any, coin: StableSwapAsset) {
+  const entry = spotBalance?.balances?.find(
+    (balance: any) => balance.coin?.toUpperCase() === coin,
+  );
+  if (!entry) return 0;
+  const total = parseBalanceAmount(entry.total);
+  const hold = parseBalanceAmount(entry.hold);
+  return Math.max(0, total - hold);
+}
+
+function resolveStableSwapLeg(
+  markets: StableSpotMarket[],
+  fromAsset: StableSwapAsset,
+  toAsset: StableSwapAsset,
+): ResolvedStableSwapLeg {
+  const buyLeg = markets.find(
+    (market) =>
+      market.baseName.toUpperCase() === toAsset &&
+      market.quoteName.toUpperCase() === fromAsset,
+  );
+  if (buyLeg) {
+    return {
+      coin: `@${buyLeg.index}`,
+      side: "buy",
+      marketName: `${buyLeg.baseName}/${buyLeg.quoteName}`,
+    };
+  }
+
+  const sellLeg = markets.find(
+    (market) =>
+      market.baseName.toUpperCase() === fromAsset &&
+      market.quoteName.toUpperCase() === toAsset,
+  );
+  if (sellLeg) {
+    return {
+      coin: `@${sellLeg.index}`,
+      side: "sell",
+      marketName: `${sellLeg.baseName}/${sellLeg.quoteName}`,
+    };
+  }
+
+  throw new Error(
+    `No supported spot market found for ${fromAsset} -> ${toAsset}.`,
+  );
+}
+
+async function waitForSpotBalance(
+  client: HyperliquidClient,
+  coin: StableSwapAsset,
+  predicate: (available: number) => boolean,
+  attempts = 12,
+  delayMs = 350,
+) {
+  let lastAvailable = 0;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const spotBalance = await client.getSpotBalance();
+    lastAvailable = getSpotAvailableBalance(spotBalance, coin);
+
+    if (predicate(lastAvailable)) {
+      return lastAvailable;
+    }
+
+    if (attempt < attempts - 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+    }
+  }
+
+  return lastAvailable;
+}
 
 function getSharedPublicHyperliquidClient(testnet: boolean) {
   const cacheKey = testnet ? "testnet" : "mainnet";
@@ -665,37 +776,192 @@ export function useBridgeToHyperliquid() {
   });
 }
 
+export const SUPPORTED_STABLE_SWAP_ASSETS = STABLE_SWAP_ASSETS;
+
 /**
- * Hook to swap USDC <-> USDH via spot market order
+ * Hook to swap supported stable assets with an automatic perp-USDC pipeline.
  */
-export function useSwapUsdcUsdh() {
+export function useStableSwap() {
   const { client } = useHyperliquid();
   const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: ({
-      amount,
-      direction,
-    }: {
-      amount: number;
-      direction: "buy" | "sell";
-    }) => {
+  return useMutation<StableSwapResult, Error, StableSwapRequest>({
+    mutationFn: async ({ fromAsset, toAsset, amount }) => {
       if (!client) throw new Error("Client not connected");
-      // buy = buy USDH with USDC, sell = sell USDH for USDC
-      return client.placeSpotOrder({
-        coin: "@107", // USDH/USDC spot pair symbol in allMids
-        side: direction,
-        sizeUsd: amount,
-        orderType: "market",
-        reduceOnly: false,
-        marketType: "spot",
-      });
+      if (fromAsset === toAsset) {
+        throw new Error("Select two different stable assets.");
+      }
+
+      const normalizedAmount = roundStableAmount(amount);
+      if (normalizedAmount <= 0) {
+        throw new Error("Enter a valid swap amount.");
+      }
+
+      const markets = await client.getMarkets();
+      const spotMarkets = markets.spot
+        .filter(
+          (market) =>
+            STABLE_SWAP_ASSETS.includes(
+              market.baseName.toUpperCase() as StableSwapAsset,
+            ) &&
+            STABLE_SWAP_ASSETS.includes(
+              market.quoteName.toUpperCase() as StableSwapAsset,
+            ),
+        )
+        .map((market) => ({
+          index: market.index,
+          baseName: market.baseName.toUpperCase(),
+          quoteName: market.quoteName.toUpperCase(),
+        }));
+
+      const placeStableLeg = async (
+        legFrom: StableSwapAsset,
+        legTo: StableSwapAsset,
+        legAmount: number,
+      ) => {
+        const resolvedLeg = resolveStableSwapLeg(spotMarkets, legFrom, legTo);
+        try {
+          await client.placeSpotOrder({
+            coin: resolvedLeg.coin,
+            side: resolvedLeg.side,
+            sizeUsd: roundStableAmount(legAmount),
+            orderType: "market",
+            reduceOnly: false,
+            marketType: "spot",
+          });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Swap leg failed";
+          throw new Error(
+            `${legFrom} -> ${legTo} failed on ${resolvedLeg.marketName}. ${message}`,
+          );
+        }
+      };
+
+      const transferUsdcToSpot = async (transferAmount: number) => {
+        try {
+          await client.usdClassTransfer(
+            formatStableAmount(transferAmount),
+            false,
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Transfer failed";
+          throw new Error(`Perp to spot transfer failed. ${message}`);
+        }
+
+        await waitForSpotBalance(
+          client,
+          "USDC",
+          (available) =>
+            available + 0.000001 >= roundStableAmount(transferAmount),
+        );
+      };
+
+      const sweepUsdcToPerps = async () => {
+        const availableUsdc = roundStableAmount(
+          await waitForSpotBalance(
+            client,
+            "USDC",
+            (available) => available >= 0,
+          ),
+        );
+
+        if (availableUsdc <= 0) {
+          return {
+            sweepBackAmount: 0,
+            dustRemaining: 0,
+            message: "No spot USDC remained to sweep.",
+          };
+        }
+
+        if (availableUsdc < SPOT_USDC_DUST_THRESHOLD) {
+          return {
+            sweepBackAmount: 0,
+            dustRemaining: availableUsdc,
+            message: `Spot USDC remainder ${availableUsdc.toFixed(6)} is below the automatic sweep threshold.`,
+          };
+        }
+
+        try {
+          await client.usdClassTransfer(
+            formatStableAmount(availableUsdc),
+            true,
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Sweep failed";
+          throw new Error(`Return sweep to perp USDC failed. ${message}`);
+        }
+
+        return {
+          sweepBackAmount: availableUsdc,
+          dustRemaining: 0,
+          message: `Returned ${availableUsdc.toFixed(2)} USDC to your perp balance.`,
+        };
+      };
+
+      if (fromAsset === "USDC" && toAsset !== "USDC") {
+        await transferUsdcToSpot(normalizedAmount);
+        await placeStableLeg("USDC", toAsset, normalizedAmount);
+        return {
+          fromAsset,
+          toAsset,
+          amount: normalizedAmount,
+          message: `${toAsset} is ready in spot for HIP-3 trading.`,
+        };
+      }
+
+      if (fromAsset !== "USDC" && toAsset === "USDC") {
+        await placeStableLeg(fromAsset, "USDC", normalizedAmount);
+        const sweepResult = await sweepUsdcToPerps();
+        return {
+          fromAsset,
+          toAsset,
+          amount: normalizedAmount,
+          message: sweepResult.message,
+          sweepBackAmount: sweepResult.sweepBackAmount,
+          dustRemaining: sweepResult.dustRemaining,
+        };
+      }
+
+      const initialSpotUsdc = roundStableAmount(
+        await waitForSpotBalance(client, "USDC", (available) => available >= 0),
+      );
+      await placeStableLeg(fromAsset, "USDC", normalizedAmount);
+      const intermediateUsdc = roundStableAmount(
+        (await waitForSpotBalance(
+          client,
+          "USDC",
+          (available) => available > initialSpotUsdc + 0.000001,
+        )) - initialSpotUsdc,
+      );
+
+      if (intermediateUsdc <= 0) {
+        throw new Error(
+          `No intermediate USDC became available after swapping out of ${fromAsset}.`,
+        );
+      }
+
+      await placeStableLeg("USDC", toAsset, intermediateUsdc);
+      return {
+        fromAsset,
+        toAsset,
+        amount: normalizedAmount,
+        message: `${toAsset} swap completed in spot.`,
+      };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["spotBalance"] });
       queryClient.invalidateQueries({ queryKey: ["userState"] });
+      queryClient.invalidateQueries({ queryKey: ["openOrders"] });
+      queryClient.invalidateQueries({ queryKey: ["fills"] });
     },
   });
+}
+
+export function useSwapUsdcUsdh() {
+  return useStableSwap();
 }
 
 /**

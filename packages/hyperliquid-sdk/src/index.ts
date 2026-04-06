@@ -36,6 +36,7 @@ export {
   // Spot hooks — kept for SwapPage / TransferPage (unrouted, re-enable later)
   useSpotBalance,
   useUsdClassTransfer,
+  useStableSwap,
   useSwapUsdcUsdh,
   useWithdraw,
   useArbitrumUsdcBalance,
@@ -51,6 +52,7 @@ export {
   useAssetCtx,
   usePortfolioPeriod,
   usePortfolioHistory,
+  SUPPORTED_STABLE_SWAP_ASSETS,
   // WebSocket hooks
   useOrderbookWs,
   useTradesWs,

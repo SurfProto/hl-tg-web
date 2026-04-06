@@ -333,5 +333,25 @@
     "totalEquity": "Общий капитал",
     "deposit": "Депозит",
     "withdraw": "Вывод"
+  },
+  "swap": {
+    "title": "Обмен стейблов",
+    "description": "Начинайте с perp USDC, автоматически переходите через спот при необходимости и возвращайте USDC обратно.",
+    "from": "Из",
+    "to": "В",
+    "flipDirection": "Поменять направление обмена",
+    "amount": "Сумма ({{asset}})",
+    "availableBalance": "Доступно {{amount}} {{asset}}",
+    "perpUsdc": "perp USDC",
+    "routing": "Маршрут",
+    "routePerpToSpot": "Perp USDC -> Спотовый обмен",
+    "routeSpotToPerps": "{{fromAsset}} -> Spot USDC -> Перевод в перпы",
+    "routeSpotToSpot": "{{fromAsset}} -> Spot USDC -> {{toAsset}}",
+    "returnToPerps": "Возвращённый USDC автоматически вернётся на баланс перпов.",
+    "stayInSpot": "{{asset}} останется на споте для торговли HIP-3.",
+    "swapping": "Обмен...",
+    "cta": "Обменять {{fromAsset}} на {{toAsset}}",
+    "selectDifferentAssets": "Выберите два разных стейбла.",
+    "failed": "Не удалось выполнить обмен"
   }
 }

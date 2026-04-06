@@ -65,6 +65,7 @@ export type OrderType = "market" | "limit";
 export type OrderSide = "buy" | "sell";
 export type MarketType = "perp" | "spot";
 export type TriggerOrderKind = "stopLoss" | "takeProfit";
+export type StableSwapAsset = "USDC" | "USDH" | "USDT" | "USDE";
 
 export interface Order {
   coin: string;
@@ -94,6 +95,21 @@ export interface PositionProtectionRequest {
   coin: string;
   stopLossPx?: number | null;
   takeProfitPx?: number | null;
+}
+
+export interface StableSwapRequest {
+  fromAsset: StableSwapAsset;
+  toAsset: StableSwapAsset;
+  amount: number;
+}
+
+export interface StableSwapResult {
+  fromAsset: StableSwapAsset;
+  toAsset: StableSwapAsset;
+  amount: number;
+  message: string;
+  sweepBackAmount?: number;
+  dustRemaining?: number;
 }
 
 export interface OrderValidationResult {

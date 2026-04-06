@@ -333,5 +333,25 @@
     "totalEquity": "Total Equity",
     "deposit": "Deposit",
     "withdraw": "Withdraw"
+  },
+  "swap": {
+    "title": "Stable swap",
+    "description": "Start from perp USDC, auto-route through spot when needed, and sweep back on USDC returns.",
+    "from": "From",
+    "to": "To",
+    "flipDirection": "Flip swap direction",
+    "amount": "Amount ({{asset}})",
+    "availableBalance": "Available {{amount}} {{asset}}",
+    "perpUsdc": "perp USDC",
+    "routing": "Routing",
+    "routePerpToSpot": "Perp USDC -> Spot swap",
+    "routeSpotToPerps": "{{fromAsset}} -> Spot USDC -> Sweep to Perps",
+    "routeSpotToSpot": "{{fromAsset}} -> Spot USDC -> {{toAsset}}",
+    "returnToPerps": "Returned USDC will sweep back into your perp balance.",
+    "stayInSpot": "{{asset}} stays in spot so it can be used for HIP-3 trading.",
+    "swapping": "Swapping...",
+    "cta": "Swap {{fromAsset}} to {{toAsset}}",
+    "selectDifferentAssets": "Select two different stable assets.",
+    "failed": "Swap failed"
   }
 }

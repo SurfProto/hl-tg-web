@@ -35,7 +35,9 @@ const CoinDetailPage = lazyNamedModule(() => import('./pages/CoinDetailPage'), '
 const TradePage = lazyNamedModule(() => import('./pages/TradePage'), 'TradePage');
 const DepositPage = lazyNamedModule(() => import('./pages/account/DepositPage'), 'DepositPage');
 const WithdrawPage = lazyNamedModule(() => import('./pages/account/WithdrawPage'), 'WithdrawPage');
-const TransferPage = lazyNamedModule(() => import('./pages/account/TransferPage'), 'TransferPage');
+// Transfer disabled (spot-perp transfer, not needed without spot)
+// const TransferPage = lazyNamedModule(() => import('./pages/account/TransferPage'), 'TransferPage');
+// Swap enabled — needed to convert USDC → USDH/USDT/USDE for HIP3 markets
 const SwapPage = lazyNamedModule(() => import('./pages/account/SwapPage'), 'SwapPage');
 const AccountSettingsMenu = lazyNamedModule(() => import('./pages/account/AccountSettingsMenu'), 'AccountSettingsMenu');
 const PersonalInfoPage = lazyNamedModule(() => import('./pages/account/PersonalInfoPage'), 'PersonalInfoPage');
@@ -152,7 +154,9 @@ function AppContent() {
               <Route path="/account" element={<AccountPage />} />
               <Route path="/account/deposit" element={<DepositPage />} />
               <Route path="/account/withdraw" element={<WithdrawPage />} />
-              <Route path="/account/transfer" element={<TransferPage />} />
+              {/* Transfer disabled — spot-perp transfer not needed without spot */}
+              {/* <Route path="/account/transfer" element={<TransferPage />} /> */}
+              {/* Swap enabled for USDC → USDH/USDT/USDE (required for HIP3 markets) */}
               <Route path="/account/swap" element={<SwapPage />} />
               <Route path="/account/settings" element={<AccountSettingsMenu />} />
               <Route path="/account/settings/personal" element={<PersonalInfoPage />} />

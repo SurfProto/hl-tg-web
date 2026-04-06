@@ -236,11 +236,12 @@ export function AccountPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         {(
           [
             { label: "Deposit", path: "/account/deposit" },
             { label: "Withdraw", path: "/account/withdraw" },
+            { label: "Swap", path: "/account/swap" },
           ] as const
         ).map((action) => (
           <Link

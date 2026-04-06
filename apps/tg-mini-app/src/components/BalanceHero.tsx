@@ -1,6 +1,6 @@
-import { type ComponentType, Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { type ComponentType, Suspense, lazy, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMids, useSpotBalance, useUserState } from '@repo/hyperliquid-sdk';
+import { useUserState } from '@repo/hyperliquid-sdk';
 
 function lazyNamedModule<T extends Record<string, ComponentType<any>>>(
   loader: () => Promise<T>,
@@ -14,12 +14,6 @@ function lazyNamedModule<T extends Record<string, ComponentType<any>>>(
 
 const BalanceHeroChart = lazyNamedModule(() => import('./BalanceHeroChart'), 'BalanceHeroChart');
 
-type SpotBalanceEntry = {
-  coin: string;
-  total: string;
-  hold: string;
-};
-
 function formatUsd(value: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -27,11 +21,6 @@ function formatUsd(value: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
-}
-
-function parseBalanceValue(value: string | undefined): number {
-  const parsed = parseFloat(value ?? '0');
-  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function BalanceBreakdown({
@@ -78,11 +67,6 @@ export function BalanceHeroSkeleton() {
             <div className="h-3 w-20 rounded bg-gray-100" />
             <div className="h-3 w-14 rounded bg-gray-100" />
           </div>
-          <div className="space-y-2">
-            <div className="h-3 w-10 rounded bg-gray-200" />
-            <div className="h-3 w-20 rounded bg-gray-100" />
-            <div className="h-3 w-14 rounded bg-gray-100" />
-          </div>
         </div>
 
         <div className="mt-5 min-h-[276px]">
@@ -102,8 +86,6 @@ export function BalanceHero() {
   const navigate = useNavigate();
   const [showDeferredChart, setShowDeferredChart] = useState(false);
   const { data: userState, isLoading: userStateLoading } = useUserState();
-  const { data: spotBalance, isLoading: spotBalanceLoading } = useSpotBalance();
-  const { data: mids, isLoading: midsLoading } = useMids();
 
   useEffect(() => {
     const showChart = () => setShowDeferredChart(true);
@@ -119,36 +101,10 @@ export function BalanceHero() {
     return () => window.clearTimeout(timeoutId);
   }, []);
 
-  const balances = spotBalance?.balances as SpotBalanceEntry[] | undefined;
-
-  const spotValue = useMemo(
-    () => balances?.reduce((sum, balance) => {
-      const total = parseBalanceValue(balance.total);
-      if (total <= 0) return sum;
-      if (balance.coin === 'USDC' || balance.coin === 'USDH') return sum + total;
-
-      const mid = parseBalanceValue(mids?.[balance.coin]);
-      return sum + total * mid;
-    }, 0) ?? 0,
-    [balances, mids],
-  );
-
-  const spotAvailable = useMemo(
-    () => balances?.reduce((sum, balance) => {
-      const available = parseBalanceValue(balance.total) - parseBalanceValue(balance.hold);
-      if (available <= 0) return sum;
-      if (balance.coin === 'USDC' || balance.coin === 'USDH') return sum + available;
-
-      const mid = parseBalanceValue(mids?.[balance.coin]);
-      return sum + available * mid;
-    }, 0) ?? 0,
-    [balances, mids],
-  );
-
   const perpsValue = userState?.marginSummary?.accountValue ?? 0;
   const perpsAvailable = userState?.withdrawable ?? 0;
-  const totalValue = perpsValue + spotValue;
-  const shellLoading = userStateLoading || spotBalanceLoading || midsLoading;
+  const totalValue = perpsValue;
+  const shellLoading = userStateLoading;
 
   if (shellLoading) {
     return <BalanceHeroSkeleton />;
@@ -171,11 +127,6 @@ export function BalanceHero() {
             label="Perps"
             total={perpsValue}
             available={perpsAvailable}
-          />
-          <BalanceBreakdown
-            label="Spot"
-            total={spotValue}
-            available={spotAvailable}
           />
         </div>
 

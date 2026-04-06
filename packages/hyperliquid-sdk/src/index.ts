@@ -17,7 +17,7 @@ export {
   useCandles,
   useUserState,
   usePlaceOrder,
-  usePlaceSpotOrder,
+  // usePlaceSpotOrder — kept in hooks.ts, not exported (spot disabled)
   usePlaceTriggerOrder,
   useUpsertPositionProtection,
   useCancelPositionProtection,
@@ -33,13 +33,14 @@ export {
   useUpdateLeverage,
   useUpdateIsolatedMargin,
   usePortfolio,
+  // Spot hooks — kept for SwapPage / TransferPage (unrouted, re-enable later)
   useSpotBalance,
   useUsdClassTransfer,
+  useSwapUsdcUsdh,
   useWithdraw,
   useArbitrumUsdcBalance,
   useFundArbitrumUsdc,
   useBridgeToHyperliquid,
-  useSwapUsdcUsdh,
   // Builder fee hooks
   useBuilderFeeApproval,
   useApproveBuilderFee,

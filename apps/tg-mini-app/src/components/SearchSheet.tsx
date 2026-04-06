@@ -27,7 +27,7 @@ export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
   const { data: marketStats } = useMarketStats();
 
   const allMarkets: AnyMarket[] = useMemo(() => [
-    ...(markets?.spot ?? []).map((market: any) => ({ ...market, type: 'spot' as const })),
+    // Spot disabled — perps only
     ...(markets?.perp ?? []).map((market: any) => ({ ...market, type: 'perp' as const })),
   ], [markets]);
 

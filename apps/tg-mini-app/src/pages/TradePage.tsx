@@ -7,9 +7,7 @@ import {
   useMarketData,
   useMids,
   usePlaceOrder,
-  usePlaceSpotOrder,
   useSetupTrading,
-  useSpotBalance,
   useUpsertPositionProtection,
   useUserState,
   validateOrderInput,
@@ -73,14 +71,12 @@ export function TradePage() {
   const { data: markets } = useMarketData();
   const { data: mids } = useMids();
   const { data: userState } = useUserState();
-  const { data: spotBalance } = useSpotBalance();
   const {
     isReady: tradingReady,
     isExpired: tradingExpired,
     setup: tradingSetup,
   } = useSetupTrading();
   const placeOrder = usePlaceOrder();
-  const placeSpotOrder = usePlaceSpotOrder();
   const upsertPositionProtection = useUpsertPositionProtection();
 
   const selectedPerpMarket = useMemo(
@@ -91,23 +87,13 @@ export function TradePage() {
     [markets, symbol],
   );
 
-  const selectedSpotMarket = useMemo(
-    () =>
-      (markets?.spot as Array<any> | undefined)?.find(
-        (market) => market.name === symbol,
-      ) ?? null,
-    [markets, symbol],
+  // Spot disabled — all markets are perp
+  const isPerp = true;
+  const selectedMarket = selectedPerpMarket;
+  const selectedMarketForDisplay = useMemo<AnyMarket | null>(
+    () => (selectedPerpMarket ? { ...selectedPerpMarket, type: "perp" as const } : null),
+    [selectedPerpMarket],
   );
-
-  const isPerp = selectedPerpMarket != null;
-  const selectedMarket = isPerp ? selectedPerpMarket : selectedSpotMarket;
-  const selectedMarketForDisplay = useMemo<AnyMarket | null>(() => {
-    if (selectedSpotMarket)
-      return { ...selectedSpotMarket, type: "spot" as const };
-    if (selectedPerpMarket)
-      return { ...selectedPerpMarket, type: "perp" as const };
-    return null;
-  }, [selectedPerpMarket, selectedSpotMarket]);
 
   const displayName = useMemo(
     () =>
@@ -141,41 +127,14 @@ export function TradePage() {
   const positionDirection: PositionDirection =
     side === "buy" ? "long" : "short";
 
-  const spotUsdcBalance = useMemo(() => {
-    const entry = (
-      spotBalance?.balances as
-        | Array<{ coin: string; total: string }>
-        | undefined
-    )?.find((balance) => balance.coin === "USDC");
-    return entry ? parseFloat(entry.total) : 0;
-  }, [spotBalance]);
-
-  const spotCoinBalance = useMemo(() => {
-    const entry = (
-      spotBalance?.balances as
-        | Array<{ coin: string; total: string }>
-        | undefined
-    )?.find((balance) => balance.coin === baseToken);
-    return entry ? parseFloat(entry.total) : 0;
-  }, [baseToken, spotBalance]);
-
-  const availableMarginUsd = useMemo(() => {
-    if (!isPerp) return 0;
-    const dex = selectedPerpMarket?.dex;
-    if (dex && userState?.dexWithdrawable?.[dex] !== undefined) {
-      return userState.dexWithdrawable[dex];
-    }
-    return userState?.withdrawable ?? 0;
-  }, [isPerp, selectedPerpMarket?.dex, userState]);
-
-  const spotAvailableUsd = useMemo(() => {
-    if (side === "buy") return spotUsdcBalance;
-    return spotCoinBalance * (currentPrice ?? 0);
-  }, [currentPrice, side, spotCoinBalance, spotUsdcBalance]);
+  const availableMarginUsd = useMemo(
+    () => (isPerp ? (userState?.withdrawable ?? 0) : 0),
+    [isPerp, userState?.withdrawable],
+  );
 
   const maxPositionUsd = useMemo(
-    () => (isPerp ? availableMarginUsd * leverage : spotAvailableUsd),
-    [availableMarginUsd, isPerp, leverage, spotAvailableUsd],
+    () => availableMarginUsd * leverage,
+    [availableMarginUsd, leverage],
   );
 
   const currentPositionLeverage = useMemo(() => {
@@ -222,9 +181,7 @@ export function TradePage() {
     orderType === "limit"
       ? limitPriceNum || currentPrice || 0
       : currentPrice || 0;
-  const validationAvailableBalance = isPerp
-    ? availableMarginUsd
-    : spotAvailableUsd;
+  const validationAvailableBalance = availableMarginUsd;
 
   const validation = useMemo(() => {
     const minSizeUsd = selectedMarket?.minNotionalUsd ?? 10;
@@ -262,11 +219,11 @@ export function TradePage() {
         orderType,
         reduceOnly: false,
         leverage,
-        marketType: isPerp ? "perp" : "spot",
+        marketType: "perp",
       },
       {
         name: selectedMarket.name,
-        marketType: isPerp ? "perp" : "spot",
+        marketType: "perp",
         minNotionalUsd: selectedMarket.minNotionalUsd,
         minBaseSize: selectedMarket.minBaseSize,
         szDecimals: selectedMarket.szDecimals,
@@ -347,18 +304,9 @@ export function TradePage() {
     user?.wallet?.address,
   ]);
 
-  const ctaLabel = isPerp
-    ? side === "buy"
-      ? `Long ${displayName}`
-      : `Short ${displayName}`
-    : side === "buy"
-      ? `Buy ${displayName}`
-      : `Sell ${displayName}`;
+  const ctaLabel = side === "buy" ? `Long ${displayName}` : `Short ${displayName}`;
 
-  const isPending =
-    placeOrder.isPending ||
-    placeSpotOrder.isPending ||
-    upsertPositionProtection.isPending;
+  const isPending = placeOrder.isPending || upsertPositionProtection.isPending;
   const isSubmitDisabled = amountNum === 0 || isPending || !validation.isValid;
 
   const handleAmountChange = (value: string) => {
@@ -374,8 +322,7 @@ export function TradePage() {
   const handleQuickFill = (pct: number) => {
     haptics.light();
     setSubmitError(null);
-    const availableSizeUsd = isPerp ? maxPositionUsd : spotAvailableUsd;
-    setAmount(formatUsdInput(availableSizeUsd * pct));
+    setAmount(formatUsdInput(maxPositionUsd * pct));
   };
 
   const handleLeveragePill = (value: number) => {
@@ -435,47 +382,39 @@ export function TradePage() {
       sizeUsd: amountNum,
       orderType,
       reduceOnly: false,
-      ...(isPerp && { leverage, marketType: "perp" as const }),
-      ...(!isPerp && { marketType: "spot" as const }),
+      leverage,
+      marketType: "perp" as const,
       ...(orderType === "limit" && { limitPx: limitPriceNum, tif }),
     };
 
     try {
-      if (isPerp) {
-        await placeOrder.mutateAsync(order);
+      await placeOrder.mutateAsync(order);
 
-        if (orderType === "market" && protectionEnabled) {
-          try {
-            await upsertPositionProtection.mutateAsync({
-              coin: symbol,
-              stopLossPx: protectionDraft.stopLossEnabled ? stopLossPx : null,
-              takeProfitPx: protectionDraft.takeProfitEnabled
-                ? takeProfitPx
-                : null,
-            });
-            haptics.success();
-            toast.success(`${ctaLabel} order placed with protection`);
-            navigate(-1);
-            return;
-          } catch (error) {
-            haptics.error();
-            toast.error(
-              error instanceof Error
-                ? `${ctaLabel} order placed, but protection was not created. ${error.message}`
-                : `${ctaLabel} order placed, but protection was not created.`,
-            );
-            navigate("/positions");
-            return;
-          }
+      if (orderType === "market" && protectionEnabled) {
+        try {
+          await upsertPositionProtection.mutateAsync({
+            coin: symbol,
+            stopLossPx: protectionDraft.stopLossEnabled ? stopLossPx : null,
+            takeProfitPx: protectionDraft.takeProfitEnabled
+              ? takeProfitPx
+              : null,
+          });
+          haptics.success();
+          toast.success(`${ctaLabel} order placed with protection`);
+          navigate(-1);
+          return;
+        } catch (error) {
+          haptics.error();
+          toast.error(
+            error instanceof Error
+              ? `${ctaLabel} order placed, but protection was not created. ${error.message}`
+              : `${ctaLabel} order placed, but protection was not created.`,
+          );
+          navigate("/positions");
+          return;
         }
-
-        haptics.success();
-        toast.success(`${ctaLabel} order placed`);
-        navigate(-1);
-        return;
       }
 
-      await placeSpotOrder.mutateAsync(order);
       haptics.success();
       toast.success(`${ctaLabel} order placed`);
       navigate(-1);
@@ -497,7 +436,7 @@ export function TradePage() {
           <div>
             <span className="font-bold text-foreground">{displayName}</span>
             <span className="text-xs text-gray-400 ml-1">
-              {isPerp ? "PERP" : "SPOT"}
+              {"PERP"}
             </span>
           </div>
           {currentPrice != null && (
@@ -564,25 +503,19 @@ export function TradePage() {
           </div>
           {step === "amount" ? (
             <div className="mt-2 text-center text-sm text-gray-400">
-              {isPerp ? (
-                <>
-                  <div>
-                    Available margin $
-                    {availableMarginUsd.toLocaleString("en-US", {
-                      maximumFractionDigits: 2,
-                    })}
-                  </div>
-                  <div>
-                    Max size $
-                    {maxPositionUsd.toLocaleString("en-US", {
-                      maximumFractionDigits: 2,
-                    })}{" "}
-                    at {leverage}x
-                  </div>
-                </>
-              ) : (
-                `Available $${spotAvailableUsd.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
-              )}
+              <div>
+                Available margin $
+                {availableMarginUsd.toLocaleString("en-US", {
+                  maximumFractionDigits: 2,
+                })}
+              </div>
+              <div>
+                Max size $
+                {maxPositionUsd.toLocaleString("en-US", {
+                  maximumFractionDigits: 2,
+                })}{" "}
+                at {leverage}x
+              </div>
             </div>
           ) : (
             <div className="text-sm text-gray-400 mt-2">Limit price</div>

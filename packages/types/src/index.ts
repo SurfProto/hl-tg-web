@@ -164,7 +164,6 @@ export interface AccountState {
   };
   crossMaintenanceMarginUsed: number;
   withdrawable: number;
-  dexWithdrawable?: Record<string, number>;
   assetPositions: Array<{
     position: Position;
     type: "oneWay";

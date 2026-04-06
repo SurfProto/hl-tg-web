@@ -7,9 +7,7 @@ import {
   isBuilderConfigured,
   useApproveBuilderFee,
   useBuilderFeeApproval,
-  useMids,
   usePortfolioPeriod,
-  useSpotBalance,
   useUserState,
 } from "@repo/hyperliquid-sdk";
 import type { PortfolioRange } from "@repo/types";
@@ -19,13 +17,6 @@ import {
   getPortfolioMaxDrawdownPct,
   getPortfolioRangePnl,
 } from "../lib/portfolio";
-
-type SpotBalance = {
-  coin: string;
-  total: string;
-  hold: string;
-  entryNtl: string;
-};
 
 function formatUsd(value: number) {
   return `$${value.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`;
@@ -52,8 +43,6 @@ export function AccountPage() {
   const { period, setPeriod } = usePortfolioRange();
   const { wallets } = useWallets();
   const { data: userState } = useUserState();
-  const { data: spotBalance } = useSpotBalance();
-  const { data: mids } = useMids();
   const { data: portfolioPeriod, isLoading: portfolioLoading } =
     usePortfolioPeriod(period);
   const { data: maxFee, isLoading: builderApprovalLoading } =
@@ -70,36 +59,9 @@ export function AccountPage() {
     user?.wallet?.address ??
     "Trader";
 
-  const balances = spotBalance?.balances as SpotBalance[] | undefined;
-
-  const spotEquity = useMemo(() => {
-    if (!balances) return 0;
-    return balances.reduce((sum, balance) => {
-      const total = parseFloat(balance.total ?? "0");
-      if (!Number.isFinite(total) || total <= 0) return sum;
-      if (balance.coin === "USDC" || balance.coin === "USDH")
-        return sum + total;
-      const mid = mids?.[balance.coin] ? parseFloat(mids[balance.coin]) : 0;
-      return sum + total * (Number.isFinite(mid) ? mid : 0);
-    }, 0);
-  }, [mids, balances]);
-
-  const spotAvailable = useMemo(() => {
-    if (!balances) return 0;
-    return balances.reduce((sum, balance) => {
-      const available =
-        parseFloat(balance.total ?? "0") - parseFloat(balance.hold ?? "0");
-      if (!Number.isFinite(available) || available <= 0) return sum;
-      if (balance.coin === "USDC" || balance.coin === "USDH")
-        return sum + available;
-      const mid = mids?.[balance.coin] ? parseFloat(mids[balance.coin]) : 0;
-      return sum + available * (Number.isFinite(mid) ? mid : 0);
-    }, 0);
-  }, [mids, balances]);
-
   const perpsEquity = userState?.marginSummary?.accountValue ?? 0;
   const perpsAvailable = userState?.withdrawable ?? 0;
-  const totalEquity = perpsEquity + spotEquity;
+  const totalEquity = perpsEquity;
   const builderConfigured = isBuilderConfigured();
   const builderApproved = (maxFee ?? 0) > 0;
   const rangePnl = useMemo(
@@ -172,17 +134,6 @@ export function AccountPage() {
               {perpsEquity - perpsAvailable > 0.005 && (
                 <span className="text-xs text-muted">
                   {formatUsd(perpsAvailable)} avail
-                </span>
-              )}
-            </div>
-            <div className="flex flex-col gap-0.5">
-              <span className="text-xs text-muted">Spot</span>
-              <span className="font-semibold text-foreground">
-                {formatUsd(spotEquity)}
-              </span>
-              {spotEquity - spotAvailable > 0.005 && (
-                <span className="text-xs text-muted">
-                  {formatUsd(spotAvailable)} avail
                 </span>
               )}
             </div>
@@ -283,27 +234,13 @@ export function AccountPage() {
             {formatUsd(perpsAvailable)}
           </p>
         </div>
-        <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
-          <p className="text-xs text-muted">Spot Equity</p>
-          <p className="mt-2 text-lg font-semibold text-foreground">
-            {formatUsd(spotEquity)}
-          </p>
-        </div>
-        <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
-          <p className="text-xs text-muted">Spot Available</p>
-          <p className="mt-2 text-lg font-semibold text-foreground">
-            {formatUsd(spotAvailable)}
-          </p>
-        </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         {(
           [
             { label: "Deposit", path: "/account/deposit" },
             { label: "Withdraw", path: "/account/withdraw" },
-            { label: "Transfer", path: "/account/transfer" },
-            { label: "Swap", path: "/account/swap" },
           ] as const
         ).map((action) => (
           <Link

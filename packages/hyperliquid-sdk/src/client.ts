@@ -1026,14 +1026,6 @@ export class HyperliquidClient {
         baseState.crossMaintenanceMarginUsed,
       ),
       withdrawable: parseFloat(baseState.withdrawable),
-      dexWithdrawable: Object.fromEntries(
-        dexStates
-          .map((state, i) => [
-            cache.perpDexs[i]?.dex,
-            parseFloat(state.withdrawable ?? "0"),
-          ])
-          .filter(([k]) => k != null),
-      ),
       assetPositions: allStates.flatMap(({ dex, state }) =>
         (state.assetPositions ?? []).map((assetPosition: any) => ({
           type: assetPosition.type,

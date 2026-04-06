@@ -85,7 +85,7 @@ export function HomePage() {
   }, [isLoading]);
 
   const allMarkets: AnyMarket[] = useMemo(() => [
-    ...(markets?.spot ?? []).map((market: any) => ({ ...market, type: 'spot' as const })),
+    // Spot disabled — perps only
     ...(markets?.perp ?? []).map((market: any) => ({ ...market, type: 'perp' as const })),
   ], [markets]);
 

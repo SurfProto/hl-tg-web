@@ -7,7 +7,6 @@ import {
   useCandles,
   useMarketData,
   useMids,
-  useSpotBalance,
 } from "@repo/hyperliquid-sdk";
 import type { AnyMarket, Candle } from "@repo/types";
 import { Chart, type LiteCandleInspection } from "@repo/ui";
@@ -67,21 +66,11 @@ export function CoinDetailPage() {
   const { data: mids } = useMids();
   const { data: assetCtx } = useAssetCtx(symbol);
   const { data: candles } = useCandles(symbol, interval);
-  const { data: spotBalance } = useSpotBalance();
 
-  const isPerp = useMemo(
-    () =>
-      markets?.perp?.some(
-        (market: { name: string }) => market.name === symbol,
-      ) ?? false,
-    [markets, symbol],
-  );
+  // Spot disabled — all markets are perp
+  const isPerp = true;
 
   const selectedMarket = useMemo<AnyMarket | null>(() => {
-    const spotMatch = (markets?.spot ?? []).find(
-      (market: { name: string }) => market.name === symbol,
-    );
-    if (spotMatch) return { ...spotMatch, type: "spot" as const };
     const perpMatch = (markets?.perp ?? []).find(
       (market: { name: string }) => market.name === symbol,
     );
@@ -123,13 +112,6 @@ export function CoinDetailPage() {
     };
   }, [activeInspection]);
 
-  const holdings = useMemo(() => {
-    if (!spotBalance?.balances || isPerp) return null;
-    const balance = (
-      spotBalance.balances as Array<{ coin: string; total: string }>
-    ).find((entry) => entry.coin === baseToken || entry.coin === displayName);
-    return balance ? parseFloat(balance.total) : 0;
-  }, [spotBalance, baseToken, displayName, isPerp]);
 
   return (
     <div className="min-h-full bg-background page-above-bottom-dock">
@@ -142,7 +124,7 @@ export function CoinDetailPage() {
             {displayName}
           </span>
           <span className="rounded-full bg-gray-100 px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-gray-500">
-            {isPerp ? "PERP" : "SPOT"}
+            PERP
           </span>
         </div>
       </div>
@@ -228,102 +210,49 @@ export function CoinDetailPage() {
 
       <div className="px-4 pb-4">
         <div className="overflow-hidden rounded-[24px] border border-black/[0.05] bg-white/90 px-5 py-2 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
-          {isPerp ? (
-            <>
-              <StatRow
-                label="24h Change"
-                value={`${isPositive ? "+" : ""}${change24h.toFixed(2)}%`}
-                valueColor={isPositive ? "positive" : "negative"}
-              />
-              <StatRow
-                label="24h Volume"
-                value={assetCtx ? formatVolume(assetCtx.dayNtlVlm) : "\u2014"}
-              />
-              <StatRow
-                label="Open Interest"
-                value={
-                  assetCtx && price
-                    ? formatVolume(assetCtx.openInterest * price)
-                    : "\u2014"
-                }
-              />
-              <StatRow
-                label="Funding Rate"
-                value={assetCtx ? formatFunding(assetCtx.funding) : "\u2014"}
-              />
-            </>
-          ) : (
-            <>
-              <StatRow
-                label="Holdings"
-                value={
-                  holdings != null
-                    ? `${holdings.toFixed(4)} ${baseToken}`
-                    : "\u2014"
-                }
-              />
-              <StatRow
-                label="Holdings Value"
-                value={
-                  holdings != null && price != null
-                    ? formatVolume(holdings * price)
-                    : "\u2014"
-                }
-              />
-              <StatRow label="Market Cap" value="$0" />
-              <StatRow
-                label="24h Volume"
-                value={assetCtx ? formatVolume(assetCtx.dayNtlVlm) : "\u2014"}
-              />
-            </>
-          )}
+          <StatRow
+            label="24h Change"
+            value={`${isPositive ? "+" : ""}${change24h.toFixed(2)}%`}
+            valueColor={isPositive ? "positive" : "negative"}
+          />
+          <StatRow
+            label="24h Volume"
+            value={assetCtx ? formatVolume(assetCtx.dayNtlVlm) : "\u2014"}
+          />
+          <StatRow
+            label="Open Interest"
+            value={
+              assetCtx && price
+                ? formatVolume(assetCtx.openInterest * price)
+                : "\u2014"
+            }
+          />
+          <StatRow
+            label="Funding Rate"
+            value={assetCtx ? formatFunding(assetCtx.funding) : "\u2014"}
+          />
         </div>
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-separator px-4 py-3 bottom-dock-safe flex gap-3">
-        {isPerp ? (
-          <>
-            <button
-              type="button"
-              onClick={() =>
-                navigate(`/trade/${encodeURIComponent(symbol)}?side=short`)
-              }
-              className="flex-1 rounded-full bg-[#111827] py-3.5 font-semibold text-white shadow-[0_12px_24px_rgba(17,24,39,0.18)] transition-opacity active:opacity-80"
-            >
-              {"Short \u2193"}
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                navigate(`/trade/${encodeURIComponent(symbol)}?side=long`)
-              }
-              className="flex-1 rounded-full bg-primary py-3.5 font-semibold text-white shadow-[0_12px_24px_rgba(59,130,246,0.2)] transition-opacity active:opacity-80"
-            >
-              {"Long \u2191"}
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={() =>
-                navigate(`/trade/${encodeURIComponent(symbol)}?side=sell`)
-              }
-              className="flex-1 rounded-full bg-[#111827] py-3.5 font-semibold text-white shadow-[0_12px_24px_rgba(17,24,39,0.18)] transition-opacity active:opacity-80"
-            >
-              Sell
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                navigate(`/trade/${encodeURIComponent(symbol)}?side=buy`)
-              }
-              className="flex-1 rounded-full bg-primary py-3.5 font-semibold text-white shadow-[0_12px_24px_rgba(59,130,246,0.2)] transition-opacity active:opacity-80"
-            >
-              Buy
-            </button>
-          </>
-        )}
+        <button
+          type="button"
+          onClick={() =>
+            navigate(`/trade/${encodeURIComponent(symbol)}?side=short`)
+          }
+          className="flex-1 rounded-full bg-[#111827] py-3.5 font-semibold text-white shadow-[0_12px_24px_rgba(17,24,39,0.18)] transition-opacity active:opacity-80"
+        >
+          {"Short \u2193"}
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            navigate(`/trade/${encodeURIComponent(symbol)}?side=long`)
+          }
+          className="flex-1 rounded-full bg-primary py-3.5 font-semibold text-white shadow-[0_12px_24px_rgba(59,130,246,0.2)] transition-opacity active:opacity-80"
+        >
+          {"Long \u2191"}
+        </button>
       </div>
     </div>
   );

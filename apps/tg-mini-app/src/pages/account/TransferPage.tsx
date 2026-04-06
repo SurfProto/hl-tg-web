@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useSpotBalance, useUsdClassTransfer, useUserState } from '@repo/hyperliquid-sdk';
+import { useTranslation } from 'react-i18next';
 
 export function TransferPage() {
+  const { t, i18n } = useTranslation();
   const [direction, setDirection] = useState<'perps-to-spot' | 'spot-to-perps'>('perps-to-spot');
   const [amount, setAmount] = useState('');
   const transfer = useUsdClassTransfer();
@@ -14,14 +16,18 @@ export function TransferPage() {
     ? Math.max(0, parseFloat(spotUsdcEntry.total ?? '0') - parseFloat(spotUsdcEntry.hold ?? '0'))
     : 0;
   const fromBalance = direction === 'perps-to-spot' ? perpsTransferable : spotUsdcAvailable;
+  const formattedBalance = fromBalance.toLocaleString(i18n.language, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
   return (
     <div className="min-h-full bg-background px-4 py-5 space-y-4">
-      <h1 className="text-2xl font-bold text-foreground">Transfer USDC</h1>
+      <h1 className="text-2xl font-bold text-foreground">{t('transfer.title')}</h1>
 
       <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm space-y-4">
         <div className="flex items-center justify-center gap-3">
-          <span className={`text-sm font-semibold ${direction === 'perps-to-spot' ? 'text-foreground' : 'text-muted'}`}>Perps</span>
+          <span className={`text-sm font-semibold ${direction === 'perps-to-spot' ? 'text-foreground' : 'text-muted'}`}>{t('common.perps')}</span>
           <button
             type="button"
             onClick={() => {
@@ -29,16 +35,16 @@ export function TransferPage() {
               setAmount('');
             }}
             className="rounded-full bg-surface px-4 py-2 text-sm font-semibold text-primary"
-            aria-label="Swap transfer direction"
+            aria-label={t('transfer.flipDirection')}
           >
             {'\u21c4'}
           </button>
-          <span className={`text-sm font-semibold ${direction === 'spot-to-perps' ? 'text-foreground' : 'text-muted'}`}>Spot</span>
+          <span className={`text-sm font-semibold ${direction === 'spot-to-perps' ? 'text-foreground' : 'text-muted'}`}>{t('common.spot')}</span>
         </div>
 
         <div className="flex items-center justify-between">
-          <label htmlFor="transfer-amount" className="text-sm font-semibold text-foreground">Amount</label>
-          <span className="text-xs text-muted">Available to transfer {fromBalance.toFixed(2)} USDC</span>
+          <label htmlFor="transfer-amount" className="text-sm font-semibold text-foreground">{t('transfer.amount')}</label>
+          <span className="text-xs text-muted">{t('transfer.availableToTransfer', { amount: formattedBalance })}</span>
         </div>
 
         <div className="flex gap-2">
@@ -54,7 +60,7 @@ export function TransferPage() {
             className="flex-1 rounded-2xl border border-separator bg-surface px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
           />
           <button type="button" onClick={() => setAmount(fromBalance.toFixed(2))} className="rounded-2xl bg-surface px-4 py-3 text-sm font-semibold text-primary">
-            MAX
+            {t('common.max')}
           </button>
         </div>
 
@@ -64,10 +70,10 @@ export function TransferPage() {
           disabled={!amount || parseFloat(amount) <= 0 || transfer.isPending}
           className="w-full rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
         >
-          {transfer.isPending ? 'Submitting…' : 'Confirm transfer'}
+          {transfer.isPending ? t('common.submitting') : t('transfer.confirm')}
         </button>
-        {transfer.isSuccess && <p className="text-sm text-positive">Transfer submitted successfully.</p>}
-        {transfer.isError && <p className="text-sm text-negative">{transfer.error instanceof Error ? transfer.error.message : 'Transfer failed'}</p>}
+        {transfer.isSuccess && <p className="text-sm text-positive">{t('transfer.success')}</p>}
+        {transfer.isError && <p className="text-sm text-negative">{transfer.error instanceof Error ? transfer.error.message : t('transfer.failed')}</p>}
       </div>
     </div>
   );

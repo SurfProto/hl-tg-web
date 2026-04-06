@@ -1,5 +1,6 @@
 import { startTransition, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   getMarketBaseAsset,
   getMarketDisplayName,
@@ -57,6 +58,7 @@ export function CoinDetailPage() {
   const { symbol: rawSymbol = "" } = useParams<{ symbol: string }>();
   const symbol = decodeURIComponent(rawSymbol);
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const [interval, setInterval] = useState("1h");
   const [activeInspection, setActiveInspection] =
@@ -124,7 +126,7 @@ export function CoinDetailPage() {
             {displayName}
           </span>
           <span className="rounded-full bg-gray-100 px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-gray-500">
-            PERP
+            {t("coinDetail.perp")}
           </span>
         </div>
       </div>
@@ -138,7 +140,7 @@ export function CoinDetailPage() {
         >
           {isPositive ? "+" : ""}
           {change24h.toFixed(2)}%
-          <span className="ml-1 font-medium text-gray-400">past day</span>
+          <span className="ml-1 font-medium text-gray-400">{t("coinDetail.pastDay")}</span>
         </div>
       </div>
 
@@ -187,19 +189,19 @@ export function CoinDetailPage() {
               </div>
               <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] font-medium tabular-nums">
                 <div className="flex items-center justify-between gap-2 text-gray-500">
-                  <span>Open</span>
+                  <span>{t("coinDetail.open")}</span>
                   <span className="text-foreground">{formatPrice(inspectionTooltip.candle.o)}</span>
                 </div>
                 <div className="flex items-center justify-between gap-2 text-gray-500">
-                  <span>High</span>
+                  <span>{t("coinDetail.high")}</span>
                   <span className="text-positive">{formatPrice(inspectionTooltip.candle.h)}</span>
                 </div>
                 <div className="flex items-center justify-between gap-2 text-gray-500">
-                  <span>Low</span>
+                  <span>{t("coinDetail.low")}</span>
                   <span className="text-negative">{formatPrice(inspectionTooltip.candle.l)}</span>
                 </div>
                 <div className="flex items-center justify-between gap-2 text-gray-500">
-                  <span>Vol</span>
+                  <span>{t("coinDetail.vol")}</span>
                   <span className="text-foreground">{formatVolume(inspectionTooltip.candle.v)}</span>
                 </div>
               </div>
@@ -211,16 +213,16 @@ export function CoinDetailPage() {
       <div className="px-4 pb-4">
         <div className="overflow-hidden rounded-[24px] border border-black/[0.05] bg-white/90 px-5 py-2 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
           <StatRow
-            label="24h Change"
+            label={t("coinDetail.change24h")}
             value={`${isPositive ? "+" : ""}${change24h.toFixed(2)}%`}
             valueColor={isPositive ? "positive" : "negative"}
           />
           <StatRow
-            label="24h Volume"
+            label={t("coinDetail.volume24h")}
             value={assetCtx ? formatVolume(assetCtx.dayNtlVlm) : "\u2014"}
           />
           <StatRow
-            label="Open Interest"
+            label={t("coinDetail.openInterest")}
             value={
               assetCtx && price
                 ? formatVolume(assetCtx.openInterest * price)
@@ -228,7 +230,7 @@ export function CoinDetailPage() {
             }
           />
           <StatRow
-            label="Funding Rate"
+            label={t("coinDetail.fundingRate")}
             value={assetCtx ? formatFunding(assetCtx.funding) : "\u2014"}
           />
         </div>
@@ -242,7 +244,7 @@ export function CoinDetailPage() {
           }
           className="flex-1 rounded-full bg-[#111827] py-3.5 font-semibold text-white shadow-[0_12px_24px_rgba(17,24,39,0.18)] transition-opacity active:opacity-80"
         >
-          {"Short \u2193"}
+          {t("coinDetail.shortButton")}
         </button>
         <button
           type="button"
@@ -251,7 +253,7 @@ export function CoinDetailPage() {
           }
           className="flex-1 rounded-full bg-primary py-3.5 font-semibold text-white shadow-[0_12px_24px_rgba(59,130,246,0.2)] transition-opacity active:opacity-80"
         >
-          {"Long \u2191"}
+          {t("coinDetail.longButton")}
         </button>
       </div>
     </div>

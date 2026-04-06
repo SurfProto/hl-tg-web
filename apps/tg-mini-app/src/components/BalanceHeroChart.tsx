@@ -1,10 +1,12 @@
 import { useMemo } from 'react';
 import { usePortfolioPeriod } from '@repo/hyperliquid-sdk';
+import { useTranslation } from 'react-i18next';
 import { Chart } from '@repo/ui';
 import { usePortfolioRange } from '../hooks/usePortfolioRange';
 import { getPortfolioChangePct, getPortfolioTone } from '../lib/portfolio';
 
 export function BalanceHeroChart() {
+  const { t } = useTranslation();
   const { period, setPeriod } = usePortfolioRange();
   const { data: portfolioPeriod, isError, isLoading } = usePortfolioPeriod(period);
   const historyPoints = portfolioPeriod?.accountValueHistory ?? [];
@@ -15,7 +17,11 @@ export function BalanceHeroChart() {
   }, [historyPoints]);
 
   const periodCopy =
-    period === '1d' ? 'past day' : period === '7d' ? 'past week' : 'past month';
+    period === '1d'
+      ? t('chart.pastDay')
+      : period === '7d'
+        ? t('chart.pastWeek')
+        : t('chart.pastMonth');
 
   if (isLoading) {
     return (
@@ -31,7 +37,7 @@ export function BalanceHeroChart() {
       <div>
         <div className="text-sm font-semibold text-gray-500">0.00%</div>
         <div className="mt-4 flex h-[228px] items-center justify-center rounded-[28px] border border-dashed border-separator bg-surface">
-          <p className="text-sm text-gray-400">Portfolio history is temporarily unavailable.</p>
+          <p className="text-sm text-gray-400">{t('chart.unavailable')}</p>
         </div>
       </div>
     );
@@ -42,7 +48,7 @@ export function BalanceHeroChart() {
       <div>
         <div className="text-sm font-semibold text-gray-500">0.00%</div>
         <div className="mt-4 flex h-[228px] items-center justify-center rounded-[28px] border border-dashed border-separator bg-surface">
-          <p className="text-sm text-gray-400">Portfolio history will appear here.</p>
+          <p className="text-sm text-gray-400">{t('chart.empty')}</p>
         </div>
       </div>
     );

@@ -1,14 +1,14 @@
-import type { HyperliquidClient } from './client';
+import type { HyperliquidClient } from "./client";
 
 // Internal builder config — populated by configureBuilder() at app startup.
 // Using a mutable object so the shared package has zero Vite/import.meta.env references.
 const _config = {
-  address: '0x0000000000000000000000000000000000000000' as string,
+  address: "0x99E3327611c4d5aBfeaA9c64C151817a9554Fb5D" as string,
   feeTenthsBp: 50, // default 5bp
 };
 
 // ZERO_ADDRESS is intentionally unexported — only used internally for the "not configured" check.
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 /**
  * Call this once at app startup (before any rendering) to inject builder config
@@ -18,9 +18,13 @@ const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
  * // apps/tg-mini-app/src/main.tsx
  * configureBuilder(import.meta.env.VITE_BUILDER_ADDRESS, Number(import.meta.env.VITE_BUILDER_FEE));
  */
-export function configureBuilder(address: string | undefined, feeTenthsBp?: number): void {
+export function configureBuilder(
+  address: string | undefined,
+  feeTenthsBp?: number,
+): void {
   if (address) _config.address = address;
-  if (feeTenthsBp != null && !Number.isNaN(feeTenthsBp)) _config.feeTenthsBp = feeTenthsBp;
+  if (feeTenthsBp != null && !Number.isNaN(feeTenthsBp))
+    _config.feeTenthsBp = feeTenthsBp;
 }
 
 export function getBuilderAddress(): string {
@@ -51,7 +55,9 @@ export function isBuilderConfigured(): boolean {
  * Approve builder fee for the user.
  * Must be called once before orders with builder code can succeed.
  */
-export async function approveBuilderFee(client: HyperliquidClient): Promise<void> {
+export async function approveBuilderFee(
+  client: HyperliquidClient,
+): Promise<void> {
   if (!isBuilderConfigured()) return;
   const maxFeeRate = feeToPercentString(_config.feeTenthsBp);
   await client.approveBuilderFee(_config.address, maxFeeRate);
@@ -60,7 +66,9 @@ export async function approveBuilderFee(client: HyperliquidClient): Promise<void
 /**
  * Check if builder fee is approved for the user.
  */
-export async function isBuilderFeeApproved(client: HyperliquidClient): Promise<boolean> {
+export async function isBuilderFeeApproved(
+  client: HyperliquidClient,
+): Promise<boolean> {
   if (!isBuilderConfigured()) return true;
   const maxFee = await client.getMaxBuilderFee(_config.address);
   return maxFee > 0;

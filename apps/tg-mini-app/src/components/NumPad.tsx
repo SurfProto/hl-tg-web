@@ -1,4 +1,5 @@
 import { useHaptics } from '../hooks/useHaptics';
+import { useTranslation } from 'react-i18next';
 
 interface NumPadProps {
   value: string;
@@ -10,6 +11,7 @@ const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '\u232b'] a
 
 export function NumPad({ value, onChange, maxDecimals = 2 }: NumPadProps) {
   const haptics = useHaptics();
+  const { t } = useTranslation();
 
   const handleKey = (key: string) => {
     haptics.selection();
@@ -44,7 +46,11 @@ export function NumPad({ value, onChange, maxDecimals = 2 }: NumPadProps) {
             event.preventDefault();
           }}
           onClick={() => handleKey(key)}
-          aria-label={key === '\u232b' ? 'Delete' : `Enter ${key}`}
+          aria-label={
+            key === '\u232b'
+              ? t('numPad.delete')
+              : t('numPad.enterKey', { key })
+          }
           className="flex items-center justify-center min-h-[56px] rounded-xl bg-gray-50 active:bg-gray-200 transition-colors select-none"
         >
           {key === '\u232b' ? (

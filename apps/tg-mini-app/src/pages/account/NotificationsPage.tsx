@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
+import { useTranslation } from 'react-i18next';
 import { getCurrentUserRecord, supabase } from '../../lib/supabase';
 
 type NotificationPrefs = {
@@ -16,6 +17,7 @@ const DEFAULT_PREFS: NotificationPrefs = {
 
 export function NotificationsPage() {
   const { user } = usePrivy();
+  const { t } = useTranslation();
   const walletAddress = user?.wallet?.address;
   const [prefs, setPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
   const [userId, setUserId] = useState<string | null>(null);
@@ -52,15 +54,15 @@ export function NotificationsPage() {
 
   return (
     <div className="min-h-full bg-background px-4 py-5 space-y-4">
-      <h1 className="text-2xl font-bold text-foreground">Notifications</h1>
-      <p className="text-sm text-muted">Notifications are sent through the Telegram bot linked to this app.</p>
+      <h1 className="text-2xl font-bold text-foreground">{t('notifications.title')}</h1>
+      <p className="text-sm text-muted">{t('notifications.description')}</p>
 
       <div className="overflow-hidden rounded-2xl border border-separator bg-white shadow-sm">
         {([
-          ['liquidation_alerts', 'Liquidation alerts'],
-          ['order_fills', 'Order fills'],
-          ['usdc_deposits', 'USDC deposits'],
-        ] as const).map(([key, label], index) => (
+          ['liquidation_alerts', t('notifications.liquidationAlerts')],
+          ['order_fills', t('notifications.orderFills')],
+          ['usdc_deposits', t('notifications.usdcDeposits')],
+        ] as [keyof NotificationPrefs, string][]).map(([key, label], index) => (
           <button
             key={key}
             onClick={() => updatePref(key)}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { usePrivy } from "@privy-io/react-auth";
+import { useTranslation } from "react-i18next";
 import {
   getMarketBaseAsset,
   getMarketDisplayName,
@@ -46,6 +47,7 @@ export function TradePage() {
   const navigate = useNavigate();
   const haptics = useHaptics();
   const toast = useToast();
+  const { t } = useTranslation();
   const { authenticated, user } = usePrivy();
 
   const [amount, setAmount] = useState("");
@@ -203,7 +205,7 @@ export function TradePage() {
         isValid: false,
         minMarginUsd,
         minSizeUsd,
-        reason: "Market metadata unavailable.",
+        reason: t("trade.marketMetadataUnavailable"),
       };
     }
 
@@ -304,7 +306,11 @@ export function TradePage() {
     user?.wallet?.address,
   ]);
 
-  const ctaLabel = side === "buy" ? `Long ${displayName}` : `Short ${displayName}`;
+  const ctaLabel =
+    side === "buy"
+      ? t("trade.longCta", { name: displayName })
+      : t("trade.shortCta", { name: displayName });
+  const sideLabel = side === "buy" ? t("common.long") : t("common.short");
 
   const isPending = placeOrder.isPending || upsertPositionProtection.isPending;
   const isSubmitDisabled = amountNum === 0 || isPending || !validation.isValid;
@@ -349,7 +355,7 @@ export function TradePage() {
     if (!validation.isValid) {
       haptics.error();
       setSubmitError(
-        validation.reason ?? "Check your order details and try again.",
+        validation.reason ?? t("trade.checkOrderDetails"),
       );
       return;
     }
@@ -363,13 +369,13 @@ export function TradePage() {
     if (orderType === "market" && protectionEnabled) {
       if (protectionDraft.stopLossEnabled && stopLossPx == null) {
         haptics.error();
-        setSubmitError("Enter a valid stop loss trigger price.");
+        setSubmitError(t("trade.enterValidSl"));
         return;
       }
 
       if (protectionDraft.takeProfitEnabled && takeProfitPx == null) {
         haptics.error();
-        setSubmitError("Enter a valid take profit trigger price.");
+        setSubmitError(t("trade.enterValidTp"));
         return;
       }
     }
@@ -400,15 +406,20 @@ export function TradePage() {
               : null,
           });
           haptics.success();
-          toast.success(`${ctaLabel} order placed with protection`);
+          toast.success(t("trade.orderPlacedWithProtection", { side: sideLabel }));
           navigate(-1);
           return;
         } catch (error) {
           haptics.error();
           toast.error(
             error instanceof Error
-              ? `${ctaLabel} order placed, but protection was not created. ${error.message}`
-              : `${ctaLabel} order placed, but protection was not created.`,
+              ? t("trade.orderPlacedProtectionFailed", {
+                  side: sideLabel,
+                  error: error.message,
+                })
+              : t("trade.orderPlacedProtectionFailedGeneric", {
+                  side: sideLabel,
+                }),
           );
           navigate("/positions");
           return;
@@ -416,14 +427,14 @@ export function TradePage() {
       }
 
       haptics.success();
-      toast.success(`${ctaLabel} order placed`);
+      toast.success(t("trade.orderPlaced", { side: sideLabel }));
       navigate(-1);
     } catch (error) {
       haptics.error();
       toast.error(
         error instanceof Error
           ? error.message
-          : "Order failed. Please try again.",
+          : t("trade.orderFailed"),
       );
     }
   };
@@ -436,7 +447,7 @@ export function TradePage() {
           <div>
             <span className="font-bold text-foreground">{displayName}</span>
             <span className="text-xs text-gray-400 ml-1">
-              {"PERP"}
+              {t("trade.perp")}
             </span>
           </div>
           {currentPrice != null && (
@@ -459,7 +470,9 @@ export function TradePage() {
                   : "text-gray-500"
               }`}
             >
-              {value.charAt(0).toUpperCase() + value.slice(1)}
+              {value === "market"
+                ? t("trade.orderTypeMarket")
+                : t("trade.orderTypeLimit")}
             </button>
           ))}
         </div>
@@ -468,7 +481,7 @@ export function TradePage() {
           type="button"
           onClick={() => setSettingsOpen(true)}
           className="p-2 rounded-lg text-gray-500 active:bg-gray-100 transition-colors"
-          aria-label="Order settings"
+          aria-label={t("trade.ariaOrderSettings")}
         >
           <svg
             className="w-5 h-5"
@@ -504,21 +517,22 @@ export function TradePage() {
           {step === "amount" ? (
             <div className="mt-2 text-center text-sm text-gray-400">
               <div>
-                Available margin $
+                {t("trade.availableMargin")}
                 {availableMarginUsd.toLocaleString("en-US", {
                   maximumFractionDigits: 2,
                 })}
               </div>
               <div>
-                Max size $
+                {t("trade.maxSize")}
                 {maxPositionUsd.toLocaleString("en-US", {
                   maximumFractionDigits: 2,
-                })}{" "}
-                at {leverage}x
+                })}
+                {t("trade.at")}
+                {leverage}x
               </div>
             </div>
           ) : (
-            <div className="text-sm text-gray-400 mt-2">Limit price</div>
+            <div className="text-sm text-gray-400 mt-2">{t("trade.limitPrice")}</div>
           )}
           {step === "price" && (
             <button
@@ -529,7 +543,7 @@ export function TradePage() {
               }}
               className="text-sm text-primary mt-2 active:opacity-60"
             >
-              {"\u2190 Edit amount"}
+              {t("trade.editAmount")}
             </button>
           )}
         </div>
@@ -537,10 +551,10 @@ export function TradePage() {
         {step === "amount" && (
           <div className="flex gap-2">
             {[
-              { label: "10%", pct: 0.1 },
-              { label: "25%", pct: 0.25 },
-              { label: "50%", pct: 0.5 },
-              { label: "Max", pct: 1 },
+              { label: t("trade.qf10"), pct: 0.1 },
+              { label: t("trade.qf25"), pct: 0.25 },
+              { label: t("trade.qf50"), pct: 0.5 },
+              { label: t("trade.qfMax"), pct: 1 },
             ].map(({ label, pct }) => (
               <button
                 key={label}
@@ -557,7 +571,7 @@ export function TradePage() {
         {isPerp && step === "amount" && (
           <div className="w-full">
             <div className="text-xs text-gray-400 mb-2 font-medium">
-              Leverage
+              {t("trade.leverage")}
             </div>
             <div className="flex flex-wrap gap-2">
               {leverageOptions.map((value) => (
@@ -611,14 +625,14 @@ export function TradePage() {
                   </span>
                   <div>
                     <p className="text-sm font-semibold text-foreground">
-                      Protection
+                      {t("trade.protection")}
                     </p>
                     <p className="mt-0.5 text-xs text-muted">
                       {orderType === "limit"
-                        ? "Available after the entry fills."
+                        ? t("trade.availableAfterFills")
                         : protectionSummary.length > 0
-                          ? "Reduce-only SL/TP for this position."
-                          : "Optional stop loss & take profit."}
+                          ? t("trade.reduceOnlySlTp")
+                          : t("trade.optionalSlTp")}
                     </p>
                   </div>
                 </div>
@@ -638,7 +652,7 @@ export function TradePage() {
               </div>
 
               <span className="text-sm font-semibold text-primary">
-                {protectionSummary.length > 0 ? "Edit" : "Add"}
+                {protectionSummary.length > 0 ? t("common.edit") : t("common.add")}
               </span>
             </div>
           </button>
@@ -663,7 +677,7 @@ export function TradePage() {
             disabled={isSubmitDisabled}
             className="w-full py-4 rounded-xl font-semibold text-sm bg-primary text-white disabled:opacity-40 active:opacity-80 transition-opacity"
           >
-            {"Set Price \u2192"}
+            {t("trade.setPrice")}
           </button>
         ) : (
           <button
@@ -674,18 +688,18 @@ export function TradePage() {
               side === "buy" ? "bg-primary" : "bg-secondary"
             }`}
           >
-            {isPending ? "Placing order..." : ctaLabel}
+            {isPending ? t("trade.placingOrder") : ctaLabel}
           </button>
         )}
 
         {liquidationPx != null && (
           <p className="text-xs text-center text-gray-400 mt-1.5">
-            Liquidation at {formatPrice(liquidationPx)}
+            {t("trade.liquidationAt")}{formatPrice(liquidationPx)}
           </p>
         )}
         {isPerp && protectionEnabled && orderType === "limit" && (
           <p className="mt-1.5 text-center text-xs text-amber-600">
-            Add protection after the limit entry fills.
+            {t("trade.addProtectionAfterFills")}
           </p>
         )}
         {validation.reason && !submitError && (
@@ -706,7 +720,7 @@ export function TradePage() {
             type="button"
             className="absolute inset-0 bg-black/40"
             onClick={() => setSettingsOpen(false)}
-            aria-label="Close order settings"
+            aria-label={t("trade.ariaCloseOrderSettings")}
           />
           <div
             role="dialog"
@@ -722,18 +736,18 @@ export function TradePage() {
               id="order-settings-title"
               className="text-base font-bold text-foreground mb-5"
             >
-              Order Settings
+              {t("trade.orderSettings")}
             </h3>
 
             <div className="mb-3 text-sm font-medium text-gray-500">
-              Time in Force
+              {t("trade.timeInForce")}
             </div>
             <div className="flex gap-2 mb-6">
               {(
                 [
-                  { key: "Gtc", label: "GTC", desc: "Good Till Cancelled" },
-                  { key: "Alo", label: "ALO", desc: "Add Liquidity Only" },
-                  { key: "Ioc", label: "IOC", desc: "Immediate or Cancel" },
+                  { key: "Gtc", label: t("trade.gtc"), desc: t("trade.goodTillCancelled") },
+                  { key: "Alo", label: t("trade.alo"), desc: t("trade.addLiquidityOnly") },
+                  { key: "Ioc", label: t("trade.ioc"), desc: t("trade.immediateOrCancel") },
                 ] as const
               ).map(({ key, label, desc }) => (
                 <button
@@ -769,7 +783,7 @@ export function TradePage() {
               }}
               className="w-full py-3.5 rounded-xl bg-primary text-white font-semibold text-sm active:opacity-80 transition-opacity"
             >
-              Apply to trade
+              {t("trade.applyToTrade")}
             </button>
           </div>
         </div>
@@ -788,10 +802,10 @@ export function TradePage() {
           orderType === "limit" ? limitPriceNum || currentPrice : currentPrice
         }
         size={estimatedProtectionSize}
-        submitLabel={protectionSubmitDisabled ? "Done" : "Apply Protection"}
+        submitLabel={protectionSubmitDisabled ? t("common.done") : t("trade.applyProtection")}
         disabledNotice={
           protectionSubmitDisabled
-            ? "Limit entries can be protected after they fill."
+            ? t("trade.addProtectionAfterFills")
             : null
         }
       />

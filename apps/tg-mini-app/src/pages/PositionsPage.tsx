@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   useUserState,
   useOpenOrders,
@@ -41,6 +42,7 @@ interface EditingProtectionState {
 
 function PositionsEmptyState() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   return (
     <div className="rounded-2xl border border-separator bg-white p-10 text-center">
@@ -60,16 +62,16 @@ function PositionsEmptyState() {
         </svg>
       </div>
       <p className="text-base font-semibold text-foreground">
-        No open positions
+        {t("positions.emptyTitle")}
       </p>
       <p className="mt-1 text-sm text-muted">
-        Your active trades, orders, and fills will appear here.
+        {t("positions.emptySubtitle")}
       </p>
       <button
         onClick={() => navigate("/")}
         className="mt-5 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-white transition-colors active:bg-primary-dark"
       >
-        Start trading
+        {t("positions.startTrading")}
       </button>
     </div>
   );
@@ -79,6 +81,7 @@ export function PositionsPage() {
   const navigate = useNavigate();
   const haptics = useHaptics();
   const toast = useToast();
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<"positions" | "orders" | "fills">(
     "positions",
   );
@@ -122,12 +125,12 @@ export function PositionsPage() {
           : null,
       });
       haptics.success();
-      toast.success("Protection updated");
+      toast.success(t("positions.protectionUpdated"));
       setEditingProtection(null);
     } catch (error) {
       haptics.error();
       toast.error(
-        error instanceof Error ? error.message : "Protection update failed.",
+        error instanceof Error ? error.message : t("positions.protectionUpdateFailed"),
       );
     }
   };
@@ -137,9 +140,9 @@ export function PositionsPage() {
       <div className="mb-5 flex rounded-full bg-surface p-1">
         {(
           [
-            { key: "positions", label: `Positions (${positions.length})` },
-            { key: "orders", label: `Orders (${openOrders?.length ?? 0})` },
-            { key: "fills", label: "Fills" },
+            { key: "positions", label: `${t("positions.tabPositions")} (${positions.length})` },
+            { key: "orders", label: `${t("positions.tabOrders")} (${openOrders?.length ?? 0})` },
+            { key: "fills", label: t("positions.tabFills") },
           ] as const
         ).map(({ key, label }) => (
           <button
@@ -209,7 +212,7 @@ export function PositionsPage() {
                                 : "bg-gray-100 text-gray-700"
                             }`}
                           >
-                            {isLong ? "Long" : "Short"}
+                            {isLong ? t("common.long") : t("common.short")}
                           </span>
                         </div>
                         <p className="mt-1 text-sm text-muted">
@@ -227,20 +230,20 @@ export function PositionsPage() {
                         {formatUsd(pnl)}
                       </p>
                       <p className="mt-1 text-xs text-muted">
-                        Mark {formatPrice(currentPrice)}
+                        {t("positions.markPrice", { price: formatPrice(currentPrice) })}
                       </p>
                     </div>
                   </div>
 
                   <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                     <div className="rounded-xl bg-surface px-3 py-2">
-                      <p className="text-xs text-muted">Position value</p>
+                      <p className="text-xs text-muted">{t("positions.positionValue")}</p>
                       <p className="mt-1 font-semibold text-foreground">
                         {formatUsd(position.positionValue ?? 0)}
                       </p>
                     </div>
                     <div className="rounded-xl bg-surface px-3 py-2">
-                      <p className="text-xs text-muted">Leverage</p>
+                      <p className="text-xs text-muted">{t("positions.leverage")}</p>
                       <p className="mt-1 font-semibold text-foreground">
                         {position.leverage.value}x {position.leverage.type}
                       </p>
@@ -251,13 +254,13 @@ export function PositionsPage() {
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-sm font-semibold text-foreground">
-                          Protection
+                          {t("positions.protection")}
                         </p>
                         <p className="mt-1 text-xs text-muted">
                           {protectionState.stopLoss ||
                           protectionState.takeProfit
-                            ? "Manage active SL/TP for this position."
-                            : "Add stop loss or take profit."}
+                            ? t("positions.manageSlTp")
+                            : t("positions.addSlTp")}
                         </p>
                       </div>
                       <button
@@ -281,8 +284,8 @@ export function PositionsPage() {
                         className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-primary shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 active:bg-gray-100"
                       >
                         {protectionState.stopLoss || protectionState.takeProfit
-                          ? "Edit"
-                          : "Add SL/TP"}
+                          ? t("positions.editProtection")
+                          : t("positions.addProtection")}
                       </button>
                     </div>
 
@@ -301,7 +304,7 @@ export function PositionsPage() {
                         )}
                         {protectionState.needsReview && (
                           <span className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
-                            Review Protection
+                            {t("positions.reviewProtection")}
                           </span>
                         )}
                       </div>
@@ -316,21 +319,21 @@ export function PositionsPage() {
                         closePosition.mutate(position.coin, {
                           onSuccess: () => {
                             haptics.success();
-                            toast.success(`${displayName} position closed`);
+                            toast.success(t("positions.positionClosed", { name: displayName }));
                           },
                           onError: (error) => {
                             haptics.error();
                             toast.error(
                               error instanceof Error
                                 ? error.message
-                                : "Close failed. Please try again.",
+                                : t("positions.closeFailed"),
                             );
                           },
                         });
                       }}
                       className="flex-1 rounded-full bg-[#111827] px-4 py-3 text-sm font-semibold text-white transition-opacity active:opacity-80"
                     >
-                      {closePosition.isPending ? "Closing..." : "Close"}
+                      {closePosition.isPending ? t("common.closing") : t("common.close")}
                     </button>
                     <button
                       onClick={(event) => {
@@ -341,7 +344,7 @@ export function PositionsPage() {
                       }}
                       className="flex-1 rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white transition-colors active:bg-primary-dark"
                     >
-                      Trade more
+                      {t("positions.tradeMore")}
                     </button>
                   </div>
                 </div>
@@ -382,8 +385,12 @@ export function PositionsPage() {
                   : protectionKind === "takeProfit"
                     ? "TP"
                     : order.side === "buy"
-                      ? "Buy"
-                      : "Sell";
+                      ? t("coinDetail.buyButton")
+                      : t("coinDetail.sellButton");
+              const orderTypeLabel =
+                order.orderType === "market"
+                  ? t("trade.orderTypeMarket")
+                  : t("trade.orderTypeLimit");
 
               return (
                 <div
@@ -414,8 +421,8 @@ export function PositionsPage() {
                         </div>
                         <p className="mt-1 text-sm text-muted">
                           {protectionKind
-                            ? "Reduce-only trigger order"
-                            : `${order.orderType ?? "limit"} order`}
+                            ? t("positions.reduceOnlyTrigger")
+                            : t("positions.orderType", { type: orderTypeLabel })}
                         </p>
                       </div>
                     </div>
@@ -428,14 +435,14 @@ export function PositionsPage() {
                           {
                             onSuccess: () => {
                               haptics.success();
-                              toast.success("Order cancelled");
+                              toast.success(t("positions.orderCancelled"));
                             },
                             onError: (error) => {
                               haptics.error();
                               toast.error(
                                 error instanceof Error
                                   ? error.message
-                                  : "Cancel failed. Please try again.",
+                                  : t("positions.cancelFailed"),
                               );
                             },
                           },
@@ -443,20 +450,20 @@ export function PositionsPage() {
                       }}
                       className="rounded-full bg-red-50 px-4 py-2 text-sm font-semibold text-negative transition-colors active:bg-red-100"
                     >
-                      {cancelOrder.isPending ? "Canceling..." : "Cancel"}
+                      {cancelOrder.isPending ? t("common.canceling") : t("common.cancel")}
                     </button>
                   </div>
 
                   <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                     <div className="rounded-xl bg-surface px-3 py-2">
-                      <p className="text-xs text-muted">Size</p>
+                      <p className="text-xs text-muted">{t("positions.size")}</p>
                       <p className="mt-1 font-semibold text-foreground">
                         {order.sz}
                       </p>
                     </div>
                     <div className="rounded-xl bg-surface px-3 py-2">
                       <p className="text-xs text-muted">
-                        {protectionKind ? "Trigger price" : "Limit price"}
+                        {protectionKind ? t("positions.triggerPrice") : t("positions.limitPrice")}
                       </p>
                       <p className="mt-1 font-semibold text-foreground">
                         {protectionKind && order.triggerPx != null
@@ -492,7 +499,7 @@ export function PositionsPage() {
                         {fill.coin}
                       </p>
                       <p className="mt-1 text-sm text-muted">
-                        {fill.side === "buy" ? "Bought" : "Sold"} {fill.sz} @ $
+                        {fill.side === "buy" ? t("positions.bought") : t("positions.sold")} {fill.sz} @ $
                         {fill.px}
                       </p>
                     </div>
@@ -504,7 +511,7 @@ export function PositionsPage() {
                         {fill.closedPnl.toFixed(2)}
                       </p>
                       <p className="mt-1 text-xs text-muted">
-                        Fee ${fill.fee.toFixed(4)}
+                        {t("positions.fee")} ${fill.fee.toFixed(4)}
                       </p>
                     </div>
                   </div>
@@ -527,11 +534,11 @@ export function PositionsPage() {
           });
         }}
         direction={editingProtection?.direction ?? "long"}
-        marketLabel={editingProtection?.displayName ?? "Position"}
+        marketLabel={editingProtection?.displayName ?? t("positions.positionLabel")}
         currentPrice={editingProtection?.currentPrice ?? null}
         referencePrice={editingProtection?.entryPrice ?? null}
         size={editingProtection?.size ?? 0}
-        submitLabel="Save Protection"
+        submitLabel={t("positions.saveProtection")}
         isSubmitting={upsertPositionProtection.isPending}
       />
     </div>

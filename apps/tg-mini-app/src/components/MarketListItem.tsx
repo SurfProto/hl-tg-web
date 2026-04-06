@@ -1,4 +1,5 @@
 import { TokenIcon } from './TokenIcon';
+import { useTranslation } from 'react-i18next';
 
 interface MarketListItemProps {
   coin: string;
@@ -23,6 +24,7 @@ export function MarketListItem({
   maxLeverage,
   onClick,
 }: MarketListItemProps) {
+  const { t } = useTranslation();
   const isPositive = change24h >= 0;
   const changeText = `${isPositive ? '+' : ''}${change24h.toFixed(2)}%`;
 
@@ -37,11 +39,15 @@ export function MarketListItem({
         <div className="flex items-center gap-1.5">
           <span className="font-semibold text-foreground text-sm truncate">{displayName}</span>
           <span className="flex-shrink-0 text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-medium">
-            {marketType === 'perp' ? (maxLeverage ? `${maxLeverage}x` : 'PERP') : 'SPOT'}
+            {marketType === 'perp'
+              ? (maxLeverage ? `${maxLeverage}x` : t('trade.perp'))
+              : t('common.spot')}
           </span>
         </div>
         {volume && (
-          <span className="text-xs text-gray-400">Vol {volume}</span>
+          <span className="text-xs text-gray-400">
+            {t('marketList.volume', { volume })}
+          </span>
         )}
       </div>
 

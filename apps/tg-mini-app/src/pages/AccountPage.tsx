@@ -1,16 +1,9 @@
-import { useMemo } from "react";
+import { type ReactNode, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import {
-  getBuilderAddress,
-  getBuilderFeeTenthsBp,
-  isBuilderConfigured,
-  useApproveBuilderFee,
-  useBuilderFeeApproval,
-  usePortfolioPeriod,
-  useUserState,
-} from "@repo/hyperliquid-sdk";
+import { usePortfolioPeriod, useUserState } from "@repo/hyperliquid-sdk";
 import type { PortfolioRange } from "@repo/types";
+import { useTranslation } from "react-i18next";
 import { useHaptics } from "../hooks/useHaptics";
 import { usePortfolioRange } from "../hooks/usePortfolioRange";
 import {
@@ -19,11 +12,13 @@ import {
 } from "../lib/portfolio";
 
 function formatUsd(value: number) {
-  return `$${value.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`;
+  return `$${value.toLocaleString("en-US", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
+  })}`;
 }
 
-function formatAddress(address?: string) {
-  if (!address) return "No wallet connected";
+function formatAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
@@ -36,18 +31,94 @@ function formatDrawdownPercent(value: number) {
   return value > 0 ? `-${value.toFixed(2)}%` : "0.00%";
 }
 
+function SettingsIcon() {
+  return (
+    <svg
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={1.8}
+        d="M10.5 3.75c.692-1.2 2.424-1.2 3.116 0l.24.415a1.8 1.8 0 001.944.852l.47-.102c1.358-.295 2.583.93 2.288 2.288l-.102.47a1.8 1.8 0 00.852 1.944l.415.24c1.2.692 1.2 2.424 0 3.116l-.415.24a1.8 1.8 0 00-.852 1.944l.102.47c.295 1.358-.93 2.583-2.288 2.288l-.47-.102a1.8 1.8 0 00-1.944.852l-.24.415c-.692 1.2-2.424 1.2-3.116 0l-.24-.415a1.8 1.8 0 00-1.944-.852l-.47.102c-1.358.295-2.583-.93-2.288-2.288l.102-.47a1.8 1.8 0 00-.852-1.944l-.415-.24c-1.2-.692-1.2-2.424 0-3.116l.415-.24a1.8 1.8 0 00.852-1.944l-.102-.47c-.295-1.358.93-2.583 2.288-2.288l.47.102a1.8 1.8 0 001.944-.852l.24-.415z"
+      />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={1.8}
+        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+      />
+    </svg>
+  );
+}
+
+function SkeletonBar({ className }: { className: string }) {
+  return <div className={`animate-pulse rounded bg-gray-200 ${className}`} />;
+}
+
+function Surface({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section
+      className={`rounded-2xl border border-separator bg-white p-4 shadow-sm ${className}`}
+    >
+      {children}
+    </section>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  helper,
+  valueClassName = "text-foreground",
+  loading = false,
+}: {
+  label: string;
+  value: string;
+  helper?: string;
+  valueClassName?: string;
+  loading?: boolean;
+}) {
+  return (
+    <div className="min-h-[92px] rounded-2xl border border-separator bg-white p-4 shadow-sm">
+      <p className="text-[11px] uppercase tracking-wide text-muted">{label}</p>
+      {loading ? (
+        <>
+          <SkeletonBar className="mt-3 h-6 w-20" />
+          <SkeletonBar className="mt-2 h-3 w-14 bg-gray-100" />
+        </>
+      ) : (
+        <>
+          <p className={`mt-3 text-lg font-semibold ${valueClassName}`}>
+            {value}
+          </p>
+          <p className="mt-1 text-xs text-muted">{helper}</p>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function AccountPage() {
   const haptics = useHaptics();
+  const { t } = useTranslation();
   const privy = usePrivy() as any;
-  const { user, authenticated } = privy;
+  const { user } = privy;
   const { period, setPeriod } = usePortfolioRange();
   const { wallets } = useWallets();
-  const { data: userState } = useUserState();
+  const { data: userState, isLoading: userStateLoading } = useUserState();
   const { data: portfolioPeriod, isLoading: portfolioLoading } =
     usePortfolioPeriod(period);
-  const { data: maxFee, isLoading: builderApprovalLoading } =
-    useBuilderFeeApproval();
-  const approveBuilderFee = useApproveBuilderFee();
 
   const walletAddress =
     user?.wallet?.address ??
@@ -57,13 +128,11 @@ export function AccountPage() {
     telegramUsername ??
     user?.email?.address ??
     user?.wallet?.address ??
-    "Trader";
+    t("account.traderFallback");
 
-  const perpsEquity = userState?.marginSummary?.accountValue ?? 0;
-  const perpsAvailable = userState?.withdrawable ?? 0;
-  const totalEquity = perpsEquity;
-  const builderConfigured = isBuilderConfigured();
-  const builderApproved = (maxFee ?? 0) > 0;
+  const totalEquity = userState?.marginSummary?.accountValue ?? 0;
+  const availableEquity = userState?.withdrawable ?? 0;
+
   const rangePnl = useMemo(
     () => getPortfolioRangePnl(portfolioPeriod?.pnlHistory ?? []),
     [portfolioPeriod?.pnlHistory],
@@ -73,6 +142,7 @@ export function AccountPage() {
       getPortfolioMaxDrawdownPct(portfolioPeriod?.accountValueHistory ?? []),
     [portfolioPeriod?.accountValueHistory],
   );
+
   const metricRangeLabel =
     period === "1d" ? "1D" : period === "7d" ? "1W" : "1M";
   const pnlColorClass =
@@ -86,70 +156,68 @@ export function AccountPage() {
   const hasRangeHistory =
     (portfolioPeriod?.accountValueHistory?.length ?? 0) > 1 &&
     (portfolioPeriod?.pnlHistory?.length ?? 0) > 0;
-  const showPortfolioMetricPlaceholder =
+  const portfolioMetricsLoading =
     portfolioLoading || !portfolioPeriod || !hasRangeHistory;
+  const shellLoading = userStateLoading;
   const portfolioRanges: Array<{ key: PortfolioRange; label: string }> = [
     { key: "1d", label: "1D" },
     { key: "7d", label: "1W" },
     { key: "30d", label: "1M" },
   ];
+  const actionLinks = [
+    { label: t("account.deposit"), path: "/account/deposit" },
+    { label: t("account.withdraw"), path: "/account/withdraw" },
+    { label: t("account.swap"), path: "/account/swap" },
+  ];
 
   return (
     <div className="min-h-full bg-background px-4 py-5 space-y-4">
-      <div className="rounded-3xl bg-white p-5 shadow-sm border border-separator">
+      <Surface className="rounded-[28px] p-5">
         <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-sm text-muted">Account</p>
-            <h1 className="mt-1 text-2xl font-bold text-foreground">
-              {telegramUsername ? `@${displayName}` : displayName}
-            </h1>
-            <p className="mt-1 text-sm text-muted">
-              {user?.email?.address ?? "Telegram and embedded wallet connected"}
-            </p>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm text-muted">{t("account.sectionLabel")}</p>
+            {shellLoading ? (
+              <>
+                <SkeletonBar className="mt-2 h-8 w-36" />
+                <SkeletonBar className="mt-2 h-4 w-44 bg-gray-100" />
+              </>
+            ) : (
+              <>
+                <h1 className="mt-1 truncate text-[2rem] font-bold leading-none text-foreground">
+                  {telegramUsername ? `@${displayName}` : displayName}
+                </h1>
+                <p className="mt-2 text-sm text-muted">
+                  {user?.email?.address ??
+                    t("account.connectedInfo")}
+                </p>
+              </>
+            )}
           </div>
-          {authenticated && (
-            <button
-              type="button"
-              onClick={() => privy.logout()}
-              className="rounded-full bg-surface px-4 py-2 text-sm font-semibold text-foreground active:bg-gray-200 transition-colors"
-            >
-              Log out
-            </button>
-          )}
-        </div>
 
-        <div className="mt-5 rounded-2xl bg-surface p-4">
-          <p className="text-xs uppercase tracking-wide text-muted">
-            Total Equity
-          </p>
-          <p className="mt-2 text-3xl font-bold text-foreground">
-            {formatUsd(totalEquity)}
-          </p>
-          <div className="mt-3 flex gap-5 text-sm">
-            <div className="flex flex-col gap-0.5">
-              <span className="text-xs text-muted">Perps</span>
-              <span className="font-semibold text-foreground">
-                {formatUsd(perpsEquity)}
-              </span>
-              {perpsEquity - perpsAvailable > 0.005 && (
-                <span className="text-xs text-muted">
-                  {formatUsd(perpsAvailable)} avail
-                </span>
-              )}
-            </div>
-          </div>
+          <Link
+            to="/account/settings"
+            onClick={() => haptics.light()}
+            aria-label={t("account.openSettings")}
+            className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-surface text-foreground transition-colors active:bg-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          >
+            <SettingsIcon />
+          </Link>
         </div>
-      </div>
+      </Surface>
 
-      <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
+      <Surface>
         <div className="flex items-center justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-semibold text-foreground">
-              Embedded wallet
+              {t("account.embeddedWallet")}
             </p>
-            <p className="mt-1 font-mono text-sm text-muted">
-              {formatAddress(walletAddress)}
-            </p>
+            {shellLoading ? (
+              <SkeletonBar className="mt-2 h-4 w-28" />
+            ) : (
+              <p className="mt-1 font-mono text-sm text-muted">
+                {walletAddress ? formatAddress(walletAddress) : t("personalInfo.noWallet")}
+              </p>
+            )}
           </div>
           <button
             type="button"
@@ -158,21 +226,21 @@ export function AccountPage() {
               await navigator.clipboard.writeText(walletAddress);
               haptics.success();
             }}
-            className="rounded-full bg-surface px-4 py-2 text-sm font-semibold text-foreground active:bg-gray-200 transition-colors"
+            className="rounded-full bg-surface px-4 py-2 text-sm font-semibold text-foreground transition-colors active:bg-gray-100"
           >
-            Copy
+            {t("common.copy")}
           </button>
         </div>
-      </div>
+      </Surface>
 
-      <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
-        <div className="flex items-center justify-between gap-3">
+      <Surface>
+        <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-foreground">
-              Portfolio metrics
+              {t("account.portfolioMetrics")}
             </p>
             <p className="mt-1 text-xs text-muted">
-              Synced with the home portfolio range
+              {t("account.syncedWithHome")}
             </p>
           </div>
           <div className="chart-range-pill inline-flex items-center gap-1 rounded-full px-1.5 py-1">
@@ -197,113 +265,59 @@ export function AccountPage() {
             })}
           </div>
         </div>
+      </Surface>
+
+      <div className="grid grid-cols-2 gap-3">
+        <MetricCard
+          label={t("account.totalEquity")}
+          value={formatUsd(totalEquity)}
+          helper={t("account.accountValue")}
+          loading={shellLoading}
+        />
+        <MetricCard
+          label={t("account.availableEquity")}
+          value={formatUsd(availableEquity)}
+          helper={t("account.readyToTrade")}
+          loading={shellLoading}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
-          <p className="text-xs text-muted">Profit &amp; Loss</p>
-          <p
-            className={`mt-2 text-lg font-semibold ${showPortfolioMetricPlaceholder ? "text-foreground" : pnlColorClass}`}
-          >
-            {showPortfolioMetricPlaceholder
+        <MetricCard
+          label={t("account.profitLoss")}
+          value={portfolioMetricsLoading ? "\u2014" : formatSignedUsd(rangePnl)}
+          helper={`${metricRangeLabel} ${t("account.range")}`}
+          valueClassName={
+            portfolioMetricsLoading ? "text-foreground" : pnlColorClass
+          }
+          loading={portfolioMetricsLoading}
+        />
+        <MetricCard
+          label={t("account.maxDrawdown")}
+          value={
+            portfolioMetricsLoading
               ? "\u2014"
-              : formatSignedUsd(rangePnl)}
-          </p>
-          <p className="mt-1 text-xs text-muted">{metricRangeLabel} range</p>
-        </div>
-        <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
-          <p className="text-xs text-muted">Max Drawdown</p>
-          <p
-            className={`mt-2 text-lg font-semibold ${showPortfolioMetricPlaceholder ? "text-foreground" : drawdownColorClass}`}
-          >
-            {showPortfolioMetricPlaceholder
-              ? "\u2014"
-              : formatDrawdownPercent(maxDrawdown)}
-          </p>
-          <p className="mt-1 text-xs text-muted">{metricRangeLabel} range</p>
-        </div>
-        <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
-          <p className="text-xs text-muted">Perps Equity</p>
-          <p className="mt-2 text-lg font-semibold text-foreground">
-            {formatUsd(perpsEquity)}
-          </p>
-        </div>
-        <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
-          <p className="text-xs text-muted">Perps Available</p>
-          <p className="mt-2 text-lg font-semibold text-foreground">
-            {formatUsd(perpsAvailable)}
-          </p>
-        </div>
+              : formatDrawdownPercent(maxDrawdown)
+          }
+          helper={`${metricRangeLabel} ${t("account.range")}`}
+          valueClassName={
+            portfolioMetricsLoading ? "text-foreground" : drawdownColorClass
+          }
+          loading={portfolioMetricsLoading}
+        />
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        {(
-          [
-            { label: "Deposit", path: "/account/deposit" },
-            { label: "Withdraw", path: "/account/withdraw" },
-            { label: "Swap", path: "/account/swap" },
-          ] as const
-        ).map((action) => (
+        {actionLinks.map((action) => (
           <Link
             key={action.path}
             to={action.path}
             onClick={() => haptics.light()}
-            className="rounded-2xl border border-separator bg-white px-3 py-4 text-center text-sm font-semibold text-foreground shadow-sm active:bg-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+            className="rounded-2xl border border-separator bg-white px-3 py-3 text-center text-sm font-semibold text-foreground shadow-sm transition-colors active:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
           >
             {action.label}
           </Link>
         ))}
-      </div>
-
-      <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold text-foreground">
-              Builder code
-            </p>
-            <p className="mt-1 text-xs text-muted">
-              {getBuilderAddress().slice(0, 6)}...
-              {getBuilderAddress().slice(-4)} at{" "}
-              {(getBuilderFeeTenthsBp() / 10).toFixed(1)} bp
-            </p>
-          </div>
-          <span
-            className={`rounded-full px-3 py-1 text-xs font-semibold ${builderApproved ? "bg-green-50 text-positive" : "bg-yellow-50 text-amber-600"}`}
-          >
-            {!builderConfigured
-              ? "Disabled"
-              : builderApprovalLoading
-                ? "Checking"
-                : builderApproved
-                  ? "Approved"
-                  : "Not approved"}
-          </span>
-        </div>
-        {builderConfigured && !builderApproved && !builderApprovalLoading && (
-          <button
-            type="button"
-            onClick={() => approveBuilderFee.mutate()}
-            disabled={approveBuilderFee.isPending}
-            className="mt-4 w-full rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white active:bg-primary-dark transition-colors disabled:opacity-60"
-          >
-            {approveBuilderFee.isPending
-              ? "Approving..."
-              : "Approve builder fee"}
-          </button>
-        )}
-      </div>
-
-      <div className="rounded-2xl border border-separator bg-white shadow-sm">
-        <Link
-          to="/account/settings"
-          onClick={() => haptics.light()}
-          className="flex w-full items-center justify-between px-4 py-4 text-left text-sm font-semibold text-foreground active:bg-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-        >
-          <span>Account settings</span>
-          <span className="text-muted" aria-hidden="true">
-            {"\u203a"}
-          </span>
-        </Link>
       </div>
     </div>
   );

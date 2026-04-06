@@ -6,23 +6,25 @@
     "account": "Аккаунт"
   },
   "common": {
+    "all": "Все",
     "copy": "Копировать",
     "copied": "Скопировано",
     "save": "Сохранить",
-    "saving": "Сохранение…",
+    "saving": "Сохранение...",
     "cancel": "Отмена",
-    "canceling": "Отмена…",
+    "canceling": "Отмена...",
     "close": "Закрыть",
-    "closing": "Закрываем…",
+    "closing": "Закрываем...",
     "edit": "Изменить",
     "add": "Добавить",
     "share": "Поделиться",
     "back": "← Назад",
     "max": "МАКС",
-    "submitting": "Отправка…",
-    "loading": "Загрузка…",
+    "submitting": "Отправка...",
+    "loading": "Загрузка...",
     "notLinked": "Не привязан",
     "retry": "Повторить",
+    "done": "Готово",
     "long": "Лонг",
     "short": "Шорт",
     "perps": "Перпы",
@@ -34,24 +36,33 @@
   "errors": {
     "somethingWentWrong": "Что-то пошло не так",
     "reloadApp": "Перезагрузить приложение",
+    "unexpected": "Произошла непредвиденная ошибка.",
     "loginFailed": "Ошибка входа. Попробуйте снова."
   },
   "home": {
     "seeAllMarkets": "Все рынки ({{count}})",
-    "ariaSearch": "Поиск рынков"
+    "ariaSearch": "Поиск рынков",
+    "noMarkets": "Нет рынков"
   },
   "search": {
     "ariaClose": "Закрыть поиск рынков",
     "title": "Поиск рынков",
-    "placeholder": "Поиск рынков…",
+    "placeholder": "Поиск рынков...",
     "ariaClear": "Очистить поиск",
     "noMarketsFound": "Рынки не найдены"
+  },
+  "chart": {
+    "unavailable": "История портфеля временно недоступна.",
+    "empty": "История портфеля появится здесь.",
+    "pastDay": "за день",
+    "pastWeek": "за неделю",
+    "pastMonth": "за месяц"
   },
   "allMarkets": {
     "title": "Все рынки",
     "marketCount": "{{count}} рынков",
     "searchLabel": "Поиск всех рынков",
-    "searchPlaceholder": "Поиск рынков…",
+    "searchPlaceholder": "Поиск рынков...",
     "noMarketsFound": "Рынки не найдены",
     "ariaClose": "Закрыть все рынки",
     "ariaClearSearch": "Очистить поиск рынков"
@@ -63,7 +74,7 @@
     "leverage": "Плечо",
     "protection": "Защита",
     "setPrice": "Установить цену →",
-    "editAmount": "←  Изменить сумму",
+    "editAmount": "← Изменить сумму",
     "placingOrder": "Размещение...",
     "availableMargin": "Доступная маржа $",
     "maxSize": "Макс размер $",
@@ -99,7 +110,8 @@
     "longCta": "Лонг {{name}}",
     "shortCta": "Шорт {{name}}",
     "ariaOrderSettings": "Настройки ордера",
-    "ariaCloseOrderSettings": "Закрыть настройки ордера"
+    "ariaCloseOrderSettings": "Закрыть настройки ордера",
+    "applyProtection": "Применить защиту"
   },
   "protection": {
     "title": "Защита",
@@ -110,13 +122,13 @@
     "off": "Выкл",
     "triggerPrice": "Цена активации",
     "pricePlaceholder": "0.00",
-    "longSlRule": "Для лонга стоп-лосс должен быть ниже рыночной цены.",
-    "longTpRule": "Для лонга тейк-профит должен быть выше рыночной цены.",
-    "shortSlRule": "Для шорта стоп-лосс должен быть выше рыночной цены.",
-    "shortTpRule": "Для шорта тейк-профит должен быть ниже рыночной цены.",
+    "longSlRule": "Для лонга стоп-лосс должен быть ниже рынка.",
+    "longTpRule": "Для лонга тейк-профит должен быть выше рынка.",
+    "shortSlRule": "Для шорта стоп-лосс должен быть выше рынка.",
+    "shortTpRule": "Для шорта тейк-профит должен быть ниже рынка.",
     "estimatedPnl": "Ожидаемый PnL при активации: {{pnl}}",
-    "enterTriggerPreview": "Введите цену активации для предварительного просмотра.",
-    "referenceInfo": "Входная цена {{price}} | Размер {{size}} единиц",
+    "enterTriggerPreview": "Введите цену активации для предварительного просмотра результата.",
+    "referenceInfo": "Цена входа {{price}} | Объём {{size}} единиц",
     "reducedOnlyInfo": "Защита использует reduce-only триггерные рыночные ордера.",
     "saving": "Сохранение...",
     "ariaClose": "Закрыть настройки защиты",
@@ -140,7 +152,7 @@
     "addProtection": "Добавить SL/TP",
     "reviewProtection": "Проверить защиту",
     "markPrice": "Рынок {{price}}",
-    "reduceOnlyTrigger": "Триггерный ордер reduce-only",
+    "reduceOnlyTrigger": "Reduce-only триггерный ордер",
     "orderType": "{{type}} ордер",
     "size": "Размер",
     "triggerPrice": "Цена активации",
@@ -148,7 +160,15 @@
     "bought": "Куплено",
     "sold": "Продано",
     "fee": "Комиссия",
-    "tradeMore": "Торговать ещё"
+    "tradeMore": "Торговать ещё",
+    "protectionUpdated": "Защита обновлена",
+    "protectionUpdateFailed": "Не удалось обновить защиту.",
+    "saveProtection": "Сохранить защиту",
+    "positionClosed": "Позиция {{name}} закрыта",
+    "closeFailed": "Не удалось закрыть. Попробуйте снова.",
+    "orderCancelled": "Ордер отменён",
+    "cancelFailed": "Не удалось отменить. Попробуйте снова.",
+    "positionLabel": "Позиция"
   },
   "points": {
     "seasonOne": "Сезон первый",
@@ -194,13 +214,19 @@
     "transfer": "Перевод",
     "swap": "Обмен",
     "builderCode": "Код билдера",
+    "builderAddress": "Адрес билдера",
     "disabled": "Отключено",
     "checking": "Проверка",
     "approved": "Одобрено",
     "notApproved": "Не одобрено",
     "approveBuilderFee": "Одобрить комиссию билдера",
     "approving": "Одобрение...",
-    "accountSettings": "Настройки аккаунта"
+    "accountSettings": "Настройки аккаунта",
+    "availableEquity": "Доступный капитал",
+    "accountValue": "Стоимость аккаунта",
+    "readyToTrade": "Готово к торговле",
+    "openSettings": "Открыть настройки аккаунта",
+    "traderFallback": "Трейдер"
   },
   "accountSettings": {
     "title": "Настройки аккаунта",
@@ -224,15 +250,16 @@
     "walletBalance": "Баланс кошелька",
     "step1Title": "Шаг 1: получите USDC на Arbitrum",
     "addUsdcWithPrivy": "Добавить USDC через Privy",
-    "openingFundingModal": "Открытие модального окна…",
-    "connectWallet": "Подключите кошелёк для просмотра адреса",
+    "openingFundingModal": "Открытие окна пополнения...",
+    "connectWallet": "Подключите кошелёк, чтобы увидеть адрес",
     "copyAddress": "Скопировать адрес",
     "step2Title": "Шаг 2: перевести на Hyperliquid",
     "amountToBridge": "Сумма для перевода",
     "bridgeButton": "Перевести на Hyperliquid",
-    "bridging": "Выполняется перевод…",
+    "bridging": "Выполняется перевод...",
     "bridgeSubmitted": "Перевод отправлен. Баланс Hyperliquid обновится примерно через минуту.",
-    "bridgeInfo": "Минимальная сумма 5 USDC. Отправляйте только USDC на Arbitrum One."
+    "bridgeInfo": "Минимальная сумма 5 USDC. Отправляйте только USDC на Arbitrum One.",
+    "bridgeFailed": "Не удалось выполнить перевод"
   },
   "withdraw": {
     "title": "Вывод USDC",
@@ -243,13 +270,14 @@
     "amount": "Сумма",
     "available": "Доступно {{amount}} USDC",
     "withdrawButton": "Вывести на Arbitrum",
-    "submitting": "Отправка…",
+    "submitting": "Отправка...",
     "withdrawSubmitted": "Запрос на вывод отправлен. Обычно поступает в течение 5 минут.",
-    "withdrawFee": "Комиссия 1 USDC взимается за каждый вывод."
+    "withdrawFee": "Комиссия 1 USDC взимается за каждый вывод.",
+    "withdrawFailed": "Не удалось вывести средства"
   },
   "notifications": {
     "title": "Уведомления",
-    "description": "Уведомления отправляются через бот Telegram, привязанный к этому приложению.",
+    "description": "Уведомления отправляются через Telegram-бота, привязанного к этому приложению.",
     "liquidationAlerts": "Оповещения о ликвидации",
     "orderFills": "Исполнение ордеров",
     "usdcDeposits": "Депозиты USDC"
@@ -266,16 +294,16 @@
     "walletAddress": "Адрес кошелька",
     "noWallet": "Кошелёк не подключён",
     "username": "Имя пользователя",
-    "usernamePlaceholder": "@имя_пользователя",
+    "usernamePlaceholder": "@username",
     "email": "Email",
     "phone": "Телефон"
   },
   "privateKey": {
     "title": "Приватный ключ",
     "warningTitle": "Ваш приватный ключ даёт полный доступ к средствам кошелька.",
-    "warningText": "Никогда не делитесь им. Экспортируйте только если понимаете риск.",
-    "step1": "1. Privy откроет защищённый поток экспорта.",
-    "step2": "2. Скопируйте ключ и храните его безопасно в офлайне.",
+    "warningText": "Никогда не делитесь им. Экспортируйте только если понимаете риск и храните ключ в безопасном месте.",
+    "step1": "1. Privy откроет защищённый процесс экспорта.",
+    "step2": "2. Скопируйте ключ и храните его безопасно офлайн.",
     "exportButton": "Экспортировать приватный ключ"
   },
   "support": {
@@ -297,7 +325,7 @@
     "pastDay": "за день",
     "change24h": "Изменение 24ч",
     "volume24h": "Объём 24ч",
-    "openInterest": "Открытые позиции",
+    "openInterest": "Открытый интерес",
     "fundingRate": "Ставка финансирования",
     "holdings": "Холдинги",
     "holdingsValue": "Стоимость холдингов",
@@ -312,16 +340,16 @@
     "vol": "Объём"
   },
   "tradingSetup": {
-    "titleReauth": "Переавторизация торговли",
-    "title1Click": "1-click торговля",
-    "descExpired": "Ваш торговый ключ истёк. Переавторизуйтесь для мгновенной торговли.",
-    "desc1Click": "Авторизуйте локальный торговый ключ один раз. Все ордера будут подписаны мгновенно.",
+    "titleReauth": "Переавторизовать торговлю",
+    "title1Click": "Торговля в 1 клик",
+    "descExpired": "Срок действия торгового ключа истёк. Переавторизуйтесь, чтобы продолжить мгновенную торговлю.",
+    "desc1Click": "Один раз авторизуйте локальный торговый ключ. Все ордера будут подписываться мгновенно без подтверждения каждой сделки.",
     "stepAuth": "Авторизовать торговый ключ",
     "stepReauth": "Переавторизовать торговый ключ",
     "stepBuilderFee": "Включить комиссию билдера",
-    "statusStarting": "Начало торговли…",
-    "statusEnable": "Включить 1-click торговлю",
-    "statusSettingUp": "Настройка…",
+    "statusStarting": "Запуск торговли...",
+    "statusEnable": "Включить торговлю в 1 клик",
+    "statusSettingUp": "Настройка...",
     "allSet": "Всё готово!",
     "readyToTrade": "Теперь вы можете торговать мгновенно.",
     "reauthButton": "Переавторизовать",
@@ -331,8 +359,16 @@
   },
   "balanceHero": {
     "totalEquity": "Общий капитал",
+    "availableForTrading": "Доступно для торговли {{amount}}",
     "deposit": "Депозит",
     "withdraw": "Вывод"
+  },
+  "marketList": {
+    "volume": "Объём {{volume}}"
+  },
+  "numPad": {
+    "delete": "Удалить",
+    "enterKey": "Ввести {{key}}"
   },
   "swap": {
     "title": "Обмен стейблов",
@@ -353,5 +389,14 @@
     "cta": "Обменять {{fromAsset}} на {{toAsset}}",
     "selectDifferentAssets": "Выберите два разных стейбла.",
     "failed": "Не удалось выполнить обмен"
+  },
+  "transfer": {
+    "title": "Перевод USDC",
+    "flipDirection": "Поменять направление перевода",
+    "amount": "Сумма",
+    "availableToTransfer": "Доступно для перевода {{amount}} USDC",
+    "confirm": "Подтвердить перевод",
+    "success": "Перевод успешно отправлен.",
+    "failed": "Не удалось выполнить перевод"
   }
 }

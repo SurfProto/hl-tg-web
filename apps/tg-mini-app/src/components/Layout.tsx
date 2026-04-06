@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useHaptics } from '../hooks/useHaptics';
 
 interface LayoutProps {
@@ -20,6 +21,7 @@ export function Layout({ children }: LayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const haptics = useHaptics();
+  const { t } = useTranslation();
 
   const hideNav = SUB_ROUTES_HIDE_NAV.some((prefix) => location.pathname.startsWith(prefix));
   const activeTab = location.pathname === '/'
@@ -86,7 +88,7 @@ export function Layout({ children }: LayoutProps) {
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1" />
               </svg>
-              <span className="text-xs mt-1 font-medium">Home</span>
+              <span className="text-xs mt-1 font-medium">{t('nav.home')}</span>
             </NavLink>
 
             <NavLink
@@ -99,7 +101,7 @@ export function Layout({ children }: LayoutProps) {
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
               </svg>
-              <span className="text-xs mt-1 font-medium">Positions</span>
+              <span className="text-xs mt-1 font-medium">{t('nav.positions')}</span>
             </NavLink>
 
             <NavLink
@@ -112,7 +114,7 @@ export function Layout({ children }: LayoutProps) {
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
               </svg>
-              <span className="text-xs mt-1 font-medium">Points</span>
+              <span className="text-xs mt-1 font-medium">{t('nav.points')}</span>
             </NavLink>
 
             <NavLink
@@ -125,7 +127,7 @@ export function Layout({ children }: LayoutProps) {
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
-              <span className="text-xs mt-1 font-medium">Account</span>
+              <span className="text-xs mt-1 font-medium">{t('nav.account')}</span>
             </NavLink>
           </div>
         </nav>

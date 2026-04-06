@@ -6,23 +6,25 @@
     "account": "Account"
   },
   "common": {
+    "all": "All",
     "copy": "Copy",
     "copied": "Copied",
     "save": "Save",
-    "saving": "Saving…",
+    "saving": "Saving...",
     "cancel": "Cancel",
-    "canceling": "Canceling…",
+    "canceling": "Canceling...",
     "close": "Close",
-    "closing": "Closing…",
+    "closing": "Closing...",
     "edit": "Edit",
     "add": "Add",
     "share": "Share",
     "back": "← Back",
     "max": "MAX",
-    "submitting": "Submitting…",
-    "loading": "Loading…",
+    "submitting": "Submitting...",
+    "loading": "Loading...",
     "notLinked": "Not linked",
     "retry": "Retry",
+    "done": "Done",
     "long": "Long",
     "short": "Short",
     "perps": "Perps",
@@ -34,24 +36,33 @@
   "errors": {
     "somethingWentWrong": "Something went wrong",
     "reloadApp": "Reload app",
+    "unexpected": "An unexpected error occurred.",
     "loginFailed": "Login failed. Please try again."
   },
   "home": {
     "seeAllMarkets": "See all {{count}} markets",
-    "ariaSearch": "Search markets"
+    "ariaSearch": "Search markets",
+    "noMarkets": "No markets"
   },
   "search": {
     "ariaClose": "Close market search",
     "title": "Search markets",
-    "placeholder": "Search markets…",
+    "placeholder": "Search markets...",
     "ariaClear": "Clear search",
     "noMarketsFound": "No markets found"
+  },
+  "chart": {
+    "unavailable": "Portfolio history is temporarily unavailable.",
+    "empty": "Portfolio history will appear here.",
+    "pastDay": "past day",
+    "pastWeek": "past week",
+    "pastMonth": "past month"
   },
   "allMarkets": {
     "title": "All Markets",
     "marketCount": "{{count}} markets",
     "searchLabel": "Search all markets",
-    "searchPlaceholder": "Search markets…",
+    "searchPlaceholder": "Search markets...",
     "noMarketsFound": "No markets found",
     "ariaClose": "Close all markets",
     "ariaClearSearch": "Clear all markets search"
@@ -63,7 +74,7 @@
     "leverage": "Leverage",
     "protection": "Protection",
     "setPrice": "Set Price →",
-    "editAmount": "←  Edit amount",
+    "editAmount": "← Edit amount",
     "placingOrder": "Placing order...",
     "availableMargin": "Available margin $",
     "maxSize": "Max size $",
@@ -99,7 +110,8 @@
     "longCta": "Long {{name}}",
     "shortCta": "Short {{name}}",
     "ariaOrderSettings": "Order settings",
-    "ariaCloseOrderSettings": "Close order settings"
+    "ariaCloseOrderSettings": "Close order settings",
+    "applyProtection": "Apply Protection"
   },
   "protection": {
     "title": "Protection",
@@ -148,7 +160,15 @@
     "bought": "Bought",
     "sold": "Sold",
     "fee": "Fee",
-    "tradeMore": "Trade more"
+    "tradeMore": "Trade more",
+    "protectionUpdated": "Protection updated",
+    "protectionUpdateFailed": "Protection update failed.",
+    "saveProtection": "Save Protection",
+    "positionClosed": "{{name}} position closed",
+    "closeFailed": "Close failed. Please try again.",
+    "orderCancelled": "Order cancelled",
+    "cancelFailed": "Cancel failed. Please try again.",
+    "positionLabel": "Position"
   },
   "points": {
     "seasonOne": "Season One",
@@ -194,13 +214,19 @@
     "transfer": "Transfer",
     "swap": "Swap",
     "builderCode": "Builder code",
+    "builderAddress": "Builder address",
     "disabled": "Disabled",
     "checking": "Checking",
     "approved": "Approved",
     "notApproved": "Not approved",
     "approveBuilderFee": "Approve builder fee",
     "approving": "Approving...",
-    "accountSettings": "Account settings"
+    "accountSettings": "Account settings",
+    "availableEquity": "Available Equity",
+    "accountValue": "Account value",
+    "readyToTrade": "Ready to trade",
+    "openSettings": "Open account settings",
+    "traderFallback": "Trader"
   },
   "accountSettings": {
     "title": "Account settings",
@@ -224,15 +250,16 @@
     "walletBalance": "Wallet balance",
     "step1Title": "Step 1: receive USDC on Arbitrum",
     "addUsdcWithPrivy": "Add USDC with Privy",
-    "openingFundingModal": "Opening funding modal…",
+    "openingFundingModal": "Opening funding modal...",
     "connectWallet": "Connect wallet to see your address",
     "copyAddress": "Copy address",
     "step2Title": "Step 2: bridge to Hyperliquid",
     "amountToBridge": "Amount to bridge",
     "bridgeButton": "Bridge to Hyperliquid",
-    "bridging": "Bridging…",
+    "bridging": "Bridging...",
     "bridgeSubmitted": "Bridge submitted. Hyperliquid balance updates in about a minute.",
-    "bridgeInfo": "Minimum bridge amount is 5 USDC. Only send USDC on Arbitrum One."
+    "bridgeInfo": "Minimum bridge amount is 5 USDC. Only send USDC on Arbitrum One.",
+    "bridgeFailed": "Bridge failed"
   },
   "withdraw": {
     "title": "Withdraw USDC",
@@ -243,9 +270,10 @@
     "amount": "Amount",
     "available": "Available {{amount}} USDC",
     "withdrawButton": "Withdraw to Arbitrum",
-    "submitting": "Submitting…",
+    "submitting": "Submitting...",
     "withdrawSubmitted": "Withdrawal submitted. Arrival is usually within 5 minutes.",
-    "withdrawFee": "A 1 USDC fee is deducted from each withdrawal."
+    "withdrawFee": "A 1 USDC fee is deducted from each withdrawal.",
+    "withdrawFailed": "Withdrawal failed"
   },
   "notifications": {
     "title": "Notifications",
@@ -319,9 +347,9 @@
     "stepAuth": "Authorize trading key",
     "stepReauth": "Reauthorize trading key",
     "stepBuilderFee": "Enable builder fee",
-    "statusStarting": "Starting trading…",
+    "statusStarting": "Starting trading...",
     "statusEnable": "Enable 1-click trading",
-    "statusSettingUp": "Setting up…",
+    "statusSettingUp": "Setting up...",
     "allSet": "All set!",
     "readyToTrade": "You can now trade anything instantly.",
     "reauthButton": "Reauthorize",
@@ -331,8 +359,16 @@
   },
   "balanceHero": {
     "totalEquity": "Total Equity",
+    "availableForTrading": "Available for trading {{amount}}",
     "deposit": "Deposit",
     "withdraw": "Withdraw"
+  },
+  "marketList": {
+    "volume": "Vol {{volume}}"
+  },
+  "numPad": {
+    "delete": "Delete",
+    "enterKey": "Enter {{key}}"
   },
   "swap": {
     "title": "Stable swap",
@@ -353,5 +389,14 @@
     "cta": "Swap {{fromAsset}} to {{toAsset}}",
     "selectDifferentAssets": "Select two different stable assets.",
     "failed": "Swap failed"
+  },
+  "transfer": {
+    "title": "Transfer USDC",
+    "flipDirection": "Swap transfer direction",
+    "amount": "Amount",
+    "availableToTransfer": "Available to transfer {{amount}} USDC",
+    "confirm": "Confirm transfer",
+    "success": "Transfer submitted successfully.",
+    "failed": "Transfer failed"
   }
 }

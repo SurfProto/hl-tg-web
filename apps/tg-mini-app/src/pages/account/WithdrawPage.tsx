@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
+import { useTranslation } from 'react-i18next';
 import { useUserState, useWithdraw } from '@repo/hyperliquid-sdk';
 
 export function WithdrawPage() {
   const { user } = usePrivy();
+  const { t } = useTranslation();
   const { data: userState } = useUserState();
   const withdraw = useWithdraw();
   const [amount, setAmount] = useState('');
@@ -13,27 +15,27 @@ export function WithdrawPage() {
 
   return (
     <div className="min-h-full bg-background px-4 py-5 space-y-4">
-      <h1 className="text-2xl font-bold text-foreground">Withdraw USDC</h1>
+      <h1 className="text-2xl font-bold text-foreground">{t('withdraw.title')}</h1>
 
       <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm space-y-3">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted">Asset</span>
-          <span className="font-semibold text-foreground">USDC</span>
+          <span className="text-sm text-muted">{t('withdraw.asset')}</span>
+          <span className="font-semibold text-foreground">{t('common.usdc')}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted">Chain</span>
-          <span className="font-semibold text-foreground">Arbitrum</span>
+          <span className="text-sm text-muted">{t('withdraw.chain')}</span>
+          <span className="font-semibold text-foreground">{t('common.arbitrum')}</span>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <span className="text-sm text-muted">Destination</span>
-          <span className="font-mono text-xs text-foreground">{destination ? `${destination.slice(0, 6)}...${destination.slice(-4)}` : 'No wallet'}</span>
+          <span className="text-sm text-muted">{t('withdraw.destination')}</span>
+          <span className="font-mono text-xs text-foreground">{destination ? `${destination.slice(0, 6)}...${destination.slice(-4)}` : t('withdraw.noWallet')}</span>
         </div>
       </div>
 
       <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm space-y-3">
         <div className="flex items-center justify-between">
-          <label htmlFor="withdraw-amount" className="text-sm font-semibold text-foreground">Amount</label>
-          <span className="text-xs text-muted">Available {withdrawable.toFixed(2)} USDC</span>
+          <label htmlFor="withdraw-amount" className="text-sm font-semibold text-foreground">{t('withdraw.amount')}</label>
+          <span className="text-xs text-muted">{t('withdraw.available', { amount: withdrawable.toFixed(2) })}</span>
         </div>
         <div className="flex gap-2">
           <input
@@ -48,7 +50,7 @@ export function WithdrawPage() {
             className="flex-1 rounded-2xl border border-separator bg-surface px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
           />
           <button type="button" onClick={() => setAmount(withdrawable.toFixed(2))} className="rounded-2xl bg-surface px-4 py-3 text-sm font-semibold text-primary">
-            MAX
+            {t('common.max')}
           </button>
         </div>
         <button
@@ -57,11 +59,11 @@ export function WithdrawPage() {
           disabled={!destination || !amount || parseFloat(amount) <= 0 || withdraw.isPending}
           className="w-full rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
         >
-          {withdraw.isPending ? 'Submitting…' : 'Withdraw to Arbitrum'}
+          {withdraw.isPending ? t('common.submitting') : t('withdraw.withdrawButton')}
         </button>
-        {withdraw.isSuccess && <p className="text-sm text-positive">Withdrawal submitted. Arrival is usually within 5 minutes.</p>}
-        {withdraw.isError && <p className="text-sm text-negative">{withdraw.error instanceof Error ? withdraw.error.message : 'Withdrawal failed'}</p>}
-        <p className="text-xs text-muted">A 1 USDC fee is deducted from each withdrawal.</p>
+        {withdraw.isSuccess && <p className="text-sm text-positive">{t('withdraw.withdrawSubmitted')}</p>}
+        {withdraw.isError && <p className="text-sm text-negative">{withdraw.error instanceof Error ? withdraw.error.message : t('withdraw.withdrawFailed')}</p>}
+        <p className="text-xs text-muted">{t('withdraw.withdrawFee')}</p>
       </div>
     </div>
   );

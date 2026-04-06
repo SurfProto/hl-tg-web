@@ -1,25 +1,24 @@
 import { useEffect, useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useTranslation } from 'react-i18next';
-import i18n from '../../lib/i18n';
+import i18n, { LANGUAGE_KEY, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../lib/i18n';
 import { getCurrentUserRecord, supabase } from '../../lib/supabase';
 
-const LANGUAGE_KEY = 'hl-tma-language';
-
-type LangKey = 'en' | 'ru' | 'es' | 'zh';
-
-const LANGUAGES: { key: LangKey; labelKey: string }[] = [
+const LANGUAGES: { key: SupportedLanguage; labelKey: string }[] = [
   { key: 'en', labelKey: 'language.english' },
   { key: 'ru', labelKey: 'language.russian' },
-  { key: 'es', labelKey: 'language.spanish' },
-  { key: 'zh', labelKey: 'language.chinese' },
 ];
 
 export function LanguagePage() {
   const { user } = usePrivy();
   const { t } = useTranslation();
-  const [language, setLanguage] = useState<LangKey>(
-    () => (localStorage.getItem(LANGUAGE_KEY) as LangKey) ?? 'en',
+  const [language, setLanguage] = useState<SupportedLanguage>(
+    () => {
+      const stored = localStorage.getItem(LANGUAGE_KEY);
+      return SUPPORTED_LANGUAGES.includes(stored as SupportedLanguage)
+        ? (stored as SupportedLanguage)
+        : 'en';
+    },
   );
 
   useEffect(() => {

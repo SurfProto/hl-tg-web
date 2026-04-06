@@ -1,5 +1,13 @@
-import { type ComponentType, Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import {
+  type ComponentType,
+  Suspense,
+  lazy,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   CATEGORY_LABELS,
   CATEGORY_ORDER,
@@ -10,13 +18,13 @@ import {
   useMarketData,
   useMarketStats,
   useMids,
-} from '@repo/hyperliquid-sdk';
-import type { AnyMarket, MarketCategory, MarketSubCategory } from '@repo/types';
-import { BalanceHero } from '../components/BalanceHero';
-import { CategoryPills } from '../components/CategoryPills';
-import { MarketListItem } from '../components/MarketListItem';
-import { MarketListItemSkeleton } from '../components/MarketListItemSkeleton';
-import { formatPrice } from '../utils/format';
+} from "@repo/hyperliquid-sdk";
+import type { AnyMarket, MarketCategory, MarketSubCategory } from "@repo/types";
+import { BalanceHero } from "../components/BalanceHero";
+import { CategoryPills } from "../components/CategoryPills";
+import { MarketListItem } from "../components/MarketListItem";
+import { MarketListItemSkeleton } from "../components/MarketListItemSkeleton";
+import { formatPrice } from "../utils/format";
 
 function lazyNamedModule<T extends Record<string, ComponentType<any>>>(
   loader: () => Promise<T>,
@@ -28,14 +36,20 @@ function lazyNamedModule<T extends Record<string, ComponentType<any>>>(
   });
 }
 
-const SearchSheet = lazyNamedModule(() => import('../components/SearchSheet'), 'SearchSheet');
-const AllMarketsSheet = lazyNamedModule(() => import('../components/AllMarketsSheet'), 'AllMarketsSheet');
+const SearchSheet = lazyNamedModule(
+  () => import("../components/SearchSheet"),
+  "SearchSheet",
+);
+const AllMarketsSheet = lazyNamedModule(
+  () => import("../components/AllMarketsSheet"),
+  "AllMarketsSheet",
+);
 const HOME_ROW_COUNT = 6;
 const DEFERRED_ROUTE_PREFETCHERS = [
-  () => import('./TradePage'),
-  () => import('./AccountPage'),
-  () => import('./PositionsPage'),
-  () => import('./CoinDetailPage'),
+  () => import("./TradePage"),
+  () => import("./AccountPage"),
+  () => import("./PositionsPage"),
+  () => import("./CoinDetailPage"),
 ];
 
 function formatVolume(vol: number): string {
@@ -47,8 +61,10 @@ function formatVolume(vol: number): string {
 
 export function HomePage() {
   const navigate = useNavigate();
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [selectedSubCategory, setSelectedSubCategory] = useState<MarketSubCategory | null>(null);
+  const { t } = useTranslation();
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedSubCategory, setSelectedSubCategory] =
+    useState<MarketSubCategory | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [allMarketsOpen, setAllMarketsOpen] = useState(false);
 
@@ -56,6 +72,11 @@ export function HomePage() {
   const { data: mids, isLoading: midsLoading } = useMids();
   const { data: marketStats, isLoading: marketStatsLoading } = useMarketStats();
   const isLoading = marketsLoading || midsLoading || marketStatsLoading;
+  // Temporary UI removal: keep spot classification in shared market metadata,
+  // but hide the Spot pill on Home until the surface is re-enabled.
+  const visibleCategories = CATEGORY_ORDER.filter(
+    (category) => category !== "spot",
+  );
 
   const subFilters = SUB_FILTERS[selectedCategory as MarketCategory] ?? null;
 
@@ -76,7 +97,9 @@ export function HomePage() {
     const cancelIdleCallback = window.cancelIdleCallback?.bind(window);
 
     if (requestIdleCallback && cancelIdleCallback) {
-      const idleId = requestIdleCallback(prefetchDeferredRoutes, { timeout: 500 });
+      const idleId = requestIdleCallback(prefetchDeferredRoutes, {
+        timeout: 500,
+      });
       return () => cancelIdleCallback(idleId);
     }
 
@@ -84,15 +107,24 @@ export function HomePage() {
     return () => window.clearTimeout(timeoutId);
   }, [isLoading]);
 
-  const allMarkets: AnyMarket[] = useMemo(() => [
-    // Spot disabled — perps only
-    ...(markets?.perp ?? []).map((market: any) => ({ ...market, type: 'perp' as const })),
-  ], [markets]);
+  const allMarkets: AnyMarket[] = useMemo(
+    () => [
+      // Spot disabled — perps only
+      ...(markets?.perp ?? []).map((market: any) => ({
+        ...market,
+        type: "perp" as const,
+      })),
+    ],
+    [markets],
+  );
 
   const priceChanges: Record<string, number> = useMemo(() => {
     if (!marketStats) return {};
     return Object.fromEntries(
-      Object.entries(marketStats).map(([coin, stats]) => [coin, stats.change24h]),
+      Object.entries(marketStats).map(([coin, stats]) => [
+        coin,
+        stats.change24h,
+      ]),
     );
   }, [marketStats]);
 
@@ -102,12 +134,17 @@ export function HomePage() {
   );
 
   const sortedFiltered = useMemo(() => {
-    let result = selectedCategory === 'all'
-      ? enriched
-      : enriched.filter(({ categories }) => categories.includes(selectedCategory as MarketCategory));
+    let result =
+      selectedCategory === "all"
+        ? enriched
+        : enriched.filter(({ categories }) =>
+            categories.includes(selectedCategory as MarketCategory),
+          );
 
     if (selectedSubCategory) {
-      result = result.filter(({ subCategory }) => subCategory === selectedSubCategory);
+      result = result.filter(
+        ({ subCategory }) => subCategory === selectedSubCategory,
+      );
     }
 
     return [...result].sort((left, right) => {
@@ -118,7 +155,9 @@ export function HomePage() {
         return rightVolume - leftVolume;
       }
 
-      return getMarketDisplayName(left.market).localeCompare(getMarketDisplayName(right.market));
+      return getMarketDisplayName(left.market).localeCompare(
+        getMarketDisplayName(right.market),
+      );
     });
   }, [enriched, marketStats, selectedCategory, selectedSubCategory]);
 
@@ -130,7 +169,7 @@ export function HomePage() {
 
       <div className="px-4 pt-5 mb-2">
         <CategoryPills
-          categories={CATEGORY_ORDER}
+          categories={visibleCategories}
           labels={CATEGORY_LABELS}
           selected={selectedCategory}
           onChange={setSelectedCategory}
@@ -143,10 +182,12 @@ export function HomePage() {
             type="button"
             onClick={() => setSelectedSubCategory(null)}
             className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-              selectedSubCategory === null ? 'bg-foreground text-white' : 'bg-surface text-gray-500'
+              selectedSubCategory === null
+                ? "bg-foreground text-white"
+                : "bg-surface text-gray-500"
             }`}
           >
-            All
+            {t("common.all")}
           </button>
           {subFilters.map(({ key, label }) => (
             <button
@@ -154,7 +195,9 @@ export function HomePage() {
               type="button"
               onClick={() => setSelectedSubCategory(key)}
               className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                selectedSubCategory === key ? 'bg-foreground text-white' : 'bg-surface text-gray-500'
+                selectedSubCategory === key
+                  ? "bg-foreground text-white"
+                  : "bg-surface text-gray-500"
               }`}
             >
               {label}
@@ -166,10 +209,14 @@ export function HomePage() {
       <div className="bg-white border-t border-separator">
         {isLoading ? (
           <div className="divide-y divide-separator">
-            {Array.from({ length: HOME_ROW_COUNT }, (_, index) => <MarketListItemSkeleton key={index} />)}
+            {Array.from({ length: HOME_ROW_COUNT }, (_, index) => (
+              <MarketListItemSkeleton key={index} />
+            ))}
           </div>
         ) : sortedFiltered.length === 0 ? (
-          <div className="py-16 text-center text-gray-400 text-sm">No markets</div>
+          <div className="py-16 text-center text-gray-400 text-sm">
+            {t("home.noMarkets")}
+          </div>
         ) : (
           <div className="divide-y divide-separator">
             {visibleMarkets.map(({ market }) => {
@@ -186,10 +233,12 @@ export function HomePage() {
                   displayName={displayName}
                   iconCoin={iconCoin}
                   marketType={market.type}
-                  price={price != null ? formatPrice(price) : '\u2014'}
+                  price={price != null ? formatPrice(price) : "\u2014"}
                   change24h={stats?.change24h ?? 0}
                   volume={stats ? formatVolume(stats.dayNtlVlm) : undefined}
-                  maxLeverage={market.type === 'perp' ? market.maxLeverage : undefined}
+                  maxLeverage={
+                    market.type === "perp" ? market.maxLeverage : undefined
+                  }
                   onClick={() => navigate(`/coin/${encodeURIComponent(coin)}`)}
                 />
               );
@@ -200,9 +249,22 @@ export function HomePage() {
                 onClick={() => setAllMarketsOpen(true)}
                 className="w-full flex items-center justify-between px-4 py-3.5 bg-white active:bg-gray-50 transition-colors"
               >
-                <span className="text-sm font-medium text-primary">See all {sortedFiltered.length} markets</span>
-                <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                <span className="text-sm font-medium text-primary">
+                  {t("home.seeAllMarkets", { count: sortedFiltered.length })}
+                </span>
+                <svg
+                  className="w-4 h-4 text-primary"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
                 </svg>
               </button>
             )}
@@ -214,10 +276,21 @@ export function HomePage() {
         type="button"
         onClick={() => setSearchOpen(true)}
         className="fixed floating-above-bottom-nav right-4 w-12 h-12 bg-primary text-white rounded-full shadow-lg flex items-center justify-center z-40 active:bg-primary-dark transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-        aria-label="Search markets"
+        aria-label={t("home.ariaSearch")}
       >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0" />
+        <svg
+          className="w-5 h-5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"
+          />
         </svg>
       </button>
 
@@ -226,7 +299,9 @@ export function HomePage() {
           <SearchSheet
             isOpen={searchOpen}
             onClose={() => setSearchOpen(false)}
-            onSelect={(coin: string) => navigate(`/coin/${encodeURIComponent(coin)}`)}
+            onSelect={(coin: string) =>
+              navigate(`/coin/${encodeURIComponent(coin)}`)
+            }
           />
         </Suspense>
       )}

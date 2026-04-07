@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  combineStableBalances,
   evaluateTradingSetupStatus,
   getAvailableCollateralForMarket,
   getVisibleStableBalances,
@@ -55,6 +56,60 @@ describe("getVisibleStableBalances", () => {
   });
 });
 
+describe("combineStableBalances", () => {
+  it("combines spot and perp balances per asset in standard mode", () => {
+    expect(
+      combineStableBalances({
+        abstractionMode: "standard",
+        spotBalances: {
+          USDC: { total: 12, hold: 2, available: 10 },
+          USDH: { total: 5, hold: 0, available: 5 },
+        },
+        perpBalances: {
+          USDC: { total: 30, hold: 24, available: 6 },
+          USDH: { total: 7, hold: 4, available: 3 },
+        },
+      }),
+    ).toEqual({
+      USDC: {
+        total: 42,
+        hold: 26,
+        available: 16,
+        spot: { total: 12, hold: 2, available: 10 },
+        perp: { total: 30, hold: 24, available: 6 },
+      },
+      USDH: {
+        total: 12,
+        hold: 4,
+        available: 8,
+        spot: { total: 5, hold: 0, available: 5 },
+        perp: { total: 7, hold: 4, available: 3 },
+      },
+    });
+  });
+
+  it("treats spot as the source of truth in unified mode", () => {
+    expect(
+      combineStableBalances({
+        abstractionMode: "unifiedAccount",
+        spotBalances: {
+          USDC: { total: 22, hold: 2, available: 20 },
+        },
+        perpBalances: {
+          USDC: { total: 30, hold: 24, available: 6 },
+        },
+      }),
+    ).toEqual({
+      USDC: {
+        total: 22,
+        hold: 2,
+        available: 20,
+        spot: { total: 22, hold: 2, available: 20 },
+      },
+    });
+  });
+});
+
 describe("getAvailableCollateralForMarket", () => {
   const stableBalances = {
     USDC: { total: 100, hold: 20, available: 80 },
@@ -106,7 +161,7 @@ describe("getAvailableCollateralForMarket", () => {
 });
 
 describe("evaluateTradingSetupStatus", () => {
-  it("requires first-run unified setup, builder approval, and agent approval", () => {
+  it("requires first-run gasless setup, builder approval, and unified approval", () => {
     expect(
       evaluateTradingSetupStatus({
         hasAgentKey: false,
@@ -124,11 +179,12 @@ describe("evaluateTradingSetupStatus", () => {
       needsBuilderApproval: true,
       needsHip3AbstractionEnable: false,
       needsUnifiedEnable: true,
+      pendingSteps: ["agent", "builder", "unified"],
       shouldPromptRestoreUnified: false,
     });
   });
 
-  it("allows standard-mode fallback when unified was previously enabled", () => {
+  it("still requires unified approval when the user disabled it after previously enabling it", () => {
     expect(
       evaluateTradingSetupStatus({
         hasAgentKey: true,
@@ -140,12 +196,13 @@ describe("evaluateTradingSetupStatus", () => {
         hip3DexAbstractionEnabled: false,
       }),
     ).toEqual({
-      canTrade: true,
+      canTrade: false,
       isAgentExpired: false,
       needsAgentApproval: false,
       needsBuilderApproval: false,
       needsHip3AbstractionEnable: false,
-      needsUnifiedEnable: false,
+      needsUnifiedEnable: true,
+      pendingSteps: ["unified"],
       shouldPromptRestoreUnified: true,
     });
   });
@@ -168,6 +225,30 @@ describe("evaluateTradingSetupStatus", () => {
       needsBuilderApproval: false,
       needsHip3AbstractionEnable: true,
       needsUnifiedEnable: false,
+      pendingSteps: ["hip3"],
+      shouldPromptRestoreUnified: false,
+    });
+  });
+
+  it("keeps HIP-3 abstraction last when other approvals are also missing", () => {
+    expect(
+      evaluateTradingSetupStatus({
+        hasAgentKey: false,
+        isAgentExpired: false,
+        abstractionMode: "standard",
+        prefersUnifiedAccount: false,
+        needsBuilderApproval: true,
+        targetIsHip3: true,
+        hip3DexAbstractionEnabled: false,
+      }),
+    ).toEqual({
+      canTrade: false,
+      isAgentExpired: false,
+      needsAgentApproval: true,
+      needsBuilderApproval: true,
+      needsHip3AbstractionEnable: true,
+      needsUnifiedEnable: true,
+      pendingSteps: ["agent", "builder", "unified", "hip3"],
       shouldPromptRestoreUnified: false,
     });
   });

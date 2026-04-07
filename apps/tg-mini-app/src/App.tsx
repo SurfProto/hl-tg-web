@@ -69,6 +69,10 @@ const AccountSettingsMenu = lazyNamedModule(
   () => import("./pages/account/AccountSettingsMenu"),
   "AccountSettingsMenu",
 );
+const ApprovalsPage = lazyNamedModule(
+  () => import("./pages/account/ApprovalsPage"),
+  "ApprovalsPage",
+);
 const PersonalInfoPage = lazyNamedModule(
   () => import("./pages/account/PersonalInfoPage"),
   "PersonalInfoPage",
@@ -259,6 +263,10 @@ function AppContent() {
               <Route
                 path="/account/settings"
                 element={<AccountSettingsMenu />}
+              />
+              <Route
+                path="/account/settings/approvals"
+                element={<ApprovalsPage />}
               />
               <Route
                 path="/account/settings/personal"

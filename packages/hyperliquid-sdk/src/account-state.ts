@@ -81,6 +81,63 @@ export function getVisibleStableBalances(
   });
 }
 
+function mergeStableBalanceStates(
+  left: StableBalanceState | undefined,
+  right: StableBalanceState | undefined,
+): StableBalanceState | undefined {
+  if (!left && !right) return undefined;
+
+  const total = (left?.total ?? 0) + (right?.total ?? 0);
+  const hold = (left?.hold ?? 0) + (right?.hold ?? 0);
+  const available = (left?.available ?? 0) + (right?.available ?? 0);
+
+  return {
+    total,
+    hold,
+    available,
+    ...(left ? { spot: left.spot ?? left } : {}),
+    ...(right ? { perp: right.perp ?? right } : {}),
+  };
+}
+
+export function combineStableBalances({
+  abstractionMode,
+  spotBalances,
+  perpBalances,
+}: {
+  abstractionMode: AccountAbstractionMode;
+  spotBalances: Partial<Record<StableSwapAsset, StableBalanceState>>;
+  perpBalances: Partial<Record<StableSwapAsset, StableBalanceState>>;
+}): Partial<Record<StableSwapAsset, StableBalanceState>> {
+  if (
+    abstractionMode === "unifiedAccount" ||
+    abstractionMode === "portfolioMargin"
+  ) {
+    return Object.fromEntries(
+      Object.entries(spotBalances).map(([asset, balance]) => [
+        asset,
+        {
+          ...balance,
+          spot: balance,
+        },
+      ]),
+    ) as Partial<Record<StableSwapAsset, StableBalanceState>>;
+  }
+
+  return SUPPORTED_STABLE_ASSETS.reduce<
+    Partial<Record<StableSwapAsset, StableBalanceState>>
+  >((result, asset) => {
+    const merged = mergeStableBalanceStates(
+      spotBalances[asset],
+      perpBalances[asset],
+    );
+    if (merged) {
+      result[asset] = merged;
+    }
+    return result;
+  }, {});
+}
+
 export function getAvailableCollateralForMarket({
   abstractionMode,
   stableBalances,
@@ -131,10 +188,15 @@ export function evaluateTradingSetupStatus({
   const needsAgentApproval = !hasAgentKey || isAgentExpired;
   const shouldPromptRestoreUnified =
     prefersUnifiedAccount && abstractionMode === "standard";
-  const needsUnifiedEnable =
-    abstractionMode === "standard" && !prefersUnifiedAccount;
+  const needsUnifiedEnable = abstractionMode === "standard";
   const needsHip3AbstractionEnable =
     targetIsHip3 && !hip3DexAbstractionEnabled;
+  const pendingSteps = [
+    needsAgentApproval ? "agent" : null,
+    needsBuilderApproval ? "builder" : null,
+    needsUnifiedEnable ? "unified" : null,
+    needsHip3AbstractionEnable ? "hip3" : null,
+  ].filter((step): step is "agent" | "builder" | "unified" | "hip3" => step != null);
 
   return {
     canTrade:
@@ -147,6 +209,7 @@ export function evaluateTradingSetupStatus({
     needsBuilderApproval,
     needsHip3AbstractionEnable,
     needsUnifiedEnable,
+    pendingSteps,
     shouldPromptRestoreUnified,
   };
 }

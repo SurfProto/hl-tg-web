@@ -15,11 +15,14 @@ import type {
   PositionProtectionRequest,
   PortfolioPeriodData,
   PortfolioRange,
+  StableBalanceState,
+  StableSwapAsset,
   TriggerOrderKind,
   TriggerOrderRequest,
   WsMessage,
 } from "@repo/types";
 import {
+  combineStableBalances,
   getAvailableCollateralForMarket,
   getVisibleStableBalances,
   inferAbstractionMode,
@@ -35,6 +38,7 @@ import { WebSocketManager } from "./ws";
 
 // Dynamic import for Hyperliquid SDK
 let HyperliquidSDK: any = null;
+let HyperliquidSigning: any = null;
 
 async function loadHyperliquidSDK() {
   if (!HyperliquidSDK) {
@@ -42,6 +46,14 @@ async function loadHyperliquidSDK() {
     HyperliquidSDK = module;
   }
   return HyperliquidSDK;
+}
+
+async function loadHyperliquidSigning() {
+  if (!HyperliquidSigning) {
+    const module = await import("@nktkas/hyperliquid/signing");
+    HyperliquidSigning = module;
+  }
+  return HyperliquidSigning;
 }
 
 interface CachedMarket {
@@ -100,6 +112,7 @@ interface MarketCache {
   perpDexs: Array<{
     dex: string;
     dexIndex: number;
+    collateralAsset?: StableSwapAsset;
   }>;
 }
 
@@ -137,6 +150,54 @@ export interface HyperliquidClientConfig {
 }
 
 const MIN_ORDER_NOTIONAL_USD = 10;
+const STABLE_COLLATERAL_ASSETS: StableSwapAsset[] = [
+  "USDC",
+  "USDH",
+  "USDT",
+  "USDE",
+];
+
+function inferStableCollateralAsset(
+  marketName: string | undefined,
+): StableSwapAsset | undefined {
+  const asset = marketName
+    ?.toUpperCase()
+    .match(/-(USDC|USDH|USDT|USDE)\b/u)?.[1] as StableSwapAsset | undefined;
+  return asset && STABLE_COLLATERAL_ASSETS.includes(asset) ? asset : undefined;
+}
+
+function mergeStableBalanceState(
+  current: StableBalanceState | undefined,
+  next: StableBalanceState,
+): StableBalanceState {
+  return {
+    total: (current?.total ?? 0) + next.total,
+    hold: (current?.hold ?? 0) + next.hold,
+    available: (current?.available ?? 0) + next.available,
+    ...(current?.spot || next.spot
+      ? {
+          spot: {
+            total: (current?.spot?.total ?? 0) + (next.spot?.total ?? 0),
+            hold: (current?.spot?.hold ?? 0) + (next.spot?.hold ?? 0),
+            available:
+              (current?.spot?.available ?? 0) +
+              (next.spot?.available ?? 0),
+          },
+        }
+      : {}),
+    ...(current?.perp || next.perp
+      ? {
+          perp: {
+            total: (current?.perp?.total ?? 0) + (next.perp?.total ?? 0),
+            hold: (current?.perp?.hold ?? 0) + (next.perp?.hold ?? 0),
+            available:
+              (current?.perp?.available ?? 0) +
+              (next.perp?.available ?? 0),
+          },
+        }
+      : {}),
+  };
+}
 
 export class HyperliquidClient {
   private publicClientInstance: any = null;
@@ -226,8 +287,8 @@ export class HyperliquidClient {
     types: Record<string, Array<{ name: string; type: string }>>;
   }) {
     if (!this.config.customSigner) throw new Error("Wallet not connected");
-    const SDK = await loadHyperliquidSDK();
-    const signature = await SDK.signUserSignedAction({
+    const Signing = await loadHyperliquidSigning();
+    const signature = await Signing.signUserSignedAction({
       wallet: this.config.customSigner,
       action: args.action,
       types: args.types,
@@ -348,8 +409,14 @@ export class HyperliquidClient {
     const spot: Record<string, CachedMarket> = {};
     const perp: Record<string, CachedMarket> = {};
     const perpDexs = perpDexsResponse
-      .map((entry, dexIndex) => (entry ? { dex: entry.name, dexIndex } : null))
-      .filter(Boolean) as Array<{ dex: string; dexIndex: number }>;
+      .map((entry, dexIndex) =>
+        entry ? { dex: entry.name, dexIndex, collateralAsset: undefined } : null,
+      )
+      .filter(Boolean) as Array<{
+      dex: string;
+      dexIndex: number;
+      collateralAsset?: StableSwapAsset;
+    }>;
 
     const perpMarkets = metaAndCtxs[0].universe
       .map((market: any, index: number) => {
@@ -390,6 +457,15 @@ export class HyperliquidClient {
             type: "metaAndAssetCtxs",
             dex,
           });
+          const collateralAsset = inferStableCollateralAsset(
+            dexMetaAndCtxs?.[0]?.universe?.find(
+              (market: any) => !market?.isDelisted,
+            )?.name,
+          );
+          const dexEntry = perpDexs.find((entry) => entry.dex === dex);
+          if (dexEntry && collateralAsset) {
+            dexEntry.collateralAsset = collateralAsset;
+          }
 
           this.hip3AssetCtxsCache.set(dex, {
             data: dexMetaAndCtxs[1] ?? [],
@@ -716,6 +792,16 @@ export class HyperliquidClient {
       if (isTradingAction && lowerMessage.includes("insufficient margin")) {
         throw new Error(
           "Insufficient margin for this order size. Reduce size or lower leverage.",
+        );
+      }
+      if (action === "setUserAbstraction") {
+        throw new Error(
+          "Unified trading approval failed. Approve the signature in your wallet and try again.",
+        );
+      }
+      if (action === "setUserDexAbstraction") {
+        throw new Error(
+          "HIP-3 abstraction approval failed. Approve the signature in your wallet and try again.",
         );
       }
       throw new Error(error.message);
@@ -1085,7 +1171,39 @@ export class HyperliquidClient {
       abstraction,
       hip3DexAbstraction,
     );
-    const stableBalances = normalizeStableBalances(spotState?.balances);
+    const spotStableBalances = normalizeStableBalances(spotState?.balances);
+    const perpStableBalances = allStates.reduce<
+      Partial<Record<StableSwapAsset, StableBalanceState>>
+    >((result, { dex, state }) => {
+      const collateralAsset = dex
+        ? cache.perpDexs.find((entry) => entry.dex === dex)?.collateralAsset
+        : "USDC";
+      if (!collateralAsset) return result;
+
+      const total = parseFloat(state?.marginSummary?.accountValue ?? "0");
+      const available = parseFloat(state?.withdrawable ?? "0");
+      const normalized: StableBalanceState = {
+        total,
+        hold: Math.max(0, total - available),
+        available,
+        perp: {
+          total,
+          hold: Math.max(0, total - available),
+          available,
+        },
+      };
+
+      result[collateralAsset] = mergeStableBalanceState(
+        result[collateralAsset],
+        normalized,
+      );
+      return result;
+    }, {});
+    const stableBalances = combineStableBalances({
+      abstractionMode,
+      spotBalances: spotStableBalances,
+      perpBalances: perpStableBalances,
+    });
     const visibleStableBalances = getVisibleStableBalances(stableBalances);
     const totalStableBalance = visibleStableBalances.reduce(
       (sum, balance) => sum + balance.total,
@@ -2015,10 +2133,9 @@ export class HyperliquidClient {
   }
 
   async setUserAbstraction(
-    abstraction: Extract<
-      AccountAbstractionMode,
-      "unifiedAccount" | "portfolioMargin"
-    >,
+    abstraction:
+      | Extract<AccountAbstractionMode, "unifiedAccount" | "portfolioMargin">
+      | "disabled",
   ) {
     const nonce = Date.now();
     try {
@@ -2073,6 +2190,22 @@ export class HyperliquidClient {
         error,
       );
     }
+  }
+
+  async getExtraAgents() {
+    const client = await this.getPublicClient();
+    return client.extraAgents({
+      user: this.walletAddress as `0x${string}`,
+    });
+  }
+
+  async revokeBuilderFee() {
+    if (!isBuilderConfigured()) return;
+    return this.approveBuilderFee(getBuilderAddress(), "0%");
+  }
+
+  async disableUnifiedAccount() {
+    return this.setUserAbstraction("disabled");
   }
 
   // Get spot account balance (HL L1 spot)

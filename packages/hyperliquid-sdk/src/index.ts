@@ -45,6 +45,13 @@ export {
   // Builder fee hooks
   useBuilderFeeApproval,
   useApproveBuilderFee,
+  useRevokeBuilderFee,
+  useAgentApprovalStatus,
+  useApproveAgentTrading,
+  useUnifiedAccountApproval,
+  useSetUnifiedAccount,
+  useHip3DexAbstractionApproval,
+  useSetHip3DexAbstraction,
   // Agent wallet / 1-click trading
   useSetupTrading,
   // Market stats hooks
@@ -109,6 +116,7 @@ export {
 } from "./market-display";
 export {
   evaluateTradingSetupStatus,
+  combineStableBalances,
   getAvailableCollateralForMarket,
   getSupportedStableAssets,
   getVisibleStableBalances,

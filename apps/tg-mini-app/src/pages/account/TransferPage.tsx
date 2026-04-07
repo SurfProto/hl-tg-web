@@ -14,7 +14,8 @@ export function TransferPage() {
     userState?.abstractionMode === 'portfolioMargin' ||
     userState?.abstractionMode === 'dexAbstraction';
 
-  const perpsTransferable = userState?.withdrawable ?? 0;
+  const perpsTransferable =
+    userState?.stableBalances.USDC?.perp?.available ?? userState?.withdrawable ?? 0;
   const spotUsdcEntry = spotBalance?.balances?.find((balance: any) => balance.coin === 'USDC');
   const spotUsdcAvailable = spotUsdcEntry
     ? Math.max(0, parseFloat(spotUsdcEntry.total ?? '0') - parseFloat(spotUsdcEntry.hold ?? '0'))

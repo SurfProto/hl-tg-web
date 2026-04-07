@@ -35,16 +35,13 @@ export function TradingSetupSheet({
 
   if (!isOpen) return null;
 
-  const steps = [
-    status?.needsAgentApproval
-      ? isExpired
-        ? t('tradingSetup.stepReauth')
-        : t('tradingSetup.stepAuth')
-      : null,
-    status?.needsBuilderApproval ? t('tradingSetup.stepBuilderFee') : null,
-    status?.needsUnifiedEnable ? t('tradingSetup.stepUnified') : null,
-    status?.needsHip3AbstractionEnable ? t('tradingSetup.stepHip3') : null,
-  ].filter((value): value is string => value != null);
+  const stepLabels: Record<'agent' | 'builder' | 'unified' | 'hip3', string> = {
+    agent: isExpired ? t('tradingSetup.stepReauth') : t('tradingSetup.stepAuth'),
+    builder: t('tradingSetup.stepBuilderFee'),
+    unified: t('tradingSetup.stepUnified'),
+    hip3: t('tradingSetup.stepHip3'),
+  };
+  const steps = (status?.pendingSteps ?? ['agent']).map((step) => stepLabels[step]);
 
   const statusLabel = (() => {
     if (isSuccess) return t('tradingSetup.statusStarting');

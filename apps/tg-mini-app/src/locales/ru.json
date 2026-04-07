@@ -230,12 +230,39 @@
   },
   "accountSettings": {
     "title": "Настройки аккаунта",
+    "approvals": "Подтверждения",
     "personalInfo": "Личная информация",
     "notifications": "Уведомления",
     "privateKey": "Приватный ключ",
     "language": "Язык",
     "support": "Поддержка",
     "legal": "Правовая информация"
+  },
+  "approvals": {
+    "title": "Подтверждения",
+    "subtitle": "Управляйте торговыми approval и режимами аккаунта в одном месте.",
+    "currentState": "Текущее состояние",
+    "approve": "Подтвердить",
+    "approved": "Подтверждено",
+    "reapprove": "Подтвердить снова",
+    "revoke": "Отозвать",
+    "enable": "Включить",
+    "disable": "Выключить",
+    "expired": "Истекло",
+    "notAvailable": "Локальный API-кошелёк ещё не создан",
+    "notConfigured": "Не настроено",
+    "gaslessTitle": "Gasless / API wallet",
+    "gaslessDescription": "Нужен для 1-click торговли из приложения.",
+    "builderTitle": "Builder fee",
+    "builderDescription": "Нужно перед первой торговлей через builder routing.",
+    "unifiedTitle": "Unified trading",
+    "unifiedDescription": "Делает unified account основной моделью торговли в приложении.",
+    "hip3Title": "HIP-3 abstraction",
+    "hip3Description": "Дополнительная абстракция маршрутизации для HIP-3 рынков.",
+    "unifiedEnabled": "Unified trading включён",
+    "unifiedDisabled": "Unified trading выключен",
+    "hip3Enabled": "HIP-3 abstraction включён",
+    "hip3Disabled": "HIP-3 abstraction выключен"
   },
   "deposit": {
     "title": "Пополнить средства",
@@ -398,7 +425,8 @@
   },
   "stableBalances": {
     "available": "Доступно {{amount}}",
-    "hold": "В холде {{amount}}"
+    "hold": "В холде {{amount}}",
+    "breakdown": "Spot {{spot}} / Perps {{perp}}"
   },
   "unifiedBanner": {
     "title": "Unified account отключён",

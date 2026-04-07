@@ -230,12 +230,39 @@
   },
   "accountSettings": {
     "title": "Account settings",
+    "approvals": "Approvals",
     "personalInfo": "Personal Information",
     "notifications": "Notifications",
     "privateKey": "Private Key",
     "language": "Language",
     "support": "Support",
     "legal": "Legal"
+  },
+  "approvals": {
+    "title": "Approvals",
+    "subtitle": "Manage trading approvals and account abstractions in one place.",
+    "currentState": "Current state",
+    "approve": "Approve",
+    "approved": "Approved",
+    "reapprove": "Re-approve",
+    "revoke": "Revoke",
+    "enable": "Enable",
+    "disable": "Disable",
+    "expired": "Expired",
+    "notAvailable": "No local API wallet found yet",
+    "notConfigured": "Not configured",
+    "gaslessTitle": "Gasless / API wallet",
+    "gaslessDescription": "Required for 1-click trading from the app.",
+    "builderTitle": "Builder fee",
+    "builderDescription": "Required before placing builder-routed trades.",
+    "unifiedTitle": "Unified trading",
+    "unifiedDescription": "Makes unified account routing the app's primary trading model.",
+    "hip3Title": "HIP-3 abstraction",
+    "hip3Description": "Optional routing abstraction for HIP-3 markets.",
+    "unifiedEnabled": "Unified trading is enabled",
+    "unifiedDisabled": "Unified trading is disabled",
+    "hip3Enabled": "HIP-3 abstraction is enabled",
+    "hip3Disabled": "HIP-3 abstraction is disabled"
   },
   "deposit": {
     "title": "Deposit funds",
@@ -398,7 +425,8 @@
   },
   "stableBalances": {
     "available": "Available {{amount}}",
-    "hold": "Hold {{amount}}"
+    "hold": "Hold {{amount}}",
+    "breakdown": "Spot {{spot}} / Perps {{perp}}"
   },
   "unifiedBanner": {
     "title": "Unified account is off",

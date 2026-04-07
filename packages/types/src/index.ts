@@ -77,6 +77,16 @@ export interface StableBalanceState {
   total: number;
   hold: number;
   available: number;
+  spot?: {
+    total: number;
+    hold: number;
+    available: number;
+  };
+  perp?: {
+    total: number;
+    hold: number;
+    available: number;
+  };
 }
 
 export interface VisibleStableBalance extends StableBalanceState {
@@ -90,6 +100,7 @@ export interface TradingSetupStatus {
   needsBuilderApproval: boolean;
   needsHip3AbstractionEnable: boolean;
   needsUnifiedEnable: boolean;
+  pendingSteps: Array<"agent" | "builder" | "unified" | "hip3">;
   shouldPromptRestoreUnified: boolean;
 }
 

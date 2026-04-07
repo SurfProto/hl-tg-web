@@ -68,6 +68,14 @@ export function StableBalanceList({
                 })}
               </p>
             )}
+            {balance.spot && balance.perp ? (
+              <p className="mt-2 text-[11px] text-muted">
+                {t("stableBalances.breakdown", {
+                  perp: formatUsd(balance.perp.total),
+                  spot: formatUsd(balance.spot.total),
+                })}
+              </p>
+            ) : null}
           </div>
         ))}
       </div>

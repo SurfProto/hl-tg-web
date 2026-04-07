@@ -45,7 +45,7 @@ export function PersonalInfoPage() {
                 await navigator.clipboard.writeText(walletAddress);
                 haptics.success();
               }}
-              className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-foreground border border-separator"
+              className="flex-shrink-0 rounded-full bg-white px-4 py-2 text-sm font-semibold text-foreground border border-separator"
             >
               {t('common.copy')}
             </button>

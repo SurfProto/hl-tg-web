@@ -444,8 +444,8 @@ export function TradePage() {
       <header className="flex-none px-4 py-3 flex items-center justify-between border-b border-separator bg-white">
         <div className="flex items-center gap-2.5">
           <TokenIcon coin={baseToken} size={32} />
-          <div>
-            <span className="font-bold text-foreground">{displayName}</span>
+          <div className="min-w-0">
+            <span className="truncate font-bold text-foreground">{displayName}</span>
             <span className="text-xs text-gray-400 ml-1">
               {t("trade.perp")}
             </span>
@@ -457,7 +457,7 @@ export function TradePage() {
           )}
         </div>
 
-        <div className="flex bg-surface rounded-lg p-0.5 gap-0.5">
+        <div className="flex-shrink-0 flex bg-surface rounded-lg p-0.5 gap-0.5">
           {(["market", "limit"] as const).map((value) => (
             <button
               key={value}

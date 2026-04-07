@@ -185,7 +185,7 @@ export function ProtectionSheet({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col">
+    <div className="fixed inset-0 z-[200] flex flex-col">
       <button
         type="button"
         className="absolute inset-0 bg-black/40"

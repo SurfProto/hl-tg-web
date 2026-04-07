@@ -14,8 +14,8 @@ export function StatRow({ label, value, valueColor = 'neutral' }: StatRowProps) 
 
   return (
     <div className="flex items-center justify-between py-3 border-b border-separator last:border-b-0">
-      <span className="text-sm text-gray-500">{label}</span>
-      <span className={`text-sm font-medium ${valueClass}`}>{value}</span>
+      <span className="min-w-0 truncate mr-2 text-sm text-gray-500">{label}</span>
+      <span className={`flex-shrink-0 text-right text-sm font-medium ${valueClass}`}>{value}</span>
     </div>
   );
 }

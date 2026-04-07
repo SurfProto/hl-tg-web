@@ -2,6 +2,8 @@ import { type ComponentType, Suspense, lazy, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUserState } from "@repo/hyperliquid-sdk";
 import { useTranslation } from "react-i18next";
+import { StableBalanceList } from "./StableBalanceList";
+import { UnifiedAccountBanner } from "./UnifiedAccountBanner";
 
 function lazyNamedModule<T extends Record<string, ComponentType<any>>>(
   loader: () => Promise<T>,
@@ -80,6 +82,7 @@ export function BalanceHero() {
 
   const totalValue = userState?.marginSummary?.accountValue ?? 0;
   const availableValue = userState?.withdrawable ?? 0;
+  const visibleStableBalances = userState?.visibleStableBalances ?? [];
 
   if (userStateLoading) {
     return <BalanceHeroSkeleton />;
@@ -101,6 +104,7 @@ export function BalanceHero() {
                 amount: formatUsd(availableValue),
               })}
             </p>
+            <StableBalanceList balances={visibleStableBalances} compact />
           </div>
           <button
             type="button"
@@ -120,6 +124,7 @@ export function BalanceHero() {
             <BalanceHeroChartFallback />
           )}
         </div>
+        {userState?.shouldPromptRestoreUnified ? <UnifiedAccountBanner /> : null}
 
       </div>
     </section>

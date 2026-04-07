@@ -267,6 +267,7 @@
     "chain": "Сеть",
     "destination": "Получатель",
     "noWallet": "Нет кошелька",
+    "unifiedHint": "В unified mode вывод в сеть всё равно идёт в USDC. Переведите другие стейблы в USDC перед выводом.",
     "amount": "Сумма",
     "available": "Доступно {{amount}} USDC",
     "withdrawButton": "Вывести на Arbitrum",
@@ -347,6 +348,8 @@
     "stepAuth": "Авторизовать торговый ключ",
     "stepReauth": "Переавторизовать торговый ключ",
     "stepBuilderFee": "Включить комиссию билдера",
+    "stepUnified": "Включить unified account",
+    "stepHip3": "Включить HIP-3 abstraction",
     "statusStarting": "Запуск торговли...",
     "statusEnable": "Включить торговлю в 1 клик",
     "statusSettingUp": "Настройка...",
@@ -373,6 +376,7 @@
   "swap": {
     "title": "Обмен стейблов",
     "description": "Начинайте с perp USDC, автоматически переходите через спот при необходимости и возвращайте USDC обратно.",
+    "descriptionUnified": "Обменивайте поддерживаемые стейблы напрямую из unified account.",
     "from": "Из",
     "to": "В",
     "flipDirection": "Поменять направление обмена",
@@ -380,18 +384,30 @@
     "availableBalance": "Доступно {{amount}} {{asset}}",
     "perpUsdc": "perp USDC",
     "routing": "Маршрут",
+    "routeUnified": "{{fromAsset}} -> {{toAsset}} из unified balance",
     "routePerpToSpot": "Perp USDC -> Спотовый обмен",
     "routeSpotToPerps": "{{fromAsset}} -> Spot USDC -> Перевод в перпы",
     "routeSpotToSpot": "{{fromAsset}} -> Spot USDC -> {{toAsset}}",
     "returnToPerps": "Возвращённый USDC автоматически вернётся на баланс перпов.",
+    "unifiedDestination": "{{asset}} останется в unified account после обмена.",
     "stayInSpot": "{{asset}} останется на споте для торговли HIP-3.",
     "swapping": "Обмен...",
     "cta": "Обменять {{fromAsset}} на {{toAsset}}",
     "selectDifferentAssets": "Выберите два разных стейбла.",
     "failed": "Не удалось выполнить обмен"
   },
+  "stableBalances": {
+    "available": "Доступно {{amount}}",
+    "hold": "В холде {{amount}}"
+  },
+  "unifiedBanner": {
+    "title": "Unified account отключён",
+    "description": "Приложение переключилось на стандартную маршрутизацию баланса. Торговля работает, но для лучшего UX стоит снова включить unified account.",
+    "cta": "Проверить режим аккаунта"
+  },
   "transfer": {
     "title": "Перевод USDC",
+    "unifiedHint": "Расширенный инструмент для fallback standard mode. В unified account ручные переводы между perp и spot обычно не нужны.",
     "flipDirection": "Поменять направление перевода",
     "amount": "Сумма",
     "availableToTransfer": "Доступно для перевода {{amount}} USDC",

@@ -9,6 +9,10 @@ export function TransferPage() {
   const transfer = useUsdClassTransfer();
   const { data: userState } = useUserState();
   const { data: spotBalance } = useSpotBalance();
+  const isUnifiedLike =
+    userState?.abstractionMode === 'unifiedAccount' ||
+    userState?.abstractionMode === 'portfolioMargin' ||
+    userState?.abstractionMode === 'dexAbstraction';
 
   const perpsTransferable = userState?.withdrawable ?? 0;
   const spotUsdcEntry = spotBalance?.balances?.find((balance: any) => balance.coin === 'USDC');
@@ -24,6 +28,11 @@ export function TransferPage() {
   return (
     <div className="min-h-full bg-background px-4 py-5 space-y-4">
       <h1 className="text-2xl font-bold text-foreground">{t('transfer.title')}</h1>
+      {isUnifiedLike && (
+        <p className="text-sm text-muted">
+          {t('transfer.unifiedHint')}
+        </p>
+      )}
 
       <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm space-y-4">
         <div className="flex items-center justify-center gap-3">

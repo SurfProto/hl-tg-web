@@ -7,6 +7,7 @@ import {
 } from "@repo/hyperliquid-sdk";
 import { useTranslation } from "react-i18next";
 import type { StableSwapAsset } from "@repo/types";
+import { StableBalanceList } from "../../components/StableBalanceList";
 
 function StableAssetPicker({
   label,
@@ -54,6 +55,11 @@ export function SwapPage() {
   const swap = useStableSwap();
   const { data: userState } = useUserState();
   const { data: spotBalance } = useSpotBalance();
+  const isUnifiedLike =
+    userState?.abstractionMode === "unifiedAccount" ||
+    userState?.abstractionMode === "portfolioMargin" ||
+    userState?.abstractionMode === "dexAbstraction";
+  const visibleStableBalances = userState?.visibleStableBalances ?? [];
 
   const perpUsdcBalance = userState?.withdrawable ?? 0;
   const spotBalances = useMemo(() => {
@@ -80,11 +86,17 @@ export function SwapPage() {
   );
 
   const sourceBalance =
-    fromAsset === "USDC" ? perpUsdcBalance : (spotBalances.get(fromAsset) ?? 0);
+    isUnifiedLike
+      ? (userState?.stableBalances[fromAsset]?.available ?? 0)
+      : fromAsset === "USDC"
+        ? perpUsdcBalance
+        : (spotBalances.get(fromAsset) ?? 0);
   const destinationLabel =
-    toAsset === "USDC"
-      ? t("swap.returnToPerps")
-      : t("swap.stayInSpot", { asset: toAsset });
+    isUnifiedLike
+      ? t("swap.unifiedDestination", { asset: toAsset })
+      : toAsset === "USDC"
+        ? t("swap.returnToPerps")
+        : t("swap.stayInSpot", { asset: toAsset });
   const parsedAmount = Number.parseFloat(amount);
   const isInvalidAmount =
     !amount || Number.isNaN(parsedAmount) || parsedAmount <= 0;
@@ -95,9 +107,13 @@ export function SwapPage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">{t("swap.title")}</h1>
         <p className="mt-1 text-sm text-muted">
-          {t("swap.description")}
+          {isUnifiedLike
+            ? t("swap.descriptionUnified")
+            : t("swap.description")}
         </p>
       </div>
+
+      <StableBalanceList balances={visibleStableBalances} />
 
       <div className="rounded-3xl border border-separator bg-white p-4 shadow-sm">
         <StableAssetPicker
@@ -148,7 +164,10 @@ export function SwapPage() {
             <span className="text-xs text-muted">
               {t("swap.availableBalance", {
                 amount: numberFormatter.format(sourceBalance),
-                asset: fromAsset === "USDC" ? t("swap.perpUsdc") : fromAsset,
+                asset:
+                  !isUnifiedLike && fromAsset === "USDC"
+                    ? t("swap.perpUsdc")
+                    : fromAsset,
               })}
             </span>
           </div>
@@ -185,7 +204,9 @@ export function SwapPage() {
               {t("swap.routing")}
             </p>
             <p className="mt-2 text-sm font-semibold text-foreground">
-              {fromAsset === "USDC"
+              {isUnifiedLike
+                ? t("swap.routeUnified", { fromAsset, toAsset })
+                : fromAsset === "USDC"
                 ? t("swap.routePerpToSpot")
                 : toAsset === "USDC"
                   ? t("swap.routeSpotToPerps", { fromAsset })

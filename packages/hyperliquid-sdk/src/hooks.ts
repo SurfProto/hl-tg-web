@@ -20,7 +20,12 @@ import {
   storeAgentExpiry,
   isAgentKeyExpired,
 } from "./agent";
+import {
+  evaluateTradingSetupStatus,
+  getSupportedStableAssets,
+} from "./account-state";
 import type {
+  AccountState,
   AssetCtx,
   MarketStats,
   Order,
@@ -31,15 +36,17 @@ import type {
   StableSwapAsset,
   StableSwapRequest,
   StableSwapResult,
+  TradingSetupStatus,
   TriggerOrderRequest,
   WsMessage,
 } from "@repo/types";
 import { USDC_ARBITRUM, HL_BRIDGE_ARBITRUM } from "./constants";
 
 const publicClientCache = new Map<"mainnet" | "testnet", HyperliquidClient>();
-const STABLE_SWAP_ASSETS = ["USDC", "USDH", "USDT", "USDE"] as const;
+const STABLE_SWAP_ASSETS = getSupportedStableAssets();
 const STABLE_TRANSFER_PRECISION = 1_000_000;
 const SPOT_USDC_DUST_THRESHOLD = 0.01;
+const UNIFIED_ACCOUNT_PREFERENCE_PREFIX = "hl_pref_unified_";
 
 type StableSpotMarket = {
   index: number;
@@ -83,6 +90,29 @@ function getSpotAvailableBalance(spotBalance: any, coin: StableSwapAsset) {
   const total = parseBalanceAmount(entry.total);
   const hold = parseBalanceAmount(entry.hold);
   return Math.max(0, total - hold);
+}
+
+function getUnifiedPreference(walletAddress: string): boolean {
+  try {
+    return (
+      window.localStorage.getItem(
+        `${UNIFIED_ACCOUNT_PREFERENCE_PREFIX}${walletAddress.toLowerCase()}`,
+      ) === "true"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function storeUnifiedPreference(walletAddress: string): void {
+  try {
+    window.localStorage.setItem(
+      `${UNIFIED_ACCOUNT_PREFERENCE_PREFIX}${walletAddress.toLowerCase()}`,
+      "true",
+    );
+  } catch {
+    // ignore localStorage errors in embedded environments
+  }
 }
 
 function resolveStableSwapLeg(
@@ -273,13 +303,28 @@ export function useCandles(coin: string, interval: string = "1h") {
  */
 export function useUserState() {
   const { client } = useHyperliquid();
+  const { user } = usePrivy();
+  const walletAddress = user?.wallet?.address ?? null;
+  const prefersUnifiedAccount =
+    walletAddress != null ? getUnifiedPreference(walletAddress) : false;
 
-  return useQuery({
+  const query = useQuery({
     queryKey: ["userState"],
     queryFn: () => client?.getUserState(),
     enabled: !!client,
     refetchInterval: 5000, // Refetch every 5 seconds
   });
+
+  const data = useMemo<AccountState | undefined>(() => {
+    if (!query.data) return query.data;
+    return {
+      ...query.data,
+      shouldPromptRestoreUnified:
+        prefersUnifiedAccount && query.data.abstractionMode === "standard",
+    };
+  }, [prefersUnifiedAccount, query.data]);
+
+  return { ...query, data };
 }
 
 /**
@@ -813,6 +858,11 @@ export function useStableSwap() {
           baseName: market.baseName.toUpperCase(),
           quoteName: market.quoteName.toUpperCase(),
         }));
+      const tradingState = await client.getUserState();
+      const usesUnifiedRouting =
+        tradingState.abstractionMode === "unifiedAccount" ||
+        tradingState.abstractionMode === "portfolioMargin" ||
+        tradingState.abstractionMode === "dexAbstraction";
 
       const placeStableLeg = async (
         legFrom: StableSwapAsset,
@@ -900,6 +950,44 @@ export function useStableSwap() {
           message: `Returned ${availableUsdc.toFixed(2)} USDC to your perp balance.`,
         };
       };
+
+      if (usesUnifiedRouting) {
+        if (fromAsset === "USDC" || toAsset === "USDC") {
+          await placeStableLeg(fromAsset, toAsset, normalizedAmount);
+          return {
+            fromAsset,
+            toAsset,
+            amount: normalizedAmount,
+            message: `${toAsset} swap completed using your unified balance.`,
+          };
+        }
+
+        const initialSpotUsdc = roundStableAmount(
+          await waitForSpotBalance(client, "USDC", (available) => available >= 0),
+        );
+        await placeStableLeg(fromAsset, "USDC", normalizedAmount);
+        const intermediateUsdc = roundStableAmount(
+          (await waitForSpotBalance(
+            client,
+            "USDC",
+            (available) => available > initialSpotUsdc + 0.000001,
+          )) - initialSpotUsdc,
+        );
+
+        if (intermediateUsdc <= 0) {
+          throw new Error(
+            `No intermediate USDC became available after swapping out of ${fromAsset}.`,
+          );
+        }
+
+        await placeStableLeg("USDC", toAsset, intermediateUsdc);
+        return {
+          fromAsset,
+          toAsset,
+          amount: normalizedAmount,
+          message: `${toAsset} swap completed using your unified balance.`,
+        };
+      }
 
       if (fromAsset === "USDC" && toAsset !== "USDC") {
         await transferUsdcToSpot(normalizedAmount);
@@ -999,10 +1087,9 @@ export function useApproveBuilderFee() {
 
 /**
  * Hook to set up 1-click trading via an agent wallet.
- * On first use, signs two Privy prompts (approveAgent + approveBuilderFee).
- * After setup, all trading actions are signed silently by the local agent key.
+ * On first use, signs the missing prompts needed for the current trading flow.
  */
-export function useSetupTrading() {
+export function useSetupTrading(target?: { isHip3?: boolean } | null) {
   const { client } = useHyperliquid();
   const { user } = usePrivy();
   const queryClient = useQueryClient();
@@ -1013,48 +1100,108 @@ export function useSetupTrading() {
   const isKeyExpired = (address: string) =>
     getStoredAgentKey(address) !== null && isAgentKeyExpired(address);
 
-  const [isReady, setIsReady] = useState(() => {
-    if (!walletAddress) return false;
-    return isKeyValid(walletAddress);
-  });
+  const defaultStatus: TradingSetupStatus = useMemo(
+    () => ({
+      canTrade: false,
+      isAgentExpired: false,
+      needsAgentApproval: true,
+      needsBuilderApproval: isBuilderConfigured(),
+      needsHip3AbstractionEnable: Boolean(target?.isHip3),
+      needsUnifiedEnable: false,
+      shouldPromptRestoreUnified: false,
+    }),
+    [target?.isHip3],
+  );
+  const [status, setStatus] = useState<TradingSetupStatus>(defaultStatus);
 
-  const [isExpired, setIsExpired] = useState(() => {
-    if (!walletAddress) return false;
-    return isKeyExpired(walletAddress);
-  });
-
-  useEffect(() => {
-    if (!walletAddress) {
-      setIsReady(false);
-      setIsExpired(false);
-      return;
+  const refreshStatus = useCallback(async () => {
+    if (!client || !walletAddress) {
+      setStatus(defaultStatus);
+      return defaultStatus;
     }
 
-    setIsReady(isKeyValid(walletAddress));
-    setIsExpired(isKeyExpired(walletAddress));
-  }, [walletAddress]);
+    const hasAgentKey = isKeyValid(walletAddress);
+    const expired = isKeyExpired(walletAddress);
+    const [accountState, builderMaxFee] = await Promise.all([
+      client.getUserState(),
+      isBuilderConfigured()
+        ? client.getMaxBuilderFee(getBuilderAddress())
+        : Promise.resolve(1),
+    ]);
+
+    let prefersUnifiedAccount = getUnifiedPreference(walletAddress);
+    if (
+      accountState.abstractionMode === "unifiedAccount" &&
+      !prefersUnifiedAccount
+    ) {
+      storeUnifiedPreference(walletAddress);
+      prefersUnifiedAccount = true;
+    }
+
+    const nextStatus = evaluateTradingSetupStatus({
+      hasAgentKey,
+      isAgentExpired: expired,
+      abstractionMode: accountState.abstractionMode,
+      prefersUnifiedAccount,
+      needsBuilderApproval: isBuilderConfigured() && builderMaxFee <= 0,
+      targetIsHip3: Boolean(target?.isHip3),
+      hip3DexAbstractionEnabled: accountState.hip3DexAbstractionEnabled,
+    });
+
+    setStatus(nextStatus);
+    return nextStatus;
+  }, [client, defaultStatus, target?.isHip3, walletAddress]);
+
+  useEffect(() => {
+    void refreshStatus();
+  }, [refreshStatus]);
 
   const setup = useMutation({
     mutationFn: async () => {
       if (!client || !walletAddress) throw new Error("Not connected");
-      const privateKey = generateAgentKey();
-      const agentAddress = getAgentAddress(privateKey);
-      const { expiryMs } = await client.approveAgent(agentAddress);
-      if (isBuilderConfigured()) {
+
+      const currentStatus = await refreshStatus();
+      let privateKey = getStoredAgentKey(walletAddress);
+
+      if (currentStatus.needsAgentApproval) {
+        privateKey = generateAgentKey();
+        const agentAddress = getAgentAddress(privateKey);
+        const { expiryMs } = await client.approveAgent(agentAddress);
+        storeAgentExpiry(walletAddress, expiryMs);
+        storeAgentKey(walletAddress, privateKey);
+        client.setAgentKey(privateKey);
+      } else if (privateKey && !client.hasAgentKey()) {
+        client.setAgentKey(privateKey);
+      }
+
+      if (currentStatus.needsBuilderApproval && isBuilderConfigured()) {
         await approveBuilderFeeAction(client);
       }
-      storeAgentExpiry(walletAddress, expiryMs);
-      storeAgentKey(walletAddress, privateKey);
-      client.setAgentKey(privateKey);
+
+      if (currentStatus.needsUnifiedEnable) {
+        await client.setUserAbstraction("unifiedAccount");
+        storeUnifiedPreference(walletAddress);
+      }
+
+      if (currentStatus.needsHip3AbstractionEnable) {
+        await client.setUserDexAbstraction(true);
+      }
     },
-    onSuccess: () => {
-      setIsReady(true);
-      setIsExpired(false);
+    onSuccess: async () => {
+      await refreshStatus();
+      queryClient.invalidateQueries({ queryKey: ["userState"] });
+      queryClient.invalidateQueries({ queryKey: ["spotBalance"] });
       queryClient.invalidateQueries({ queryKey: ["builderFeeApproval"] });
     },
   });
 
-  return { isReady, isExpired, setup };
+  return {
+    status,
+    isReady: status.canTrade,
+    isExpired: status.isAgentExpired,
+    refreshStatus,
+    setup,
+  };
 }
 
 // WebSocket Hooks

@@ -4,6 +4,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useTranslation } from "react-i18next";
 import {
   getMarketBaseAsset,
+  getAvailableCollateralForMarket,
   getMarketDisplayName,
   useMarketData,
   useMids,
@@ -73,11 +74,6 @@ export function TradePage() {
   const { data: markets } = useMarketData();
   const { data: mids } = useMids();
   const { data: userState } = useUserState();
-  const {
-    isReady: tradingReady,
-    isExpired: tradingExpired,
-    setup: tradingSetup,
-  } = useSetupTrading();
   const placeOrder = usePlaceOrder();
   const upsertPositionProtection = useUpsertPositionProtection();
 
@@ -88,6 +84,12 @@ export function TradePage() {
       ) ?? null,
     [markets, symbol],
   );
+  const {
+    status: tradingStatus,
+    isReady: tradingReady,
+    isExpired: tradingExpired,
+    setup: tradingSetup,
+  } = useSetupTrading({ isHip3: Boolean(selectedPerpMarket?.isHip3) });
 
   // Spot disabled — all markets are perp
   const isPerp = true;
@@ -130,8 +132,16 @@ export function TradePage() {
     side === "buy" ? "long" : "short";
 
   const availableMarginUsd = useMemo(
-    () => (isPerp ? (userState?.withdrawable ?? 0) : 0),
-    [isPerp, userState?.withdrawable],
+    () =>
+      isPerp && userState
+        ? getAvailableCollateralForMarket({
+            abstractionMode: userState.abstractionMode,
+            stableBalances: userState.stableBalances,
+            fallbackWithdrawable: userState.withdrawable,
+            marketName: symbol,
+          })
+        : 0,
+    [isPerp, symbol, userState],
   );
 
   const maxPositionUsd = useMemo(
@@ -273,7 +283,10 @@ export function TradePage() {
       : null,
   ].filter((value): value is string => value != null);
 
-  const needsSetup = authenticated && (!tradingReady || tradingExpired);
+  const needsSetup =
+    authenticated &&
+    Boolean(tradingStatus) &&
+    (!tradingReady || tradingExpired);
 
   useEffect(() => {
     const walletAddress = user?.wallet?.address ?? null;
@@ -815,6 +828,7 @@ export function TradePage() {
         onClose={() => setSetupVisible(false)}
         setup={tradingSetup}
         isExpired={tradingExpired}
+        status={tradingStatus}
       />
     </div>
   );

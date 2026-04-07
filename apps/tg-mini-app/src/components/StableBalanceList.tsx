@@ -1,0 +1,76 @@
+import type { VisibleStableBalance } from "@repo/types";
+import { useTranslation } from "react-i18next";
+
+function formatUsd(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+interface StableBalanceListProps {
+  balances: VisibleStableBalance[];
+  compact?: boolean;
+}
+
+export function StableBalanceList({
+  balances,
+  compact = false,
+}: StableBalanceListProps) {
+  const { t } = useTranslation();
+
+  if (balances.length === 0) return null;
+
+  if (compact) {
+    return (
+      <div className="mt-4 flex flex-wrap gap-2">
+        {balances.map((balance) => (
+          <div
+            key={balance.asset}
+            className="rounded-full border border-separator bg-surface px-3 py-2"
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+              {balance.asset}
+            </p>
+            <p className="mt-1 text-sm font-semibold text-foreground">
+              {formatUsd(balance.available)}
+            </p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
+      <div className="grid grid-cols-2 gap-3">
+        {balances.map((balance) => (
+          <div
+            key={balance.asset}
+            className="rounded-2xl border border-separator bg-surface p-3"
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+              {balance.asset}
+            </p>
+            <p className="mt-2 text-base font-semibold text-foreground">
+              {formatUsd(balance.total)}
+            </p>
+            {balance.hold > 0 ? (
+              <p className="mt-1 text-xs text-muted">
+                {t("stableBalances.hold", { amount: formatUsd(balance.hold) })}
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-muted">
+                {t("stableBalances.available", {
+                  amount: formatUsd(balance.available),
+                })}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

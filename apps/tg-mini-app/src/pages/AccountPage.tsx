@@ -10,6 +10,8 @@ import {
   getPortfolioMaxDrawdownPct,
   getPortfolioRangePnl,
 } from "../lib/portfolio";
+import { StableBalanceList } from "../components/StableBalanceList";
+import { UnifiedAccountBanner } from "../components/UnifiedAccountBanner";
 
 function formatUsd(value: number) {
   return `$${value.toLocaleString("en-US", {
@@ -132,6 +134,7 @@ export function AccountPage() {
 
   const totalEquity = userState?.marginSummary?.accountValue ?? 0;
   const availableEquity = userState?.withdrawable ?? 0;
+  const visibleStableBalances = userState?.visibleStableBalances ?? [];
 
   const rangePnl = useMemo(
     () => getPortfolioRangePnl(portfolioPeriod?.pnlHistory ?? []),
@@ -203,6 +206,7 @@ export function AccountPage() {
             <SettingsIcon />
           </Link>
         </div>
+        {userState?.shouldPromptRestoreUnified ? <UnifiedAccountBanner /> : null}
       </Surface>
 
       <Surface>
@@ -266,6 +270,8 @@ export function AccountPage() {
           </div>
         </div>
       </Surface>
+
+      <StableBalanceList balances={visibleStableBalances} />
 
       <div className="grid grid-cols-2 gap-3">
         <MetricCard

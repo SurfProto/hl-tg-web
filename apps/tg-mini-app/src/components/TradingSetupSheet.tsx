@@ -1,15 +1,23 @@
 import { useEffect } from 'react';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import type { TradingSetupStatus } from '@repo/types';
 
 interface TradingSetupSheetProps {
   isOpen: boolean;
   onClose: () => void;
   setup: UseMutationResult<void, Error, void, unknown>;
   isExpired?: boolean;
+  status?: TradingSetupStatus;
 }
 
-export function TradingSetupSheet({ isOpen, onClose, setup, isExpired = false }: TradingSetupSheetProps) {
+export function TradingSetupSheet({
+  isOpen,
+  onClose,
+  setup,
+  isExpired = false,
+  status,
+}: TradingSetupSheetProps) {
   const isPending = setup.isPending;
   const isSuccess = setup.isSuccess;
   const error = setup.error;
@@ -26,6 +34,17 @@ export function TradingSetupSheet({ isOpen, onClose, setup, isExpired = false }:
   }, [isOpen, isSuccess, onClose]);
 
   if (!isOpen) return null;
+
+  const steps = [
+    status?.needsAgentApproval
+      ? isExpired
+        ? t('tradingSetup.stepReauth')
+        : t('tradingSetup.stepAuth')
+      : null,
+    status?.needsBuilderApproval ? t('tradingSetup.stepBuilderFee') : null,
+    status?.needsUnifiedEnable ? t('tradingSetup.stepUnified') : null,
+    status?.needsHip3AbstractionEnable ? t('tradingSetup.stepHip3') : null,
+  ].filter((value): value is string => value != null);
 
   const statusLabel = (() => {
     if (isSuccess) return t('tradingSetup.statusStarting');
@@ -76,22 +95,14 @@ export function TradingSetupSheet({ isOpen, onClose, setup, isExpired = false }:
           </div>
         ) : (
           <div className="space-y-2.5 mb-6">
-            <div className="flex items-center gap-3 px-3 py-2.5 bg-surface rounded-xl">
-              <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <span className="text-xs font-bold text-primary">1</span>
-              </div>
-              <span className="text-sm text-foreground">
-                {isExpired ? t('tradingSetup.stepReauth') : t('tradingSetup.stepAuth')}
-              </span>
-            </div>
-            {!isExpired && (
-              <div className="flex items-center gap-3 px-3 py-2.5 bg-surface rounded-xl">
+            {(steps.length > 0 ? steps : [t('tradingSetup.stepAuth')]).map((step, index) => (
+              <div key={step} className="flex items-center gap-3 px-3 py-2.5 bg-surface rounded-xl">
                 <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <span className="text-xs font-bold text-primary">2</span>
+                  <span className="text-xs font-bold text-primary">{index + 1}</span>
                 </div>
-                <span className="text-sm text-foreground">{t('tradingSetup.stepBuilderFee')}</span>
+                <span className="text-sm text-foreground">{step}</span>
               </div>
-            )}
+            ))}
           </div>
         )}
 

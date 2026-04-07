@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useTranslation } from 'react-i18next';
 import { useUserState, useWithdraw } from '@repo/hyperliquid-sdk';
+import { StableBalanceList } from '../../components/StableBalanceList';
 
 export function WithdrawPage() {
   const { user } = usePrivy();
@@ -10,12 +11,21 @@ export function WithdrawPage() {
   const withdraw = useWithdraw();
   const [amount, setAmount] = useState('');
 
-  const withdrawable = userState?.withdrawable ?? 0;
+  const isUnifiedLike =
+    userState?.abstractionMode === 'unifiedAccount' ||
+    userState?.abstractionMode === 'portfolioMargin' ||
+    userState?.abstractionMode === 'dexAbstraction';
+  const visibleStableBalances = userState?.visibleStableBalances ?? [];
+  const withdrawable = isUnifiedLike
+    ? (userState?.stableBalances.USDC?.available ?? 0)
+    : (userState?.withdrawable ?? 0);
   const destination = user?.wallet?.address;
 
   return (
     <div className="min-h-full bg-background px-4 py-5 space-y-4">
       <h1 className="text-2xl font-bold text-foreground">{t('withdraw.title')}</h1>
+
+      <StableBalanceList balances={visibleStableBalances} />
 
       <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm space-y-3">
         <div className="flex items-center justify-between">
@@ -30,6 +40,9 @@ export function WithdrawPage() {
           <span className="min-w-0 truncate text-sm text-muted">{t('withdraw.destination')}</span>
           <span className="flex-shrink-0 text-right font-mono text-xs text-foreground">{destination ? `${destination.slice(0, 6)}...${destination.slice(-4)}` : t('withdraw.noWallet')}</span>
         </div>
+        {isUnifiedLike && (
+          <p className="text-xs text-muted">{t('withdraw.unifiedHint')}</p>
+        )}
       </div>
 
       <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm space-y-3">

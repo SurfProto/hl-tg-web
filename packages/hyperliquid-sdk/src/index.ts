@@ -107,6 +107,14 @@ export {
   getMarketBaseAsset,
   getMarketSearchTerms,
 } from "./market-display";
+export {
+  evaluateTradingSetupStatus,
+  getAvailableCollateralForMarket,
+  getSupportedStableAssets,
+  getVisibleStableBalances,
+  inferAbstractionMode,
+  normalizeStableBalances,
+} from "./account-state";
 
 // WebSocket manager
 export { WebSocketManager } from "./ws";

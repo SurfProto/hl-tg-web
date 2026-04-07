@@ -2,6 +2,7 @@ import { createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import type {
   AccountState,
+  AccountAbstractionMode,
   AssetCtx,
   Fill,
   MarketStats,
@@ -19,8 +20,13 @@ import type {
   WsMessage,
 } from "@repo/types";
 import {
+  getAvailableCollateralForMarket,
+  getVisibleStableBalances,
+  inferAbstractionMode,
+  normalizeStableBalances,
+} from "./account-state";
+import {
   getBuilderAddress,
-  getBuilderFeeTenthsBp,
   getBuilderConfig,
   isBuilderConfigured,
 } from "./builder";
@@ -151,7 +157,6 @@ export class HyperliquidClient {
     string,
     { data: any[]; universe: any[]; timestamp: number }
   > = new Map();
-  private builderApprovalCache = new Map<string, number>();
   private leverageTypeCache = new Map<string, boolean>();
 
   constructor(config: HyperliquidClientConfig) {
@@ -194,6 +199,56 @@ export class HyperliquidClient {
       return response.json() as Promise<T>;
     }
     throw new Error("Info request failed after retries");
+  }
+
+  private getSignatureChainId(): string {
+    return this.testnet ? "0x66eee" : "0xa4b1";
+  }
+
+  private async postExchange<T>(body: Record<string, unknown>): Promise<T> {
+    const response = await fetch(`${this.getHttpApiUrl()}/exchange`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Exchange request failed with status ${response.status}`);
+    }
+
+    return response.json() as Promise<T>;
+  }
+
+  private async sendUserSignedAction(args: {
+    action: Record<string, unknown>;
+    types: Record<string, Array<{ name: string; type: string }>>;
+  }) {
+    if (!this.config.customSigner) throw new Error("Wallet not connected");
+    const SDK = await loadHyperliquidSDK();
+    const signature = await SDK.signUserSignedAction({
+      wallet: this.config.customSigner,
+      action: args.action,
+      types: args.types,
+      chainId: parseInt(this.getSignatureChainId(), 16),
+    });
+
+    const response = await this.postExchange<any>({
+      action: args.action,
+      signature,
+      nonce: Number(args.action.nonce),
+    });
+
+    if (response?.status === "err") {
+      throw new Error(
+        typeof response.response === "string"
+          ? response.response
+          : "Exchange request failed",
+      );
+    }
+
+    return response;
   }
 
   private async getPublicClient() {
@@ -596,11 +651,6 @@ export class HyperliquidClient {
     const builder = getBuilderConfig();
     if (!builder) return undefined;
 
-    const cachedMaxFee = this.builderApprovalCache.get(
-      getBuilderAddress().toLowerCase(),
-    );
-    if ((cachedMaxFee ?? 0) > 0) return builder;
-
     const maxFee = await this.getMaxBuilderFee(getBuilderAddress());
     if (maxFee <= 0) {
       throw new Error("Builder fee approval is required before trading.");
@@ -990,11 +1040,23 @@ export class HyperliquidClient {
   // Get user state
   async getUserState(): Promise<AccountState> {
     const cache = await this.ensureMarketCache();
-    const [baseState, ...dexStates] = await Promise.all([
+    const [
+      baseState,
+      spotState,
+      abstraction,
+      hip3DexAbstraction,
+      ...dexStates
+    ] = await Promise.all([
       this.postInfo<any>({
         type: "clearinghouseState",
         user: this.walletAddress as `0x${string}`,
       }),
+      this.postInfo<any>({
+        type: "spotClearinghouseState",
+        user: this.walletAddress as `0x${string}`,
+      }).catch(() => null),
+      this.getUserAbstraction(),
+      this.getUserDexAbstraction(),
       ...cache.perpDexs.map(({ dex }) =>
         this.postInfo<any>({
           type: "clearinghouseState",
@@ -1005,10 +1067,10 @@ export class HyperliquidClient {
     ]);
 
     const parseMarginSummary = (marginSummary: any) => ({
-      accountValue: parseFloat(marginSummary.accountValue),
-      totalMarginUsed: parseFloat(marginSummary.totalMarginUsed),
-      totalNtlPos: parseFloat(marginSummary.totalNtlPos),
-      totalRawUsd: parseFloat(marginSummary.totalRawUsd),
+      accountValue: parseFloat(marginSummary?.accountValue ?? "0"),
+      totalMarginUsed: parseFloat(marginSummary?.totalMarginUsed ?? "0"),
+      totalNtlPos: parseFloat(marginSummary?.totalNtlPos ?? "0"),
+      totalRawUsd: parseFloat(marginSummary?.totalRawUsd ?? "0"),
     });
 
     const allStates = [
@@ -1019,13 +1081,57 @@ export class HyperliquidClient {
       })),
     ];
 
+    const abstractionMode = inferAbstractionMode(
+      abstraction,
+      hip3DexAbstraction,
+    );
+    const stableBalances = normalizeStableBalances(spotState?.balances);
+    const visibleStableBalances = getVisibleStableBalances(stableBalances);
+    const totalStableBalance = visibleStableBalances.reduce(
+      (sum, balance) => sum + balance.total,
+      0,
+    );
+    const availableStableBalance = visibleStableBalances.reduce(
+      (sum, balance) => sum + balance.available,
+      0,
+    );
+    const useSpotAsSourceOfTruth =
+      abstractionMode === "unifiedAccount" ||
+      abstractionMode === "portfolioMargin";
+    const marginSummary = parseMarginSummary(baseState?.marginSummary);
+    const crossMarginSummary = parseMarginSummary(
+      baseState?.crossMarginSummary,
+    );
+
     return {
-      marginSummary: parseMarginSummary(baseState.marginSummary),
-      crossMarginSummary: parseMarginSummary(baseState.crossMarginSummary),
+      abstractionMode,
+      hip3DexAbstractionEnabled: hip3DexAbstraction,
+      stableBalances,
+      visibleStableBalances,
+      marginSummary: useSpotAsSourceOfTruth
+        ? {
+            ...marginSummary,
+            accountValue:
+              totalStableBalance > 0
+                ? totalStableBalance
+                : marginSummary.accountValue,
+          }
+        : marginSummary,
+      crossMarginSummary: useSpotAsSourceOfTruth
+        ? {
+            ...crossMarginSummary,
+            accountValue:
+              totalStableBalance > 0
+                ? totalStableBalance
+                : crossMarginSummary.accountValue,
+          }
+        : crossMarginSummary,
       crossMaintenanceMarginUsed: parseFloat(
-        baseState.crossMaintenanceMarginUsed,
+        baseState?.crossMaintenanceMarginUsed ?? "0",
       ),
-      withdrawable: parseFloat(baseState.withdrawable),
+      withdrawable: useSpotAsSourceOfTruth
+        ? availableStableBalance
+        : parseFloat(baseState?.withdrawable ?? "0"),
       assetPositions: allStates.flatMap(({ dex, state }) =>
         (state.assetPositions ?? []).map((assetPosition: any) => ({
           type: assetPosition.type,
@@ -1638,15 +1744,10 @@ export class HyperliquidClient {
   async approveBuilderFee(builder: string, maxFeeRate: string) {
     try {
       const client = await this.getMainWalletClient();
-      const response = await client.approveBuilderFee({
+      return await client.approveBuilderFee({
         builder: builder as `0x${string}`,
         maxFeeRate: maxFeeRate as `${string}%`,
       });
-      this.builderApprovalCache.set(
-        builder.toLowerCase(),
-        getBuilderFeeTenthsBp(),
-      );
-      return response;
     } catch (error) {
       this.normalizeExchangeError(
         "approveBuilderFee",
@@ -1659,12 +1760,10 @@ export class HyperliquidClient {
   // Check max approved builder fee for this user
   async getMaxBuilderFee(builder: string): Promise<number> {
     const client = await this.getPublicClient();
-    const maxFee = await client.maxBuilderFee({
+    return client.maxBuilderFee({
       user: this.walletAddress as `0x${string}`,
       builder: builder as `0x${string}`,
     });
-    this.builderApprovalCache.set(builder.toLowerCase(), maxFee);
-    return maxFee;
   }
 
   getBuilderStatus() {
@@ -1893,11 +1992,106 @@ export class HyperliquidClient {
     return portfolioPeriod.accountValueHistory;
   }
 
+  async getUserAbstraction(): Promise<string | null> {
+    try {
+      return await this.postInfo<string>({
+        type: "userAbstraction",
+        user: this.walletAddress as `0x${string}`,
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  async getUserDexAbstraction(): Promise<boolean | null> {
+    try {
+      return await this.postInfo<boolean>({
+        type: "userDexAbstraction",
+        user: this.walletAddress as `0x${string}`,
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  async setUserAbstraction(
+    abstraction: Extract<
+      AccountAbstractionMode,
+      "unifiedAccount" | "portfolioMargin"
+    >,
+  ) {
+    const nonce = Date.now();
+    try {
+      return await this.sendUserSignedAction({
+        action: {
+          type: "userSetAbstraction",
+          hyperliquidChain: this.testnet ? "Testnet" : "Mainnet",
+          signatureChainId: this.getSignatureChainId(),
+          user: this.walletAddress as `0x${string}`,
+          abstraction,
+          nonce,
+        },
+        types: {
+          "HyperliquidTransaction:UserSetAbstraction": [
+            { name: "hyperliquidChain", type: "string" },
+            { name: "user", type: "address" },
+            { name: "abstraction", type: "string" },
+            { name: "nonce", type: "uint64" },
+          ],
+        },
+      });
+    } catch (error) {
+      this.normalizeExchangeError("setUserAbstraction", { abstraction }, error);
+    }
+  }
+
+  async setUserDexAbstraction(enabled: boolean) {
+    const nonce = Date.now();
+    try {
+      return await this.sendUserSignedAction({
+        action: {
+          type: "userDexAbstraction",
+          hyperliquidChain: this.testnet ? "Testnet" : "Mainnet",
+          signatureChainId: this.getSignatureChainId(),
+          user: this.walletAddress as `0x${string}`,
+          enabled,
+          nonce,
+        },
+        types: {
+          "HyperliquidTransaction:UserDexAbstraction": [
+            { name: "hyperliquidChain", type: "string" },
+            { name: "user", type: "address" },
+            { name: "enabled", type: "bool" },
+            { name: "nonce", type: "uint64" },
+          ],
+        },
+      });
+    } catch (error) {
+      this.normalizeExchangeError(
+        "setUserDexAbstraction",
+        { enabled },
+        error,
+      );
+    }
+  }
+
   // Get spot account balance (HL L1 spot)
   async getSpotBalance() {
     const client = await this.getPublicClient();
     return client.spotClearinghouseState({
       user: this.walletAddress as `0x${string}`,
+    });
+  }
+
+  getAvailableCollateralForMarket(args: {
+    marketName: string;
+    accountState: AccountState;
+  }): number {
+    return getAvailableCollateralForMarket({
+      abstractionMode: args.accountState.abstractionMode,
+      stableBalances: args.accountState.stableBalances,
+      fallbackWithdrawable: args.accountState.withdrawable,
+      marketName: args.marketName,
     });
   }
 

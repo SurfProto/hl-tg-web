@@ -66,6 +66,32 @@ export type OrderSide = "buy" | "sell";
 export type MarketType = "perp" | "spot";
 export type TriggerOrderKind = "stopLoss" | "takeProfit";
 export type StableSwapAsset = "USDC" | "USDH" | "USDT" | "USDE";
+export type AccountAbstractionMode =
+  | "standard"
+  | "unifiedAccount"
+  | "portfolioMargin"
+  | "dexAbstraction"
+  | "unknown";
+
+export interface StableBalanceState {
+  total: number;
+  hold: number;
+  available: number;
+}
+
+export interface VisibleStableBalance extends StableBalanceState {
+  asset: StableSwapAsset;
+}
+
+export interface TradingSetupStatus {
+  canTrade: boolean;
+  isAgentExpired: boolean;
+  needsAgentApproval: boolean;
+  needsBuilderApproval: boolean;
+  needsHip3AbstractionEnable: boolean;
+  needsUnifiedEnable: boolean;
+  shouldPromptRestoreUnified: boolean;
+}
 
 export interface Order {
   coin: string;
@@ -166,6 +192,11 @@ export interface Position {
 
 // Account types
 export interface AccountState {
+  abstractionMode: AccountAbstractionMode;
+  hip3DexAbstractionEnabled: boolean | null;
+  stableBalances: Partial<Record<StableSwapAsset, StableBalanceState>>;
+  visibleStableBalances?: VisibleStableBalance[];
+  shouldPromptRestoreUnified?: boolean;
   marginSummary: {
     accountValue: number;
     totalMarginUsed: number;

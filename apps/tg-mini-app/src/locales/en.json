@@ -267,6 +267,7 @@
     "chain": "Chain",
     "destination": "Destination",
     "noWallet": "No wallet",
+    "unifiedHint": "Unified mode still withdraws onchain in USDC. Swap other stable balances into USDC before withdrawing.",
     "amount": "Amount",
     "available": "Available {{amount}} USDC",
     "withdrawButton": "Withdraw to Arbitrum",
@@ -347,6 +348,8 @@
     "stepAuth": "Authorize trading key",
     "stepReauth": "Reauthorize trading key",
     "stepBuilderFee": "Enable builder fee",
+    "stepUnified": "Enable unified account",
+    "stepHip3": "Enable HIP-3 abstraction",
     "statusStarting": "Starting trading...",
     "statusEnable": "Enable 1-click trading",
     "statusSettingUp": "Setting up...",
@@ -373,6 +376,7 @@
   "swap": {
     "title": "Stable swap",
     "description": "Start from perp USDC, auto-route through spot when needed, and sweep back on USDC returns.",
+    "descriptionUnified": "Swap directly between supported stable balances in your unified account.",
     "from": "From",
     "to": "To",
     "flipDirection": "Flip swap direction",
@@ -380,18 +384,30 @@
     "availableBalance": "Available {{amount}} {{asset}}",
     "perpUsdc": "perp USDC",
     "routing": "Routing",
+    "routeUnified": "{{fromAsset}} -> {{toAsset}} from unified balance",
     "routePerpToSpot": "Perp USDC -> Spot swap",
     "routeSpotToPerps": "{{fromAsset}} -> Spot USDC -> Sweep to Perps",
     "routeSpotToSpot": "{{fromAsset}} -> Spot USDC -> {{toAsset}}",
     "returnToPerps": "Returned USDC will sweep back into your perp balance.",
+    "unifiedDestination": "{{asset}} stays in your unified account after the swap.",
     "stayInSpot": "{{asset}} stays in spot so it can be used for HIP-3 trading.",
     "swapping": "Swapping...",
     "cta": "Swap {{fromAsset}} to {{toAsset}}",
     "selectDifferentAssets": "Select two different stable assets.",
     "failed": "Swap failed"
   },
+  "stableBalances": {
+    "available": "Available {{amount}}",
+    "hold": "Hold {{amount}}"
+  },
+  "unifiedBanner": {
+    "title": "Unified account is off",
+    "description": "The app has fallen back to standard balance routing. Trading still works, but re-enabling unified account restores the preferred UX.",
+    "cta": "Review account mode"
+  },
   "transfer": {
     "title": "Transfer USDC",
+    "unifiedHint": "Advanced tool for standard-mode fallback. Unified accounts usually do not need manual perp/spot transfers.",
     "flipDirection": "Swap transfer direction",
     "amount": "Amount",
     "availableToTransfer": "Available to transfer {{amount}} USDC",

@@ -186,7 +186,7 @@ export function AccountPage() {
                 <h1 className="mt-1 truncate text-[2rem] font-bold leading-none text-foreground">
                   {telegramUsername ? `@${displayName}` : displayName}
                 </h1>
-                <p className="mt-2 text-sm text-muted">
+                <p className="mt-2 truncate text-sm text-muted">
                   {user?.email?.address ??
                     t("account.connectedInfo")}
                 </p>

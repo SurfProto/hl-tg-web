@@ -417,6 +417,9 @@ export function TradePage() {
             takeProfitPx: protectionDraft.takeProfitEnabled
               ? takeProfitPx
               : null,
+            // Skip position polling — we just placed the order and know the approximate size.
+            sizeHint: estimatedProtectionSize * (side === "buy" ? 1 : -1),
+            skipCancelExisting: true,
           });
           haptics.success();
           toast.success(t("trade.orderPlacedWithProtection", { side: sideLabel }));

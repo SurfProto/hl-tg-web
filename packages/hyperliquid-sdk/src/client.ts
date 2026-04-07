@@ -209,6 +209,8 @@ export class HyperliquidClient {
   private testnet: boolean;
   private config: HyperliquidClientConfig;
   private marketCache: MarketCache | null = null;
+  private builderApprovalCache: { result: ReturnType<typeof getBuilderConfig>; expiresAt: number } | null = null;
+  private userStateCache: { data: AccountState; expiresAt: number } | null = null;
   private assetCtxsCache: {
     data: any[];
     perpUniverse: any[];
@@ -727,10 +729,17 @@ export class HyperliquidClient {
     const builder = getBuilderConfig();
     if (!builder) return undefined;
 
+    const now = Date.now();
+    if (this.builderApprovalCache && now < this.builderApprovalCache.expiresAt) {
+      return this.builderApprovalCache.result;
+    }
+
     const maxFee = await this.getMaxBuilderFee(getBuilderAddress());
     if (maxFee <= 0) {
       throw new Error("Builder fee approval is required before trading.");
     }
+
+    this.builderApprovalCache = { result: builder, expiresAt: now + 5 * 60 * 1000 };
     return builder;
   }
 
@@ -956,7 +965,7 @@ export class HyperliquidClient {
     delayMs: number = waitForPosition ? 300 : 0,
   ) {
     for (let attempt = 0; attempt < attempts; attempt += 1) {
-      const userState = await this.getUserState();
+      const userState = await this.getUserState({ fresh: true });
       const position = userState.assetPositions.find(
         (assetPosition) => assetPosition.position.coin === coin,
       )?.position;
@@ -1123,8 +1132,11 @@ export class HyperliquidClient {
     }));
   }
 
-  // Get user state
-  async getUserState(): Promise<AccountState> {
+  // Get user state. Pass { fresh: true } to bypass the short-lived internal cache.
+  async getUserState({ fresh }: { fresh?: boolean } = {}): Promise<AccountState> {
+    if (!fresh && this.userStateCache && Date.now() < this.userStateCache.expiresAt) {
+      return this.userStateCache.data;
+    }
     const cache = await this.ensureMarketCache();
     const [
       baseState,
@@ -1221,7 +1233,7 @@ export class HyperliquidClient {
       baseState?.crossMarginSummary,
     );
 
-    return {
+    const result: AccountState = {
       abstractionMode,
       hip3DexAbstractionEnabled: hip3DexAbstraction,
       stableBalances,
@@ -1277,6 +1289,8 @@ export class HyperliquidClient {
         })),
       ),
     };
+    this.userStateCache = { data: result, expiresAt: Date.now() + 2000 };
+    return result;
   }
 
   // Get open orders
@@ -1340,12 +1354,10 @@ export class HyperliquidClient {
         throw new Error(`Use spot order flow for ${normalized.market.name}`);
       }
 
-      await this.ensurePerpLeverage(
-        normalized.market,
-        order.leverage,
-        order.reduceOnly,
-      );
-      const builder = await this.ensureBuilderApproval();
+      const [, builder] = await Promise.all([
+        this.ensurePerpLeverage(normalized.market, order.leverage, order.reduceOnly),
+        this.ensureBuilderApproval(),
+      ]);
 
       return this.unwrapStatuses(
         await client.order({
@@ -1456,18 +1468,24 @@ export class HyperliquidClient {
     try {
       const client = await this.getTradingClient();
       const market = await this.resolveMarket(request.coin, "perp");
-      const position = await this.getOpenPosition(market.name, true, 20, 300);
 
-      if (!position) {
-        throw new Error(
-          `No open position found for ${request.coin}. If your entry just filled, wait a moment and try again from Positions.`,
-        );
+      let positionSzi: number;
+      if (request.sizeHint != null && request.sizeHint !== 0) {
+        positionSzi = request.sizeHint;
+      } else {
+        const position = await this.getOpenPosition(market.name, true, 20, 300);
+        if (!position) {
+          throw new Error(
+            `No open position found for ${request.coin}. If your entry just filled, wait a moment and try again from Positions.`,
+          );
+        }
+        positionSzi = position.szi;
       }
 
       const referencePrice = await this.getReferencePrice(market);
-      const isLong = position.szi > 0;
+      const isLong = positionSzi > 0;
       const side: OrderSide = isLong ? "sell" : "buy";
-      const size = Math.abs(position.szi);
+      const size = Math.abs(positionSzi);
       const stopLossPx = request.stopLossPx ?? null;
       const takeProfitPx = request.takeProfitPx ?? null;
 
@@ -1511,7 +1529,9 @@ export class HyperliquidClient {
         }
       }
 
-      await this.cancelPositionProtection(market.name);
+      if (!request.skipCancelExisting) {
+        await this.cancelPositionProtection(market.name);
+      }
 
       const triggerOrders = await Promise.all(
         [
@@ -1584,7 +1604,7 @@ export class HyperliquidClient {
     try {
       const client = await this.getTradingClient();
       const market = await this.resolveMarket(coin, "perp");
-      const userState = await this.getUserState();
+      const userState = await this.getUserState({ fresh: true });
       const position = userState.assetPositions.find(
         (assetPosition) => assetPosition.position.coin === market.name,
       )?.position;

@@ -132,6 +132,13 @@ export interface PositionProtectionRequest {
   coin: string;
   stopLossPx?: number | null;
   takeProfitPx?: number | null;
+  /** Signed expected position size (positive=long, negative=short). When provided,
+   *  skips polling getUserState waiting for the fill to appear — use after placing
+   *  a fresh market order when the approximate size is already known. */
+  sizeHint?: number | null;
+  /** Skip cancelling existing SL/TP orders before placing new ones. Safe to set
+   *  when this is a brand-new position with no prior protection orders. */
+  skipCancelExisting?: boolean;
 }
 
 export interface StableSwapRequest {

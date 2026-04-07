@@ -27,8 +27,8 @@ export function WithdrawPage() {
           <span className="font-semibold text-foreground">{t('common.arbitrum')}</span>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <span className="text-sm text-muted">{t('withdraw.destination')}</span>
-          <span className="font-mono text-xs text-foreground">{destination ? `${destination.slice(0, 6)}...${destination.slice(-4)}` : t('withdraw.noWallet')}</span>
+          <span className="min-w-0 truncate text-sm text-muted">{t('withdraw.destination')}</span>
+          <span className="flex-shrink-0 text-right font-mono text-xs text-foreground">{destination ? `${destination.slice(0, 6)}...${destination.slice(-4)}` : t('withdraw.noWallet')}</span>
         </div>
       </div>
 

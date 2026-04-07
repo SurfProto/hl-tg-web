@@ -206,7 +206,7 @@ export function PositionsPage() {
                             {displayName}
                           </p>
                           <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                            className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
                               isLong
                                 ? "bg-blue-50 text-primary"
                                 : "bg-gray-100 text-gray-700"
@@ -222,7 +222,7 @@ export function PositionsPage() {
                       </div>
                     </div>
 
-                    <div className="text-right">
+                    <div className="flex-shrink-0 text-right">
                       <p
                         className={`text-sm font-semibold ${isPositive ? "text-positive" : "text-negative"}`}
                       >
@@ -252,7 +252,7 @@ export function PositionsPage() {
 
                   <div className="mt-4 rounded-[20px] border border-separator bg-surface px-3 py-3">
                     <div className="flex items-center justify-between gap-3">
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-sm font-semibold text-foreground">
                           {t("positions.protection")}
                         </p>
@@ -281,7 +281,7 @@ export function PositionsPage() {
                             ),
                           });
                         }}
-                        className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-primary shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 active:bg-gray-100"
+                        className="flex-shrink-0 rounded-full bg-white px-3 py-2 text-xs font-semibold text-primary shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 active:bg-gray-100"
                       >
                         {protectionState.stopLoss || protectionState.takeProfit
                           ? t("positions.editProtection")

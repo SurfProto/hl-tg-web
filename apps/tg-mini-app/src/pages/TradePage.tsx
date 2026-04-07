@@ -64,6 +64,7 @@ export function TradePage() {
   );
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [setupVisible, setSetupVisible] = useState(false);
+  const [isCheckingTradingAccess, setIsCheckingTradingAccess] = useState(false);
   const setupWalletRef = useRef<string | null>(null);
 
   const side: "buy" | "sell" = useMemo(() => {
@@ -86,8 +87,7 @@ export function TradePage() {
   );
   const {
     status: tradingStatus,
-    isReady: tradingReady,
-    isExpired: tradingExpired,
+    refreshStatus: refreshTradingStatus,
     setup: tradingSetup,
   } = useSetupTrading({ isHip3: Boolean(selectedPerpMarket?.isHip3) });
 
@@ -114,6 +114,10 @@ export function TradePage() {
         : getMarketBaseAsset(symbol),
     [selectedMarketForDisplay, symbol],
   );
+  const collateralAsset = useMemo(() => {
+    const match = symbol.toUpperCase().match(/-(USDC|USDH|USDT|USDE)\b/);
+    return match?.[1] ?? "USDC";
+  }, [symbol]);
 
   const maxLeverage = useMemo(
     () => selectedPerpMarket?.maxLeverage ?? 50,
@@ -283,41 +287,13 @@ export function TradePage() {
       : null,
   ].filter((value): value is string => value != null);
 
-  const needsSetup =
-    authenticated &&
-    Boolean(tradingStatus) &&
-    (!tradingReady || tradingExpired);
-
   useEffect(() => {
-    const walletAddress = user?.wallet?.address ?? null;
-
-    if (needsSetup) {
-      if (setupWalletRef.current !== walletAddress || !setupVisible) {
-        tradingSetup.reset();
-      }
-      setupWalletRef.current = walletAddress;
-      setSetupVisible(true);
-      return;
-    }
-
     if (!authenticated) {
       setupWalletRef.current = null;
       tradingSetup.reset();
       setSetupVisible(false);
-      return;
     }
-
-    if (!tradingSetup.isSuccess) {
-      setSetupVisible(false);
-    }
-  }, [
-    authenticated,
-    needsSetup,
-    setupVisible,
-    tradingSetup,
-    tradingSetup.isSuccess,
-    user?.wallet?.address,
-  ]);
+  }, [authenticated, tradingSetup]);
 
   const ctaLabel =
     side === "buy"
@@ -325,7 +301,10 @@ export function TradePage() {
       : t("trade.shortCta", { name: displayName });
   const sideLabel = side === "buy" ? t("common.long") : t("common.short");
 
-  const isPending = placeOrder.isPending || upsertPositionProtection.isPending;
+  const isPending =
+    placeOrder.isPending ||
+    upsertPositionProtection.isPending ||
+    isCheckingTradingAccess;
   const isSubmitDisabled = amountNum === 0 || isPending || !validation.isValid;
 
   const handleAmountChange = (value: string) => {
@@ -394,6 +373,29 @@ export function TradePage() {
     }
 
     haptics.medium();
+
+    if (authenticated) {
+      let nextTradingStatus = tradingStatus;
+
+      if (nextTradingStatus.isChecking) {
+        setIsCheckingTradingAccess(true);
+        try {
+          nextTradingStatus = await refreshTradingStatus();
+        } finally {
+          setIsCheckingTradingAccess(false);
+        }
+      }
+
+      if (!nextTradingStatus.canTrade && nextTradingStatus.blockingSteps.length > 0) {
+        const walletAddress = user?.wallet?.address ?? null;
+        if (setupWalletRef.current !== walletAddress || !setupVisible) {
+          tradingSetup.reset();
+        }
+        setupWalletRef.current = walletAddress;
+        setSetupVisible(true);
+        return;
+      }
+    }
 
     const order: Order = {
       coin: symbol,
@@ -546,6 +548,12 @@ export function TradePage() {
                 {t("trade.at")}
                 {leverage}x
               </div>
+              {selectedPerpMarket?.isHip3 ? (
+                <div>
+                  {t("trade.collateralAsset")}
+                  {collateralAsset}
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="text-sm text-gray-400 mt-2">{t("trade.limitPrice")}</div>
@@ -704,7 +712,11 @@ export function TradePage() {
               side === "buy" ? "bg-primary" : "bg-secondary"
             }`}
           >
-            {isPending ? t("trade.placingOrder") : ctaLabel}
+            {isCheckingTradingAccess
+              ? t("account.checking")
+              : isPending
+                ? t("trade.placingOrder")
+                : ctaLabel}
           </button>
         )}
 
@@ -830,7 +842,7 @@ export function TradePage() {
         isOpen={setupVisible}
         onClose={() => setSetupVisible(false)}
         setup={tradingSetup}
-        isExpired={tradingExpired}
+        isExpired={tradingStatus.isAgentExpired}
         status={tradingStatus}
       />
     </div>

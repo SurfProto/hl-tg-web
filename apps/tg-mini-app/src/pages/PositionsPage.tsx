@@ -87,6 +87,8 @@ export function PositionsPage() {
   );
   const [editingProtection, setEditingProtection] =
     useState<EditingProtectionState | null>(null);
+  const [pendingCloseCoin, setPendingCloseCoin] = useState<string | null>(null);
+  const [pendingCancelOid, setPendingCancelOid] = useState<number | null>(null);
 
   const { data: userState } = useUserState();
   const { data: openOrders } = useOpenOrders();
@@ -316,12 +318,15 @@ export function PositionsPage() {
                       onClick={(event) => {
                         event.stopPropagation();
                         haptics.medium();
+                        setPendingCloseCoin(position.coin);
                         closePosition.mutate(position.coin, {
                           onSuccess: () => {
+                            setPendingCloseCoin(null);
                             haptics.success();
                             toast.success(t("positions.positionClosed", { name: displayName }));
                           },
                           onError: (error) => {
+                            setPendingCloseCoin(null);
                             haptics.error();
                             toast.error(
                               error instanceof Error
@@ -331,9 +336,12 @@ export function PositionsPage() {
                           },
                         });
                       }}
+                      disabled={pendingCloseCoin === position.coin}
                       className="flex-1 rounded-full bg-[#111827] px-4 py-3 text-sm font-semibold text-white transition-opacity active:opacity-80"
                     >
-                      {closePosition.isPending ? t("common.closing") : t("common.close")}
+                      {pendingCloseCoin === position.coin
+                        ? t("common.closing")
+                        : t("common.close")}
                     </button>
                     <button
                       onClick={(event) => {
@@ -430,14 +438,17 @@ export function PositionsPage() {
                       onClick={(event) => {
                         event.stopPropagation();
                         haptics.medium();
+                        setPendingCancelOid(order.oid);
                         cancelOrder.mutate(
                           { coin: order.coin, oid: order.oid },
                           {
                             onSuccess: () => {
+                              setPendingCancelOid(null);
                               haptics.success();
                               toast.success(t("positions.orderCancelled"));
                             },
                             onError: (error) => {
+                              setPendingCancelOid(null);
                               haptics.error();
                               toast.error(
                                 error instanceof Error
@@ -448,9 +459,12 @@ export function PositionsPage() {
                           },
                         );
                       }}
+                      disabled={pendingCancelOid === order.oid}
                       className="rounded-full bg-red-50 px-4 py-2 text-sm font-semibold text-negative transition-colors active:bg-red-100"
                     >
-                      {cancelOrder.isPending ? t("common.canceling") : t("common.cancel")}
+                      {pendingCancelOid === order.oid
+                        ? t("common.canceling")
+                        : t("common.cancel")}
                     </button>
                   </div>
 

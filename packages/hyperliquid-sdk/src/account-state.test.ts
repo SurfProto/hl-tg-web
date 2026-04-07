@@ -148,6 +148,17 @@ describe("getAvailableCollateralForMarket", () => {
     ).toBe(17);
   });
 
+  it("uses spot collateral for non-USDC HIP-3 markets in standard mode", () => {
+    expect(
+      getAvailableCollateralForMarket({
+        abstractionMode: "standard",
+        stableBalances,
+        fallbackWithdrawable: 17,
+        marketName: "builder:OIL-USDH",
+      }),
+    ).toBe(40);
+  });
+
   it("uses perps withdrawable for USDC collateral in dex abstraction mode", () => {
     expect(
       getAvailableCollateralForMarket({
@@ -162,94 +173,116 @@ describe("getAvailableCollateralForMarket", () => {
 
 describe("evaluateTradingSetupStatus", () => {
   it("requires first-run gasless setup, builder approval, and unified approval", () => {
-    expect(
-      evaluateTradingSetupStatus({
-        hasAgentKey: false,
-        isAgentExpired: false,
-        abstractionMode: "standard",
-        prefersUnifiedAccount: false,
-        needsBuilderApproval: true,
-        targetIsHip3: false,
-        hip3DexAbstractionEnabled: false,
-      }),
-    ).toEqual({
+    const status = evaluateTradingSetupStatus({
+      agentState: "missing",
+      isAgentExpired: false,
+      abstractionMode: "standard",
+      prefersUnifiedAccount: false,
+      builderState: "missing",
+      unifiedState: "missing",
+    });
+
+    expect(status).toMatchObject({
       canTrade: false,
+      isChecking: false,
       isAgentExpired: false,
       needsAgentApproval: true,
       needsBuilderApproval: true,
-      needsHip3AbstractionEnable: false,
       needsUnifiedEnable: true,
       pendingSteps: ["agent", "builder", "unified"],
+      blockingSteps: ["agent", "builder", "unified"],
+      stepStates: {
+        agent: "missing",
+        builder: "missing",
+        unified: "missing",
+      },
       shouldPromptRestoreUnified: false,
     });
+    expect(typeof status.lastVerifiedAt).toBe("number");
   });
 
   it("still requires unified approval when the user disabled it after previously enabling it", () => {
-    expect(
-      evaluateTradingSetupStatus({
-        hasAgentKey: true,
-        isAgentExpired: false,
-        abstractionMode: "standard",
-        prefersUnifiedAccount: true,
-        needsBuilderApproval: false,
-        targetIsHip3: false,
-        hip3DexAbstractionEnabled: false,
-      }),
-    ).toEqual({
+    const status = evaluateTradingSetupStatus({
+      agentState: "approved",
+      isAgentExpired: false,
+      abstractionMode: "standard",
+      prefersUnifiedAccount: true,
+      builderState: "approved",
+      unifiedState: "missing",
+    });
+
+    expect(status).toMatchObject({
       canTrade: false,
+      isChecking: false,
       isAgentExpired: false,
       needsAgentApproval: false,
       needsBuilderApproval: false,
-      needsHip3AbstractionEnable: false,
       needsUnifiedEnable: true,
       pendingSteps: ["unified"],
+      blockingSteps: ["unified"],
+      stepStates: {
+        agent: "approved",
+        builder: "approved",
+        unified: "missing",
+      },
       shouldPromptRestoreUnified: true,
     });
+    expect(typeof status.lastVerifiedAt).toBe("number");
   });
 
-  it("requires dex abstraction before a HIP-3 trade when it is missing", () => {
+  it("allows trading when approvals are verified or stale", () => {
+    const status = evaluateTradingSetupStatus({
+      agentState: "approved",
+      isAgentExpired: false,
+      abstractionMode: "unifiedAccount",
+      prefersUnifiedAccount: true,
+      builderState: "stale",
+      unifiedState: "approved",
+    });
+
+    expect(status).toMatchObject({
+      canTrade: true,
+      isChecking: false,
+      needsAgentApproval: false,
+      needsBuilderApproval: false,
+      needsUnifiedEnable: false,
+      pendingSteps: [],
+      blockingSteps: [],
+      stepStates: {
+        agent: "approved",
+        builder: "stale",
+        unified: "approved",
+      },
+    });
+    expect(typeof status.lastVerifiedAt).toBe("number");
+  });
+
+  it("holds trading while approval state is still checking without surfacing a blocking step", () => {
     expect(
       evaluateTradingSetupStatus({
-        hasAgentKey: true,
+        agentState: "approved",
         isAgentExpired: false,
         abstractionMode: "unifiedAccount",
         prefersUnifiedAccount: true,
-        needsBuilderApproval: false,
-        targetIsHip3: true,
-        hip3DexAbstractionEnabled: false,
+        builderState: "checking",
+        unifiedState: "approved",
       }),
     ).toEqual({
       canTrade: false,
+      isChecking: true,
       isAgentExpired: false,
       needsAgentApproval: false,
       needsBuilderApproval: false,
-      needsHip3AbstractionEnable: true,
       needsUnifiedEnable: false,
-      pendingSteps: ["hip3"],
+      pendingSteps: [],
+      blockingSteps: [],
+      stepStates: {
+        agent: "approved",
+        builder: "checking",
+        unified: "approved",
+      },
       shouldPromptRestoreUnified: false,
-    });
-  });
-
-  it("keeps HIP-3 abstraction last when other approvals are also missing", () => {
-    expect(
-      evaluateTradingSetupStatus({
-        hasAgentKey: false,
-        isAgentExpired: false,
-        abstractionMode: "standard",
-        prefersUnifiedAccount: false,
-        needsBuilderApproval: true,
-        targetIsHip3: true,
-        hip3DexAbstractionEnabled: false,
-      }),
-    ).toEqual({
-      canTrade: false,
-      isAgentExpired: false,
-      needsAgentApproval: true,
-      needsBuilderApproval: true,
-      needsHip3AbstractionEnable: true,
-      needsUnifiedEnable: true,
-      pendingSteps: ["agent", "builder", "unified", "hip3"],
-      shouldPromptRestoreUnified: false,
+      lastVerifiedAt: null,
     });
   });
 });

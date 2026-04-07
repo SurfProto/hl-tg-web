@@ -35,11 +35,10 @@ export function TradingSetupSheet({
 
   if (!isOpen) return null;
 
-  const stepLabels: Record<'agent' | 'builder' | 'unified' | 'hip3', string> = {
+  const stepLabels: Record<'agent' | 'builder' | 'unified', string> = {
     agent: isExpired ? t('tradingSetup.stepReauth') : t('tradingSetup.stepAuth'),
     builder: t('tradingSetup.stepBuilderFee'),
     unified: t('tradingSetup.stepUnified'),
-    hip3: t('tradingSetup.stepHip3'),
   };
   const steps = (status?.pendingSteps ?? ['agent']).map((step) => stepLabels[step]);
 

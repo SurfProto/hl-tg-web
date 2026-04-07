@@ -78,6 +78,7 @@
     "placingOrder": "Размещение...",
     "availableMargin": "Доступная маржа $",
     "maxSize": "Макс размер $",
+    "collateralAsset": "Залоговый актив ",
     "at": " при ",
     "limitPrice": "Цена лимита",
     "liquidationAt": "Ликвидация при ",

@@ -6,9 +6,7 @@ import {
   useApproveAgentTrading,
   useApproveBuilderFee,
   useBuilderFeeApproval,
-  useHip3DexAbstractionApproval,
   useRevokeBuilderFee,
-  useSetHip3DexAbstraction,
   useSetUnifiedAccount,
   useUnifiedAccountApproval,
 } from "@repo/hyperliquid-sdk";
@@ -90,8 +88,6 @@ export function ApprovalsPage() {
   const revokeBuilder = useRevokeBuilderFee();
   const unifiedApproval = useUnifiedAccountApproval();
   const setUnifiedAccount = useSetUnifiedAccount();
-  const hip3Approval = useHip3DexAbstractionApproval();
-  const setHip3Abstraction = useSetHip3DexAbstraction();
 
   const cards: ApprovalCard[] = [
     {
@@ -176,65 +172,33 @@ export function ApprovalsPage() {
       key: "unified",
       title: t("approvals.unifiedTitle"),
       description: t("approvals.unifiedDescription"),
-      meta: unifiedApproval.data
+      meta: unifiedApproval.data?.enabled
         ? t("approvals.unifiedEnabled")
         : t("approvals.unifiedDisabled"),
       statusLabel: unifiedApproval.isLoading
         ? t("account.checking")
-        : unifiedApproval.data
+        : unifiedApproval.data?.enabled
           ? t("account.approved")
           : t("account.notApproved"),
-      statusTone: unifiedApproval.data ? "positive" : "warning",
+      statusTone: unifiedApproval.data?.enabled ? "positive" : "warning",
       actions: [
         {
           label: t("approvals.enable"),
           onClick: () => setUnifiedAccount.mutate(true),
-          disabled: setUnifiedAccount.isPending || Boolean(unifiedApproval.data),
+          disabled:
+            setUnifiedAccount.isPending || Boolean(unifiedApproval.data?.enabled),
           variant: "primary" as const,
         },
         {
           label: t("approvals.disable"),
           onClick: () => setUnifiedAccount.mutate(false),
-          disabled: setUnifiedAccount.isPending || !unifiedApproval.data,
+          disabled: setUnifiedAccount.isPending || !unifiedApproval.data?.enabled,
           variant: "secondary" as const,
         },
       ],
       error:
         setUnifiedAccount.isError && setUnifiedAccount.error instanceof Error
           ? setUnifiedAccount.error.message
-          : null,
-    },
-    {
-      key: "hip3",
-      title: t("approvals.hip3Title"),
-      description: t("approvals.hip3Description"),
-      meta: hip3Approval.data
-        ? t("approvals.hip3Enabled")
-        : t("approvals.hip3Disabled"),
-      statusLabel: hip3Approval.isLoading
-        ? t("account.checking")
-        : hip3Approval.data
-          ? t("account.approved")
-          : t("account.notApproved"),
-      statusTone: hip3Approval.data ? "positive" : "muted",
-      actions: [
-        {
-          label: t("approvals.enable"),
-          onClick: () => setHip3Abstraction.mutate(true),
-          disabled: setHip3Abstraction.isPending || Boolean(hip3Approval.data),
-          variant: "primary" as const,
-        },
-        {
-          label: t("approvals.disable"),
-          onClick: () => setHip3Abstraction.mutate(false),
-          disabled: setHip3Abstraction.isPending || !hip3Approval.data,
-          variant: "secondary" as const,
-        },
-      ],
-      error:
-        setHip3Abstraction.isError &&
-        setHip3Abstraction.error instanceof Error
-          ? setHip3Abstraction.error.message
           : null,
     },
   ];

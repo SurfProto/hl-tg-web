@@ -78,6 +78,7 @@
     "placingOrder": "Placing order...",
     "availableMargin": "Available margin $",
     "maxSize": "Max size $",
+    "collateralAsset": "Collateral asset ",
     "at": " at ",
     "limitPrice": "Limit price",
     "liquidationAt": "Liquidation at ",

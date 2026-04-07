@@ -26,6 +26,7 @@ import {
 } from "./account-state";
 import type {
   AccountState,
+  ApprovalRequirementState,
   AssetCtx,
   MarketStats,
   Order,
@@ -47,6 +48,7 @@ const STABLE_SWAP_ASSETS = getSupportedStableAssets();
 const STABLE_TRANSFER_PRECISION = 1_000_000;
 const SPOT_USDC_DUST_THRESHOLD = 0.01;
 const UNIFIED_ACCOUNT_PREFERENCE_PREFIX = "hl_pref_unified_";
+const APPROVAL_STALE_TIME = 1000 * 60 * 5;
 
 type StableSpotMarket = {
   index: number;
@@ -58,6 +60,22 @@ type ResolvedStableSwapLeg = {
   coin: string;
   side: "buy" | "sell";
   marketName: string;
+};
+
+type AgentApprovalState = {
+  address: string | null;
+  approved: boolean;
+  hasLocalKey: boolean;
+  isExpired: boolean;
+  validUntil: number | null;
+  state: ApprovalRequirementState;
+  remoteConfirmed: boolean;
+  lastVerifiedAt: number | null;
+};
+
+type UnifiedApprovalState = {
+  enabled: boolean;
+  abstractionMode: AccountState["abstractionMode"];
 };
 
 function roundStableAmount(amount: number) {
@@ -125,10 +143,10 @@ function clearUnifiedPreference(walletAddress: string): void {
   }
 }
 
-async function getAgentApprovalState(
+function getLocalAgentApprovalState(
   client: HyperliquidClient,
   walletAddress: string,
-) {
+): AgentApprovalState {
   const privateKey = getStoredAgentKey(walletAddress);
   if (!privateKey) {
     return {
@@ -137,15 +155,55 @@ async function getAgentApprovalState(
       hasLocalKey: false,
       isExpired: false,
       validUntil: null,
+      state: "missing",
+      remoteConfirmed: false,
+      lastVerifiedAt: null,
     };
   }
 
-  const address = getAgentAddress(privateKey);
-  const localExpired = isAgentKeyExpired(walletAddress);
-  const extraAgents = await client.getExtraAgents().catch(() => []);
+  if (!client.hasAgentKey()) {
+    client.setAgentKey(privateKey);
+  }
+
+  return {
+    address: getAgentAddress(privateKey),
+    approved: !isAgentKeyExpired(walletAddress),
+    hasLocalKey: true,
+    isExpired: isAgentKeyExpired(walletAddress),
+    validUntil: null,
+    state: isAgentKeyExpired(walletAddress) ? "missing" : "approved",
+    remoteConfirmed: false,
+    lastVerifiedAt: null,
+  };
+}
+
+async function getAgentApprovalState(
+  client: HyperliquidClient,
+  walletAddress: string,
+  previousState?: AgentApprovalState,
+): Promise<AgentApprovalState> {
+  const localState = getLocalAgentApprovalState(client, walletAddress);
+  if (!localState.hasLocalKey || localState.isExpired || !localState.address) {
+    return {
+      ...localState,
+      approved: false,
+      state: "missing",
+      lastVerifiedAt: Date.now(),
+    };
+  }
+
+  const extraAgents = await client.getExtraAgents().catch(() => null);
+  if (extraAgents == null) {
+    return {
+      ...localState,
+      state: "stale",
+      approved: true,
+    };
+  }
+
   const approvedAgent = extraAgents.find(
     (agent: { address?: string }) =>
-      agent.address?.toLowerCase() === address.toLowerCase(),
+      agent.address?.toLowerCase() === localState.address?.toLowerCase(),
   );
   const validUntil =
     typeof approvedAgent?.validUntil === "number"
@@ -156,14 +214,83 @@ async function getAgentApprovalState(
     storeAgentExpiry(walletAddress, validUntil);
   }
 
+  if (!approvedAgent) {
+    if (previousState?.remoteConfirmed) {
+      return {
+        ...localState,
+        approved: false,
+        state: "missing",
+        remoteConfirmed: false,
+        lastVerifiedAt: Date.now(),
+      };
+    }
+
+    return {
+      ...localState,
+      state: "stale",
+      approved: true,
+      lastVerifiedAt: previousState?.lastVerifiedAt ?? null,
+    };
+  }
+
   const remoteExpired = validUntil != null ? validUntil <= Date.now() : false;
 
   return {
-    address,
-    approved: Boolean(approvedAgent) && !localExpired && !remoteExpired,
+    ...localState,
+    approved: !remoteExpired,
     hasLocalKey: true,
-    isExpired: localExpired || remoteExpired,
+    isExpired: remoteExpired,
     validUntil,
+    state: remoteExpired ? "missing" : "approved",
+    remoteConfirmed: !remoteExpired,
+    lastVerifiedAt: Date.now(),
+  };
+}
+
+function getBuilderApprovalState(
+  feeTenthsBp: number | undefined,
+  isError: boolean,
+): ApprovalRequirementState {
+  if (!isBuilderConfigured()) return "approved";
+  if (typeof feeTenthsBp === "number") {
+    return feeTenthsBp > 0 ? "approved" : "missing";
+  }
+  return isError ? "stale" : "checking";
+}
+
+function getUnifiedApprovalState(
+  approval: UnifiedApprovalState | undefined,
+  isError: boolean,
+): ApprovalRequirementState {
+  if (approval) {
+    return approval.enabled ? "approved" : "missing";
+  }
+  return isError ? "stale" : "checking";
+}
+
+function buildTradingSetupStatus(args: {
+  abstractionMode: AccountState["abstractionMode"];
+  prefersUnifiedAccount: boolean;
+  agentApproval: AgentApprovalState | undefined;
+  builderMaxFee: number | undefined;
+  builderError: boolean;
+  unifiedApproval: UnifiedApprovalState | undefined;
+  unifiedError: boolean;
+}): TradingSetupStatus {
+  const status = evaluateTradingSetupStatus({
+    agentState: args.agentApproval?.state ?? "checking",
+    isAgentExpired: args.agentApproval?.isExpired ?? false,
+    abstractionMode: args.abstractionMode,
+    prefersUnifiedAccount: args.prefersUnifiedAccount,
+    builderState: getBuilderApprovalState(args.builderMaxFee, args.builderError),
+    unifiedState: getUnifiedApprovalState(args.unifiedApproval, args.unifiedError),
+  });
+
+  return {
+    ...status,
+    lastVerifiedAt:
+      args.agentApproval?.lastVerifiedAt ??
+      (status.isChecking ? null : Date.now()),
   };
 }
 
@@ -1114,7 +1241,7 @@ export function useBuilderFeeApproval() {
     queryKey: ["builderFeeApproval", getBuilderAddress()],
     queryFn: () => client!.getMaxBuilderFee(getBuilderAddress()),
     enabled: !!client && isBuilderConfigured(),
-    staleTime: 1000 * 60 * 5, // 5 minutes - approval doesn't change often
+    staleTime: APPROVAL_STALE_TIME,
   });
 }
 
@@ -1131,6 +1258,10 @@ export function useApproveBuilderFee() {
       return approveBuilderFeeAction(client);
     },
     onSuccess: () => {
+      queryClient.setQueryData(
+        ["builderFeeApproval", getBuilderAddress()],
+        Math.max(1, client?.getBuilderStatus().feeTenthsBp ?? 0),
+      );
       queryClient.invalidateQueries({ queryKey: ["builderFeeApproval"] });
       queryClient.invalidateQueries({ queryKey: ["openOrders"] });
     },
@@ -1147,6 +1278,7 @@ export function useRevokeBuilderFee() {
       return client.revokeBuilderFee();
     },
     onSuccess: () => {
+      queryClient.setQueryData(["builderFeeApproval", getBuilderAddress()], 0);
       queryClient.invalidateQueries({ queryKey: ["builderFeeApproval"] });
       queryClient.invalidateQueries({ queryKey: ["openOrders"] });
     },
@@ -1156,6 +1288,7 @@ export function useRevokeBuilderFee() {
 export function useAgentApprovalStatus() {
   const { client } = useHyperliquid();
   const { user } = usePrivy();
+  const queryClient = useQueryClient();
   const walletAddress = user?.wallet?.address;
 
   return useQuery({
@@ -1164,10 +1297,20 @@ export function useAgentApprovalStatus() {
       if (!client || !walletAddress) {
         throw new Error("Client not connected");
       }
-      return getAgentApprovalState(client, walletAddress);
+      return getAgentApprovalState(
+        client,
+        walletAddress,
+        queryClient.getQueryData(["agentApproval", walletAddress]) as
+          | AgentApprovalState
+          | undefined,
+      );
     },
+    initialData:
+      client && walletAddress
+        ? getLocalAgentApprovalState(client, walletAddress)
+        : undefined,
     enabled: !!client && !!walletAddress,
-    staleTime: 30_000,
+    staleTime: APPROVAL_STALE_TIME,
   });
 }
 
@@ -1188,6 +1331,17 @@ export function useApproveAgentTrading() {
       client.setAgentKey(privateKey);
     },
     onSuccess: () => {
+      const privateKey = walletAddress ? getStoredAgentKey(walletAddress) : null;
+      queryClient.setQueryData(["agentApproval", walletAddress], {
+        address: privateKey ? getAgentAddress(privateKey) : null,
+        approved: true,
+        hasLocalKey: true,
+        isExpired: false,
+        validUntil: null,
+        state: "approved",
+        remoteConfirmed: false,
+        lastVerifiedAt: Date.now(),
+      } satisfies AgentApprovalState);
       queryClient.invalidateQueries({ queryKey: ["agentApproval"] });
       queryClient.invalidateQueries({ queryKey: ["userState"] });
     },
@@ -1202,13 +1356,15 @@ export function useUnifiedAccountApproval() {
     queryFn: async () => {
       if (!client) throw new Error("Client not connected");
       const accountState = await client.getUserState();
-      return (
-        accountState.abstractionMode === "unifiedAccount" ||
-        accountState.abstractionMode === "portfolioMargin"
-      );
+      return {
+        enabled:
+          accountState.abstractionMode === "unifiedAccount" ||
+          accountState.abstractionMode === "portfolioMargin",
+        abstractionMode: accountState.abstractionMode,
+      } satisfies UnifiedApprovalState;
     },
     enabled: !!client,
-    staleTime: 30_000,
+    staleTime: APPROVAL_STALE_TIME,
   });
 }
 
@@ -1228,7 +1384,11 @@ export function useSetUnifiedAccount() {
         clearUnifiedPreference(walletAddress);
       }
     },
-    onSuccess: () => {
+    onSuccess: (_, enabled) => {
+      queryClient.setQueryData(["userState", "unifiedApproval"], {
+        enabled,
+        abstractionMode: enabled ? "unifiedAccount" : "standard",
+      } satisfies UnifiedApprovalState);
       queryClient.invalidateQueries({ queryKey: ["userState"] });
     },
   });
@@ -1268,77 +1428,116 @@ export function useSetHip3DexAbstraction() {
  * Hook to set up 1-click trading via an agent wallet.
  * On first use, signs the missing prompts needed for the current trading flow.
  */
-export function useSetupTrading(target?: { isHip3?: boolean } | null) {
+export function useSetupTrading(_target?: { isHip3?: boolean } | null) {
   const { client } = useHyperliquid();
   const { user } = usePrivy();
   const queryClient = useQueryClient();
   const walletAddress = user?.wallet?.address;
+  const agentApproval = useAgentApprovalStatus();
+  const builderApproval = useBuilderFeeApproval();
+  const unifiedApproval = useUnifiedAccountApproval();
 
-  const defaultStatus: TradingSetupStatus = useMemo(
-    () => ({
-      canTrade: false,
-      isAgentExpired: false,
-      needsAgentApproval: true,
-      needsBuilderApproval: isBuilderConfigured(),
-      needsHip3AbstractionEnable: Boolean(target?.isHip3),
-      needsUnifiedEnable: false,
-      pendingSteps: [
-        "agent",
-        ...(isBuilderConfigured() ? (["builder"] as const) : []),
-        ...(target?.isHip3 ? (["hip3"] as const) : []),
-      ],
-      shouldPromptRestoreUnified: false,
-    }),
-    [target?.isHip3],
-  );
-  const [status, setStatus] = useState<TradingSetupStatus>(defaultStatus);
+  useEffect(() => {
+    if (
+      walletAddress &&
+      unifiedApproval.data?.enabled &&
+      !getUnifiedPreference(walletAddress)
+    ) {
+      storeUnifiedPreference(walletAddress);
+    }
+  }, [walletAddress, unifiedApproval.data?.enabled]);
+
+  const status = useMemo<TradingSetupStatus>(() => {
+    if (!walletAddress) {
+      return {
+        canTrade: false,
+        isChecking: false,
+        isAgentExpired: false,
+        needsAgentApproval: true,
+        needsBuilderApproval: isBuilderConfigured(),
+        needsUnifiedEnable: false,
+        pendingSteps: ["agent", ...(isBuilderConfigured() ? (["builder"] as const) : [])],
+        blockingSteps: ["agent", ...(isBuilderConfigured() ? (["builder"] as const) : [])],
+        stepStates: {
+          agent: "missing",
+          builder: isBuilderConfigured() ? "missing" : "approved",
+          unified: "approved",
+        },
+        shouldPromptRestoreUnified: false,
+        lastVerifiedAt: null,
+      };
+    }
+
+    const unifiedState =
+      unifiedApproval.data ??
+      ({
+        enabled: false,
+        abstractionMode: "standard",
+      } satisfies UnifiedApprovalState);
+
+    return buildTradingSetupStatus({
+      abstractionMode: unifiedState.abstractionMode,
+      prefersUnifiedAccount: getUnifiedPreference(walletAddress),
+      agentApproval: agentApproval.data,
+      builderMaxFee: builderApproval.data,
+      builderError: builderApproval.isError,
+      unifiedApproval: unifiedApproval.data,
+      unifiedError: unifiedApproval.isError,
+    });
+  }, [
+    agentApproval.data,
+    builderApproval.data,
+    builderApproval.isError,
+    unifiedApproval.data,
+    unifiedApproval.isError,
+    walletAddress,
+  ]);
 
   const refreshStatus = useCallback(async () => {
     if (!client || !walletAddress) {
-      setStatus(defaultStatus);
-      return defaultStatus;
+      return status;
     }
 
-    const [agentApproval, accountState, builderMaxFee] = await Promise.all([
-      getAgentApprovalState(client, walletAddress),
-      client.getUserState(),
+    const [nextAgent, nextBuilder, nextUnified] = await Promise.all([
+      agentApproval.refetch(),
       isBuilderConfigured()
-        ? client.getMaxBuilderFee(getBuilderAddress())
-        : Promise.resolve(1),
+        ? builderApproval.refetch()
+        : Promise.resolve({ data: 1, isError: false }),
+      unifiedApproval.refetch(),
     ]);
 
-    let prefersUnifiedAccount = getUnifiedPreference(walletAddress);
-    if (
-      accountState.abstractionMode === "unifiedAccount" &&
-      !prefersUnifiedAccount
-    ) {
-      storeUnifiedPreference(walletAddress);
-      prefersUnifiedAccount = true;
-    }
+    const unifiedState =
+      nextUnified.data ??
+      ({
+        enabled: false,
+        abstractionMode: "standard",
+      } satisfies UnifiedApprovalState);
 
-    const nextStatus = evaluateTradingSetupStatus({
-      hasAgentKey: agentApproval.approved,
-      isAgentExpired: agentApproval.isExpired,
-      abstractionMode: accountState.abstractionMode,
-      prefersUnifiedAccount,
-      needsBuilderApproval: isBuilderConfigured() && builderMaxFee <= 0,
-      targetIsHip3: Boolean(target?.isHip3),
-      hip3DexAbstractionEnabled: accountState.hip3DexAbstractionEnabled,
+    const nextStatus = buildTradingSetupStatus({
+      abstractionMode: unifiedState.abstractionMode,
+      prefersUnifiedAccount: getUnifiedPreference(walletAddress),
+      agentApproval: nextAgent.data,
+      builderMaxFee: typeof nextBuilder.data === "number" ? nextBuilder.data : builderApproval.data,
+      builderError: Boolean(nextBuilder.isError),
+      unifiedApproval: nextUnified.data,
+      unifiedError: Boolean(nextUnified.isError),
     });
 
-    setStatus(nextStatus);
     return nextStatus;
-  }, [client, defaultStatus, target?.isHip3, walletAddress]);
-
-  useEffect(() => {
-    void refreshStatus();
-  }, [refreshStatus]);
+  }, [
+    agentApproval,
+    builderApproval,
+    client,
+    status,
+    unifiedApproval,
+    walletAddress,
+  ]);
 
   const setup = useMutation({
     mutationFn: async () => {
       if (!client || !walletAddress) throw new Error("Not connected");
 
-      const currentStatus = await refreshStatus();
+      const currentStatus = status.isChecking ? await refreshStatus() : status;
       let privateKey = getStoredAgentKey(walletAddress);
 
       if (currentStatus.needsAgentApproval) {
@@ -1348,25 +1547,38 @@ export function useSetupTrading(target?: { isHip3?: boolean } | null) {
         storeAgentExpiry(walletAddress, expiryMs);
         storeAgentKey(walletAddress, privateKey);
         client.setAgentKey(privateKey);
+        queryClient.setQueryData(["agentApproval", walletAddress], {
+          address: agentAddress,
+          approved: true,
+          hasLocalKey: true,
+          isExpired: false,
+          validUntil: expiryMs,
+          state: "approved",
+          remoteConfirmed: false,
+          lastVerifiedAt: Date.now(),
+        } satisfies AgentApprovalState);
       } else if (privateKey && !client.hasAgentKey()) {
         client.setAgentKey(privateKey);
       }
 
       if (currentStatus.needsBuilderApproval && isBuilderConfigured()) {
         await approveBuilderFeeAction(client);
+        queryClient.setQueryData(
+          ["builderFeeApproval", getBuilderAddress()],
+          Math.max(1, client.getBuilderStatus().feeTenthsBp),
+        );
       }
 
       if (currentStatus.needsUnifiedEnable) {
         await client.setUserAbstraction("unifiedAccount");
         storeUnifiedPreference(walletAddress);
-      }
-
-      if (currentStatus.needsHip3AbstractionEnable) {
-        await client.setUserDexAbstraction(true);
+        queryClient.setQueryData(["userState", "unifiedApproval"], {
+          enabled: true,
+          abstractionMode: "unifiedAccount",
+        } satisfies UnifiedApprovalState);
       }
     },
     onSuccess: async () => {
-      await refreshStatus();
       queryClient.invalidateQueries({ queryKey: ["agentApproval"] });
       queryClient.invalidateQueries({ queryKey: ["userState"] });
       queryClient.invalidateQueries({ queryKey: ["spotBalance"] });

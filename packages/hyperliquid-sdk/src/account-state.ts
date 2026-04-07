@@ -1,8 +1,10 @@
 import type {
   AccountAbstractionMode,
+  ApprovalRequirementState,
   StableBalanceState,
   StableSwapAsset,
   TradingSetupStatus,
+  TradingSetupStep,
   VisibleStableBalance,
 } from "@repo/types";
 
@@ -24,7 +26,7 @@ function parseBalanceAmount(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function inferCollateralAsset(marketName: string): StableSwapAsset {
+export function getMarketCollateralAsset(marketName: string): StableSwapAsset {
   const match = marketName.toUpperCase().match(/-(USDC|USDH|USDT|USDE)\b/);
   const asset = match?.[1] as StableSwapAsset | undefined;
   return asset ?? "USDC";
@@ -149,7 +151,7 @@ export function getAvailableCollateralForMarket({
   fallbackWithdrawable: number;
   marketName: string;
 }): number {
-  const collateralAsset = inferCollateralAsset(marketName);
+  const collateralAsset = getMarketCollateralAsset(marketName);
 
   if (abstractionMode === "dexAbstraction") {
     if (collateralAsset === "USDC") {
@@ -165,52 +167,59 @@ export function getAvailableCollateralForMarket({
     return stableBalances[collateralAsset]?.available ?? 0;
   }
 
-  return fallbackWithdrawable;
+  if (collateralAsset === "USDC") {
+    return fallbackWithdrawable;
+  }
+
+  return stableBalances[collateralAsset]?.available ?? 0;
 }
 
 export function evaluateTradingSetupStatus({
-  hasAgentKey,
+  agentState,
   isAgentExpired,
   abstractionMode,
   prefersUnifiedAccount,
-  needsBuilderApproval,
-  targetIsHip3,
-  hip3DexAbstractionEnabled,
+  builderState,
+  unifiedState,
 }: {
-  hasAgentKey: boolean;
+  agentState: ApprovalRequirementState;
   isAgentExpired: boolean;
   abstractionMode: AccountAbstractionMode;
   prefersUnifiedAccount: boolean;
-  needsBuilderApproval: boolean;
-  targetIsHip3: boolean;
-  hip3DexAbstractionEnabled: boolean | null;
+  builderState: ApprovalRequirementState;
+  unifiedState: ApprovalRequirementState;
 }): TradingSetupStatus {
-  const needsAgentApproval = !hasAgentKey || isAgentExpired;
+  const needsAgentApproval = agentState === "missing";
   const shouldPromptRestoreUnified =
     prefersUnifiedAccount && abstractionMode === "standard";
-  const needsUnifiedEnable = abstractionMode === "standard";
-  const needsHip3AbstractionEnable =
-    targetIsHip3 && !hip3DexAbstractionEnabled;
-  const pendingSteps = [
+  const needsBuilderApproval = builderState === "missing";
+  const needsUnifiedEnable = unifiedState === "missing";
+  const blockingSteps = [
     needsAgentApproval ? "agent" : null,
     needsBuilderApproval ? "builder" : null,
     needsUnifiedEnable ? "unified" : null,
-    needsHip3AbstractionEnable ? "hip3" : null,
-  ].filter((step): step is "agent" | "builder" | "unified" | "hip3" => step != null);
+  ].filter((step): step is TradingSetupStep => step != null);
+  const isChecking =
+    agentState === "checking" ||
+    builderState === "checking" ||
+    unifiedState === "checking";
 
   return {
-    canTrade:
-      !needsAgentApproval &&
-      !needsBuilderApproval &&
-      !needsUnifiedEnable &&
-      !needsHip3AbstractionEnable,
+    canTrade: blockingSteps.length === 0 && !isChecking,
+    isChecking,
     isAgentExpired,
     needsAgentApproval,
     needsBuilderApproval,
-    needsHip3AbstractionEnable,
     needsUnifiedEnable,
-    pendingSteps,
+    pendingSteps: blockingSteps,
+    blockingSteps,
+    stepStates: {
+      agent: agentState,
+      builder: builderState,
+      unified: unifiedState,
+    },
     shouldPromptRestoreUnified,
+    lastVerifiedAt: isChecking ? null : Date.now(),
   };
 }
 

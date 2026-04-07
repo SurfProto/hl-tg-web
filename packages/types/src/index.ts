@@ -72,6 +72,12 @@ export type AccountAbstractionMode =
   | "portfolioMargin"
   | "dexAbstraction"
   | "unknown";
+export type ApprovalRequirementState =
+  | "checking"
+  | "approved"
+  | "missing"
+  | "stale";
+export type TradingSetupStep = "agent" | "builder" | "unified";
 
 export interface StableBalanceState {
   total: number;
@@ -95,13 +101,16 @@ export interface VisibleStableBalance extends StableBalanceState {
 
 export interface TradingSetupStatus {
   canTrade: boolean;
+  isChecking: boolean;
   isAgentExpired: boolean;
   needsAgentApproval: boolean;
   needsBuilderApproval: boolean;
-  needsHip3AbstractionEnable: boolean;
   needsUnifiedEnable: boolean;
-  pendingSteps: Array<"agent" | "builder" | "unified" | "hip3">;
+  pendingSteps: TradingSetupStep[];
+  blockingSteps: TradingSetupStep[];
+  stepStates: Record<TradingSetupStep, ApprovalRequirementState>;
   shouldPromptRestoreUnified: boolean;
+  lastVerifiedAt: number | null;
 }
 
 export interface Order {

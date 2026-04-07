@@ -105,7 +105,7 @@ export function BalanceHero() {
           <button
             type="button"
             onClick={() => navigate("/account/deposit")}
-            className="rounded-full bg-primary px-5 py-3 text-sm font-semibold text-white transition-colors active:bg-primary-dark"
+            className="flex-shrink-0 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-white transition-colors active:bg-primary-dark"
           >
             {t("balanceHero.deposit")}
           </button>

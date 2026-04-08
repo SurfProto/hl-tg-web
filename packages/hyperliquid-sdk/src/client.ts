@@ -829,12 +829,38 @@ export class HyperliquidClient {
           "HIP-3 abstraction approval failed. Approve the signature in your wallet and try again.",
         );
       }
-      if (lowerMessage.includes("failed with status 429") || lowerMessage.includes("after retries")) {
+      if (lowerMessage.includes("429") || lowerMessage.includes("rate limit") || lowerMessage.includes("after retries")) {
         throw new Error("Rate limited — please try again in a moment.");
       }
       throw new Error(error.message);
     }
     throw new Error(`${action} failed`);
+  }
+
+  // Wrapper around the @nktkas/hyperliquid SDK client.order() that retries on
+  // HTTP 429. The SDK handles its own HTTP transport so our postExchange retry
+  // doesn't cover these calls. Same 3-attempt exponential backoff as postInfo.
+  private async retryOrder(
+    clientInstance: Awaited<ReturnType<typeof this.getTradingClient>>,
+    params: Parameters<typeof clientInstance.order>[0],
+  ) {
+    const maxRetries = 3;
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await clientInstance.order(params);
+      } catch (error) {
+        lastError = error;
+        const msg = error instanceof Error ? error.message.toLowerCase() : "";
+        const is429 = msg.includes("429") || msg.includes("rate limit");
+        if (is429 && attempt < maxRetries) {
+          await new Promise((res) => setTimeout(res, 500 * 2 ** attempt));
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw lastError;
   }
 
   private unwrapStatuses(response: any) {
@@ -1386,7 +1412,7 @@ export class HyperliquidClient {
       ]);
 
       return this.unwrapStatuses(
-        await client.order({
+        await this.retryOrder(client, {
           orders: [
             {
               a: normalized.market.asset,
@@ -1426,7 +1452,7 @@ export class HyperliquidClient {
       const builder = await this.ensureBuilderApproval();
 
       return this.unwrapStatuses(
-        await client.order({
+        await this.retryOrder(client, {
           orders: [
             {
               a: normalized.market.asset,
@@ -1630,7 +1656,7 @@ export class HyperliquidClient {
       const builder = await this.ensureBuilderApproval();
 
       return this.unwrapStatuses(
-        await client.order({
+        await this.retryOrder(client, {
           orders: triggerOrders.map((triggerOrder) => ({
             a: triggerOrder.market.asset,
             b: triggerOrder.side === "buy",
@@ -1689,7 +1715,7 @@ export class HyperliquidClient {
       const builder = await this.ensureBuilderApproval();
 
       return this.unwrapStatuses(
-        await client.order({
+        await this.retryOrder(client, {
           orders: [
             {
               a: market.asset,
@@ -1891,7 +1917,7 @@ export class HyperliquidClient {
       const builder = await this.ensureBuilderApproval();
 
       return this.unwrapStatuses(
-        await client.order({
+        await this.retryOrder(client, {
           orders: [
             {
               a: normalized.market.asset,

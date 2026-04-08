@@ -38,6 +38,12 @@ interface TelegramWebApp {
 
 interface Window {
   Telegram?: { WebApp?: TelegramWebApp };
+  __APP_LOGS__?: Array<{
+    level: 'debug' | 'info' | 'warn' | 'error';
+    message: string;
+    context?: unknown;
+    timestamp: string;
+  }>;
   requestIdleCallback?: (
     callback: (deadline: { readonly didTimeout: boolean; timeRemaining(): number }) => void,
     options?: { timeout?: number },

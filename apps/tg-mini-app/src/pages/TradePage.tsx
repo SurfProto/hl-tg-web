@@ -64,7 +64,6 @@ export function TradePage() {
   );
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [setupVisible, setSetupVisible] = useState(false);
-  const [isCheckingTradingAccess, setIsCheckingTradingAccess] = useState(false);
   const setupWalletRef = useRef<string | null>(null);
 
   const side: "buy" | "sell" = useMemo(() => {
@@ -87,7 +86,6 @@ export function TradePage() {
   );
   const {
     status: tradingStatus,
-    refreshStatus: refreshTradingStatus,
     setup: tradingSetup,
   } = useSetupTrading({ isHip3: Boolean(selectedPerpMarket?.isHip3) });
 
@@ -303,8 +301,7 @@ export function TradePage() {
 
   const isPending =
     placeOrder.isPending ||
-    upsertPositionProtection.isPending ||
-    isCheckingTradingAccess;
+    upsertPositionProtection.isPending;
   const isSubmitDisabled = amountNum === 0 || isPending || !validation.isValid;
 
   const handleAmountChange = (value: string) => {
@@ -375,18 +372,7 @@ export function TradePage() {
     haptics.medium();
 
     if (authenticated) {
-      let nextTradingStatus = tradingStatus;
-
-      if (nextTradingStatus.isChecking) {
-        setIsCheckingTradingAccess(true);
-        try {
-          nextTradingStatus = await refreshTradingStatus();
-        } finally {
-          setIsCheckingTradingAccess(false);
-        }
-      }
-
-      if (!nextTradingStatus.canTrade && nextTradingStatus.blockingSteps.length > 0) {
+      if (!tradingStatus.canTrade && tradingStatus.blockingSteps.length > 0) {
         const walletAddress = user?.wallet?.address ?? null;
         if (setupWalletRef.current !== walletAddress || !setupVisible) {
           tradingSetup.reset();
@@ -712,11 +698,9 @@ export function TradePage() {
               side === "buy" ? "bg-primary" : "bg-secondary"
             }`}
           >
-            {isCheckingTradingAccess
-              ? t("account.checking")
-              : isPending
-                ? t("trade.placingOrder")
-                : ctaLabel}
+            {isPending
+              ? t("trade.placingOrder")
+              : ctaLabel}
           </button>
         )}
 

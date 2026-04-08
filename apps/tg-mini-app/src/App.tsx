@@ -4,12 +4,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { PrivyProvider, usePrivy, type User } from "@privy-io/react-auth";
 import { useTranslation } from "react-i18next";
 import { arbitrum } from "viem/chains";
+import { useSetupTrading } from "@repo/hyperliquid-sdk";
 import { Layout } from "./components/Layout";
 import { HomePage } from "./pages/HomePage";
 import { ensureUser, getTelegramProfile } from "./lib/supabase";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ToastProvider } from "./components/Toast";
 import { PortfolioRangeProvider } from "./hooks/usePortfolioRange";
+import { log } from "./lib/logger";
 import "./index.css";
 import "./lib/i18n";
 
@@ -173,7 +175,20 @@ function RouteFallback() {
   );
 }
 
-function TelegramAuthGate({ children }: { children: React.ReactNode }) {
+// Fire-and-forget prefetch for the three trading-approval queries.
+// Mounting useSetupTrading is enough — it triggers useBuilderFeeApproval,
+// useAgentApprovalStatus, and useUnifiedAccountApproval in one call.
+// Renders null so it has zero visual impact.
+function TradingSetupPrefetcher() {
+  useSetupTrading();
+  return null;
+}
+
+export function TelegramAuthGate({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const privy = usePrivy() as unknown as PrivyWithTelegram;
   const { t } = useTranslation();
   const { ready, authenticated, user, loginWithTelegram } = privy;
@@ -186,6 +201,7 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
 
     setLoginError(null);
     loginWithTelegram().catch((err: unknown) => {
+      log.warn("[auth] Telegram login failed", { error: err });
       const message =
         err instanceof Error ? err.message : t("errors.loginFailed");
       setLoginError(message);
@@ -226,6 +242,7 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
           onClick={() => {
             setLoginError(null);
             loginWithTelegram().catch((err: unknown) => {
+              log.warn("[auth] Telegram login retry failed", { error: err });
               const message =
                 err instanceof Error
                   ? err.message
@@ -240,7 +257,12 @@ function TelegramAuthGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <TradingSetupPrefetcher />
+      {children}
+    </>
+  );
 }
 
 function AppContent() {

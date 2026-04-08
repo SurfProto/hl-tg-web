@@ -274,19 +274,30 @@ export class HyperliquidClient {
   }
 
   private async postExchange<T>(body: Record<string, unknown>): Promise<T> {
-    const response = await fetch(`${this.getHttpApiUrl()}/exchange`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
+    const maxRetries = 3;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const signal = AbortSignal.timeout(15_000); // 15s hard deadline per attempt
+      const response = await fetch(`${this.getHttpApiUrl()}/exchange`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal,
+      });
 
-    if (!response.ok) {
-      throw new Error(`Exchange request failed with status ${response.status}`);
+      if (response.status === 429 && attempt < maxRetries) {
+        await new Promise((res) => setTimeout(res, 500 * 2 ** attempt)); // 500ms, 1s, 2s
+        continue;
+      }
+
+      if (!response.ok) {
+        throw new Error(`Exchange request failed with status ${response.status}`);
+      }
+
+      return response.json() as Promise<T>;
     }
-
-    return response.json() as Promise<T>;
+    throw new Error("Exchange request failed after retries");
   }
 
   private async sendUserSignedAction(args: {
@@ -817,6 +828,9 @@ export class HyperliquidClient {
         throw new Error(
           "HIP-3 abstraction approval failed. Approve the signature in your wallet and try again.",
         );
+      }
+      if (lowerMessage.includes("failed with status 429") || lowerMessage.includes("after retries")) {
+        throw new Error("Rate limited — please try again in a moment.");
       }
       throw new Error(error.message);
     }
@@ -1541,43 +1555,77 @@ export class HyperliquidClient {
         }
       }
 
-      if (!request.skipCancelExisting) {
-        await this.cancelPositionProtection(market.name);
-      }
-
-      const triggerOrders = await Promise.all(
-        [
-          stopLossPx != null
-            ? this.normalizeTriggerOrder({
-                coin: market.name,
-                side,
-                size,
-                triggerPx: stopLossPx,
-                triggerKind: "stopLoss",
-                reduceOnly: true,
-                marketType: "perp",
-              })
-            : null,
-          takeProfitPx != null
-            ? this.normalizeTriggerOrder({
-                coin: market.name,
-                side,
-                size,
-                triggerPx: takeProfitPx,
-                triggerKind: "takeProfit",
-                reduceOnly: true,
-                marketType: "perp",
-              })
-            : null,
-        ].filter(
-          (value): value is Promise<NormalizedTriggerOrderContext> =>
-            value != null,
-        ),
+      // --- Diff-based upsert: only cancel/place the sides that actually changed ---
+      // Classify current open orders for this coin into SL and TP buckets.
+      const existingOrders = request.skipCancelExisting
+        ? []
+        : await this.getOpenOrders();
+      const existingForCoin = existingOrders.filter(
+        (o) => o.coin === market.name && o.isTrigger && o.reduceOnly,
       );
 
-      if (triggerOrders.length === 0) {
+      // Classify each existing trigger order as SL or TP using price-vs-reference comparison
+      // (same logic as classifyProtectionOrder in protection.ts).
+      const existingSl = existingForCoin.find((o) => {
+        if (o.triggerPx == null) return false;
+        return isLong ? o.triggerPx < referencePrice : o.triggerPx > referencePrice;
+      }) ?? null;
+      const existingTp = existingForCoin.find((o) => {
+        if (o.triggerPx == null) return false;
+        return isLong ? o.triggerPx > referencePrice : o.triggerPx < referencePrice;
+      }) ?? null;
+
+      // Determine which sides need a cancel and/or a place.
+      const cancelOids: number[] = [];
+      const toPlace: Array<{ triggerPx: number; triggerKind: "stopLoss" | "takeProfit" }> = [];
+
+      // SL side
+      const slChanged =
+        stopLossPx !== (existingSl?.triggerPx ?? null);
+      if (slChanged) {
+        if (existingSl) cancelOids.push(existingSl.oid);
+        if (stopLossPx != null) toPlace.push({ triggerPx: stopLossPx, triggerKind: "stopLoss" });
+      }
+
+      // TP side
+      const tpChanged =
+        takeProfitPx !== (existingTp?.triggerPx ?? null);
+      if (tpChanged) {
+        if (existingTp) cancelOids.push(existingTp.oid);
+        if (takeProfitPx != null) toPlace.push({ triggerPx: takeProfitPx, triggerKind: "takeProfit" });
+      }
+
+      if (cancelOids.length === 0 && toPlace.length === 0) {
+        throw new Error("No protection changes to apply.");
+      }
+
+      // Batch cancel (single API call for all cancels)
+      if (cancelOids.length > 0) {
+        await this.unwrapStatuses(
+          await client.cancel({
+            cancels: cancelOids.map((o) => ({ a: market.asset, o })),
+          }),
+        );
+      }
+
+      if (toPlace.length === 0) {
         return;
       }
+
+      // Normalize and place all new orders in one batch
+      const triggerOrders = await Promise.all(
+        toPlace.map(({ triggerPx, triggerKind }) =>
+          this.normalizeTriggerOrder({
+            coin: market.name,
+            side,
+            size,
+            triggerPx,
+            triggerKind,
+            reduceOnly: true,
+            marketType: "perp",
+          }),
+        ),
+      );
 
       const builder = await this.ensureBuilderApproval();
 
@@ -1616,7 +1664,7 @@ export class HyperliquidClient {
     try {
       const client = await this.getTradingClient();
       const market = await this.resolveMarket(coin, "perp");
-      const userState = await this.getUserState({ fresh: true });
+      const userState = await this.getUserState();
       const position = userState.assetPositions.find(
         (assetPosition) => assetPosition.position.coin === market.name,
       )?.position;

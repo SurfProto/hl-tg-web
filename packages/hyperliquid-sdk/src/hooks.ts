@@ -640,9 +640,12 @@ export function useUpsertPositionProtection() {
       return client.upsertPositionProtection(request);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["userState"] });
-      queryClient.invalidateQueries({ queryKey: ["openOrders"] });
-      queryClient.invalidateQueries({ queryKey: ["fills"] });
+      queryClient.invalidateQueries({
+        predicate: (q) => {
+          const k = q.queryKey[0];
+          return k === "userState" || k === "openOrders" || k === "fills";
+        },
+      });
     },
   });
 }
@@ -660,9 +663,12 @@ export function useCancelPositionProtection() {
       return client.cancelPositionProtection(coin);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["userState"] });
-      queryClient.invalidateQueries({ queryKey: ["openOrders"] });
-      queryClient.invalidateQueries({ queryKey: ["fills"] });
+      queryClient.invalidateQueries({
+        predicate: (q) => {
+          const k = q.queryKey[0];
+          return k === "userState" || k === "openOrders" || k === "fills";
+        },
+      });
     },
   });
 }
@@ -680,9 +686,12 @@ export function useClosePosition() {
       return client.closePosition(coin);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["userState"] });
-      queryClient.invalidateQueries({ queryKey: ["openOrders"] });
-      queryClient.invalidateQueries({ queryKey: ["fills"] });
+      queryClient.invalidateQueries({
+        predicate: (q) => {
+          const k = q.queryKey[0];
+          return k === "userState" || k === "openOrders" || k === "fills";
+        },
+      });
     },
   });
 }

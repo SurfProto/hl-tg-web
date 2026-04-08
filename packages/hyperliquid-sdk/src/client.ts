@@ -40,7 +40,11 @@ import { WebSocketManager } from "./ws";
 let HyperliquidSDK: any = null;
 let HyperliquidSigning: any = null;
 
-async function loadHyperliquidSDK() {
+// Exported so that apps can fire-and-forget pre-warm these dynamic imports
+// during cold start (e.g. from main.tsx right after telegram bootstrap).
+// The chunk download + parse then overlaps with React mount / Privy auth,
+// removing the ~300–700ms penalty on the first order of a session.
+export async function loadHyperliquidSDK() {
   if (!HyperliquidSDK) {
     const module = await import("@nktkas/hyperliquid");
     HyperliquidSDK = module;
@@ -48,7 +52,7 @@ async function loadHyperliquidSDK() {
   return HyperliquidSDK;
 }
 
-async function loadHyperliquidSigning() {
+export async function loadHyperliquidSigning() {
   if (!HyperliquidSigning) {
     const module = await import("@nktkas/hyperliquid/signing");
     HyperliquidSigning = module;
@@ -211,6 +215,7 @@ export class HyperliquidClient {
   private marketCache: MarketCache | null = null;
   private builderApprovalCache: { result: ReturnType<typeof getBuilderConfig>; expiresAt: number } | null = null;
   private userStateCache: { data: AccountState; expiresAt: number } | null = null;
+  private midsCache: { data: Record<string, string>; expiresAt: number } | null = null;
   private assetCtxsCache: {
     data: any[];
     perpUniverse: any[];
@@ -1062,8 +1067,14 @@ export class HyperliquidClient {
     );
   }
 
-  // Get market prices
+  // Get market prices. 3s TTL cache — accepted trade-off:
+  // IOC market orders carry a ±3% aggressive buffer (see getAggressiveMarketPrice),
+  // so a stale mid only fails to match when the live price moves ≥3% adversely
+  // within the 3-second window. See plan: ancient-hugging-alpaca.md Fix #1.
   async getMids() {
+    if (this.midsCache && Date.now() < this.midsCache.expiresAt) {
+      return this.midsCache.data;
+    }
     const cache = await this.ensureMarketCache();
     const [baseMids, ...dexMids] = await Promise.all([
       this.postInfo<Record<string, string>>({ type: "allMids" }),
@@ -1082,6 +1093,7 @@ export class HyperliquidClient {
         merged[`${dexResult.dex}:${bareCoin}`] = price;
       });
     }
+    this.midsCache = { data: merged, expiresAt: Date.now() + 3000 };
     return merged;
   }
 

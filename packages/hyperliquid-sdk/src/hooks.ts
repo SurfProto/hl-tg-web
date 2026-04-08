@@ -48,7 +48,6 @@ const STABLE_SWAP_ASSETS = getSupportedStableAssets();
 const STABLE_TRANSFER_PRECISION = 1_000_000;
 const SPOT_USDC_DUST_THRESHOLD = 0.01;
 const UNIFIED_ACCOUNT_PREFERENCE_PREFIX = "hl_pref_unified_";
-const APPROVAL_STALE_TIME = 1000 * 60 * 5;
 
 type StableSpotMarket = {
   index: number;
@@ -138,6 +137,66 @@ function clearUnifiedPreference(walletAddress: string): void {
     window.localStorage.removeItem(
       `${UNIFIED_ACCOUNT_PREFERENCE_PREFIX}${walletAddress.toLowerCase()}`,
     );
+  } catch {
+    // ignore localStorage errors in embedded environments
+  }
+}
+
+// Persisted builder/unified approval state. These back `initialData` on the
+// useBuilderFeeApproval / useUnifiedAccountApproval queries so the trading
+// setup status is never "checking" on TradePage mount — eliminating the
+// ~500ms first-tap delay. See plan: ancient-hugging-alpaca.md Fix #3.
+const BUILDER_APPROVED_KEY = (addr: string) =>
+  `hl-builder-approved:${addr.toLowerCase()}`;
+const UNIFIED_MODE_KEY = (addr: string) =>
+  `hl-unified-mode:${addr.toLowerCase()}`;
+
+function getStoredBuilderApproved(addr: string): number | undefined {
+  try {
+    const v = window.localStorage.getItem(BUILDER_APPROVED_KEY(addr));
+    // Sentinel: "1" means approved (any positive feeTenthsBp), "0" means not.
+    // Using 1 as the positive sentinel satisfies the `feeTenthsBp > 0` check
+    // that downstream consumers run against this value.
+    if (v === "1") return 1;
+    if (v === "0") return 0;
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function storeBuilderApproved(addr: string, feeTenthsBp: number): void {
+  try {
+    window.localStorage.setItem(
+      BUILDER_APPROVED_KEY(addr),
+      feeTenthsBp > 0 ? "1" : "0",
+    );
+  } catch {
+    // ignore localStorage errors in embedded environments
+  }
+}
+
+function getStoredUnifiedMode(
+  addr: string,
+): UnifiedApprovalState | undefined {
+  try {
+    const v = window.localStorage.getItem(UNIFIED_MODE_KEY(addr));
+    if (!v) return undefined;
+    return {
+      enabled: v === "unifiedAccount" || v === "portfolioMargin",
+      abstractionMode: v as AccountState["abstractionMode"],
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function storeUnifiedMode(
+  addr: string,
+  mode: AccountState["abstractionMode"],
+): void {
+  try {
+    window.localStorage.setItem(UNIFIED_MODE_KEY(addr), String(mode));
   } catch {
     // ignore localStorage errors in embedded environments
   }
@@ -1236,12 +1295,23 @@ export function useSwapUsdcUsdh() {
  */
 export function useBuilderFeeApproval() {
   const { client } = useHyperliquid();
+  const { user } = usePrivy();
+  const walletAddress = user?.wallet?.address;
 
   return useQuery({
-    queryKey: ["builderFeeApproval", getBuilderAddress()],
-    queryFn: () => client!.getMaxBuilderFee(getBuilderAddress()),
+    queryKey: ["builderFeeApproval", getBuilderAddress(), walletAddress],
+    queryFn: async () => {
+      const fee = await client!.getMaxBuilderFee(getBuilderAddress());
+      if (walletAddress) storeBuilderApproved(walletAddress, fee);
+      return fee;
+    },
+    initialData: walletAddress
+      ? getStoredBuilderApproved(walletAddress)
+      : undefined,
     enabled: !!client && isBuilderConfigured(),
-    staleTime: APPROVAL_STALE_TIME,
+    // Check only once per session. Revocation mid-session surfaces via the
+    // order-placement error path. See plan Fix #3.
+    staleTime: Infinity,
   });
 }
 
@@ -1250,7 +1320,9 @@ export function useBuilderFeeApproval() {
  */
 export function useApproveBuilderFee() {
   const { client } = useHyperliquid();
+  const { user } = usePrivy();
   const queryClient = useQueryClient();
+  const walletAddress = user?.wallet?.address;
 
   return useMutation({
     mutationFn: async () => {
@@ -1258,10 +1330,12 @@ export function useApproveBuilderFee() {
       return approveBuilderFeeAction(client);
     },
     onSuccess: () => {
+      const fee = Math.max(1, client?.getBuilderStatus().feeTenthsBp ?? 0);
       queryClient.setQueryData(
-        ["builderFeeApproval", getBuilderAddress()],
-        Math.max(1, client?.getBuilderStatus().feeTenthsBp ?? 0),
+        ["builderFeeApproval", getBuilderAddress(), walletAddress],
+        fee,
       );
+      if (walletAddress) storeBuilderApproved(walletAddress, fee);
       queryClient.invalidateQueries({ queryKey: ["builderFeeApproval"] });
       queryClient.invalidateQueries({ queryKey: ["openOrders"] });
     },
@@ -1270,7 +1344,9 @@ export function useApproveBuilderFee() {
 
 export function useRevokeBuilderFee() {
   const { client } = useHyperliquid();
+  const { user } = usePrivy();
   const queryClient = useQueryClient();
+  const walletAddress = user?.wallet?.address;
 
   return useMutation({
     mutationFn: async () => {
@@ -1278,7 +1354,11 @@ export function useRevokeBuilderFee() {
       return client.revokeBuilderFee();
     },
     onSuccess: () => {
-      queryClient.setQueryData(["builderFeeApproval", getBuilderAddress()], 0);
+      queryClient.setQueryData(
+        ["builderFeeApproval", getBuilderAddress(), walletAddress],
+        0,
+      );
+      if (walletAddress) storeBuilderApproved(walletAddress, 0);
       queryClient.invalidateQueries({ queryKey: ["builderFeeApproval"] });
       queryClient.invalidateQueries({ queryKey: ["openOrders"] });
     },
@@ -1310,7 +1390,9 @@ export function useAgentApprovalStatus() {
         ? getLocalAgentApprovalState(client, walletAddress)
         : undefined,
     enabled: !!client && !!walletAddress,
-    staleTime: APPROVAL_STALE_TIME,
+    // Check once per session. Mid-session invalidation surfaces via the
+    // order-placement error path. See plan Fix #4.
+    staleTime: Infinity,
   });
 }
 
@@ -1350,21 +1432,28 @@ export function useApproveAgentTrading() {
 
 export function useUnifiedAccountApproval() {
   const { client } = useHyperliquid();
+  const { user } = usePrivy();
+  const walletAddress = user?.wallet?.address;
 
   return useQuery({
-    queryKey: ["userState", "unifiedApproval"],
+    queryKey: ["userState", "unifiedApproval", walletAddress],
     queryFn: async () => {
       if (!client) throw new Error("Client not connected");
       const accountState = await client.getUserState();
-      return {
+      const result = {
         enabled:
           accountState.abstractionMode === "unifiedAccount" ||
           accountState.abstractionMode === "portfolioMargin",
         abstractionMode: accountState.abstractionMode,
       } satisfies UnifiedApprovalState;
+      if (walletAddress) storeUnifiedMode(walletAddress, result.abstractionMode);
+      return result;
     },
+    initialData: walletAddress ? getStoredUnifiedMode(walletAddress) : undefined,
     enabled: !!client,
-    staleTime: APPROVAL_STALE_TIME,
+    // Check once per session. Mid-session revocation surfaces via the
+    // order-placement error path. See plan Fix #3.
+    staleTime: Infinity,
   });
 }
 
@@ -1385,10 +1474,15 @@ export function useSetUnifiedAccount() {
       }
     },
     onSuccess: (_, enabled) => {
-      queryClient.setQueryData(["userState", "unifiedApproval"], {
+      const next: UnifiedApprovalState = {
         enabled,
         abstractionMode: enabled ? "unifiedAccount" : "standard",
-      } satisfies UnifiedApprovalState);
+      };
+      queryClient.setQueryData(
+        ["userState", "unifiedApproval", walletAddress],
+        next,
+      );
+      if (walletAddress) storeUnifiedMode(walletAddress, next.abstractionMode);
       queryClient.invalidateQueries({ queryKey: ["userState"] });
     },
   });
@@ -1563,19 +1657,25 @@ export function useSetupTrading(_target?: { isHip3?: boolean } | null) {
 
       if (currentStatus.needsBuilderApproval && isBuilderConfigured()) {
         await approveBuilderFeeAction(client);
+        const fee = Math.max(1, client.getBuilderStatus().feeTenthsBp);
         queryClient.setQueryData(
-          ["builderFeeApproval", getBuilderAddress()],
-          Math.max(1, client.getBuilderStatus().feeTenthsBp),
+          ["builderFeeApproval", getBuilderAddress(), walletAddress],
+          fee,
         );
+        storeBuilderApproved(walletAddress, fee);
       }
 
       if (currentStatus.needsUnifiedEnable) {
         await client.setUserAbstraction("unifiedAccount");
         storeUnifiedPreference(walletAddress);
-        queryClient.setQueryData(["userState", "unifiedApproval"], {
-          enabled: true,
-          abstractionMode: "unifiedAccount",
-        } satisfies UnifiedApprovalState);
+        queryClient.setQueryData(
+          ["userState", "unifiedApproval", walletAddress],
+          {
+            enabled: true,
+            abstractionMode: "unifiedAccount",
+          } satisfies UnifiedApprovalState,
+        );
+        storeUnifiedMode(walletAddress, "unifiedAccount");
       }
     },
     onSuccess: async () => {

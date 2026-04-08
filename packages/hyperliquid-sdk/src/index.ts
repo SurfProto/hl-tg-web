@@ -1,6 +1,9 @@
 // Main exports
 export { HyperliquidClient } from "./client";
 export type { HyperliquidClientConfig } from "./client";
+// Dynamic-import pre-warm loaders. Call these fire-and-forget at app bootstrap
+// so the @nktkas/hyperliquid chunk is parsed before the first order.
+export { loadHyperliquidSDK, loadHyperliquidSigning } from "./client";
 export {
   formatOrderSize,
   inferSzDecimalsFromMinBaseSize,

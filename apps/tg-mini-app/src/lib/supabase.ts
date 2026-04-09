@@ -6,6 +6,7 @@ interface EnsureUserInput {
   privyUserId?: string;
   username?: string;
   walletAddress?: string;
+  email?: string;
   language?: string;
 }
 
@@ -32,6 +33,7 @@ export async function ensureUser(input: EnsureUserInput) {
         wallet_address: input.walletAddress ?? null,
         privy_user_id: input.privyUserId ?? null,
         username: input.username ?? null,
+        email: input.email ?? null,
         language: input.language ?? 'en',
       };
       const { data, error } = await supabase
@@ -47,6 +49,7 @@ export async function ensureUser(input: EnsureUserInput) {
         wallet_address: input.walletAddress!,
         privy_user_id: input.privyUserId ?? null,
         username: input.username ?? null,
+        email: input.email ?? null,
         language: input.language ?? 'en',
       };
       const { data, error } = await supabase

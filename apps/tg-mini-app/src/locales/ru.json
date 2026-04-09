@@ -293,7 +293,14 @@
     "bridging": "Выполняется перевод...",
     "bridgeSubmitted": "Перевод отправлен. Баланс Hyperliquid обновится примерно через минуту.",
     "bridgeInfo": "Минимальная сумма 5 USDC. Отправляйте только USDC на Arbitrum One.",
-    "bridgeFailed": "Не удалось выполнить перевод"
+    "bridgeFailed": "Не удалось выполнить перевод",
+    "usePrivyWallet": "Privy кошелёк",
+    "useExternalTrc20": "Внешний TRC20",
+    "trc20AddressLabel": "Ваш адрес USDT (TRC20)",
+    "trc20AddressHint": "Введите адрес Tron-кошелька для получения USDT",
+    "trc20AddressPlaceholder": "T...",
+    "trc20AddressRequired": "Для начала пополнения необходим адрес TRC20",
+    "trc20AddressInvalid": "Введите корректный Tron-адрес (начинается с T, 34 символа)"
   },
   "withdraw": {
     "title": "Вывод USDC",

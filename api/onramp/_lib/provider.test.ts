@@ -29,7 +29,8 @@ describe("providerRequest", () => {
     );
 
     await expect(precalcOnramp(config, 1000)).rejects.toMatchObject({
-      message: "Onramp provider returned HTML for /externals/cex/precalc",
+      message:
+        "Onramp provider returned HTML for /externals/cex/precalc (host: provider.example, status: 502, content-type: text/html)",
     });
   });
 
@@ -44,7 +45,8 @@ describe("providerRequest", () => {
     );
 
     await expect(precalcOnramp(config, 1000)).rejects.toMatchObject({
-      message: "Onramp provider returned invalid JSON for /externals/cex/precalc",
+      message:
+        "Onramp provider returned invalid JSON for /externals/cex/precalc (host: provider.example, status: 200, content-type: application/json)",
     });
   });
 });

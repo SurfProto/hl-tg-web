@@ -89,12 +89,13 @@ async function providerRequest<T>(
 
   const rawBody = await response.text();
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  const diagnosticSuffix = ` (host: ${url.host}, status: ${response.status || 0}, content-type: ${contentType || "unknown"})`;
 
   if (contentType.includes("text/html") || looksLikeHtml(rawBody)) {
     throw new HttpError(
       response.status || 502,
       "PROVIDER_HTML_RESPONSE",
-      `Onramp provider returned HTML for ${input.path}`,
+      `Onramp provider returned HTML for ${input.path}${diagnosticSuffix}`,
     );
   }
 
@@ -105,7 +106,7 @@ async function providerRequest<T>(
     throw new HttpError(
       response.status || 502,
       "PROVIDER_INVALID_JSON",
-      `Onramp provider returned invalid JSON for ${input.path}`,
+      `Onramp provider returned invalid JSON for ${input.path}${diagnosticSuffix}`,
     );
   }
 

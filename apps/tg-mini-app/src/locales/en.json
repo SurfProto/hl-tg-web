@@ -318,6 +318,11 @@
     "bridgeSubmitted": "Bridge submitted. Hyperliquid balance updates in about a minute.",
     "bridgeInfo": "Minimum bridge amount is 5 USDC. Only send USDC on Arbitrum One.",
     "bridgeFailed": "Bridge failed",
+    "trc20AddressLabel": "Your USDT (TRC20) address",
+    "trc20AddressHint": "Enter your Tron wallet address to receive USDT",
+    "trc20AddressPlaceholder": "T...",
+    "trc20AddressRequired": "A TRC20 address is required to start the on-ramp",
+    "trc20AddressInvalid": "Enter a valid Tron address (starts with T, 34 characters)",
     "status": {
       "email_required": "Email required",
       "ready": "Ready to quote",

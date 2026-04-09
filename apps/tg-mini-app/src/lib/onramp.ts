@@ -61,6 +61,11 @@ interface Envelope<T> {
   code?: string;
 }
 
+function looksLikeHtml(body: string): boolean {
+  const trimmed = body.trim().toLowerCase();
+  return trimmed.startsWith("<!doctype html") || trimmed.startsWith("<html");
+}
+
 async function requestJson<T>(path: string, accessToken: string, init: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -71,7 +76,20 @@ async function requestJson<T>(path: string, accessToken: string, init: RequestIn
     },
   });
 
-  const payload = (await response.json()) as Envelope<T>;
+  const rawBody = await response.text();
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+
+  if (contentType.includes("text/html") || looksLikeHtml(rawBody)) {
+    throw new Error(`Onramp API ${path} returned HTML instead of JSON`);
+  }
+
+  let payload: Envelope<T>;
+  try {
+    payload = JSON.parse(rawBody) as Envelope<T>;
+  } catch {
+    throw new Error(`Onramp API ${path} returned an invalid JSON response`);
+  }
+
   if (!response.ok || !payload.success) {
     throw new Error(payload.error ?? "Onramp request failed");
   }

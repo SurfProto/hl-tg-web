@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import {
   enrichMarkets,
   getMarketBaseAsset,
@@ -22,13 +21,12 @@ interface SearchSheetProps {
 export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
-  const { t } = useTranslation();
 
   const { data: markets } = useMarketData();
   const { data: marketStats, isError: marketStatsError } = useMarketStats();
 
   const allMarkets: AnyMarket[] = useMemo(() => [
-    // Spot disabled — perps only
+    ...(markets?.spot ?? []).map((market: any) => ({ ...market, type: 'spot' as const })),
     ...(markets?.perp ?? []).map((market: any) => ({ ...market, type: 'perp' as const })),
   ], [markets]);
 
@@ -68,7 +66,7 @@ export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
         type="button"
         className="absolute inset-0 bg-black/40"
         onClick={onClose}
-        aria-label={t('search.ariaClose')}
+        aria-label="Close market search"
       />
 
       <div
@@ -82,8 +80,8 @@ export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
         </div>
 
         <div className="px-4 py-3">
-          <h2 id="market-search-title" className="sr-only">{t('search.title')}</h2>
-          <label htmlFor="market-search-input" className="sr-only">{t('search.title')}</label>
+          <h2 id="market-search-title" className="sr-only">Search markets</h2>
+          <label htmlFor="market-search-input" className="sr-only">Search markets</label>
           <div className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2.5 focus-within:ring-2 focus-within:ring-primary/30">
             <svg
               className="h-4 w-4 flex-shrink-0 text-gray-400"
@@ -101,7 +99,7 @@ export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
               value={query}
               name="market-search"
               autoComplete="off"
-              placeholder={t('search.placeholder')}
+              placeholder="Search markets…"
               onChange={(event) => setQuery(event.target.value)}
               className="flex-1 bg-transparent text-sm text-foreground placeholder-gray-400 focus:outline-none"
             />
@@ -110,7 +108,7 @@ export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
                 type="button"
                 onClick={() => setQuery('')}
                 className="text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 rounded-full"
-                aria-label={t('search.ariaClear')}
+                aria-label="Clear search"
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -122,7 +120,7 @@ export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
 
         <div className="flex-1 divide-y divide-separator overflow-y-auto overscroll-contain">
           {filtered.length === 0 ? (
-            <div className="py-12 text-center text-sm text-gray-400">{t('search.noMarketsFound')}</div>
+            <div className="py-12 text-center text-sm text-gray-400">No markets found</div>
           ) : (
             filtered.map(({ market }) => {
               const coin = market.name;

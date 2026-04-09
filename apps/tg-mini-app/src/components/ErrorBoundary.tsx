@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import i18n from '../lib/i18n';
+import { log } from '../lib/logger';
 
 interface Props {
   children: ReactNode;
@@ -23,8 +24,10 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: unknown, info: ErrorInfo) {
-    // Log for debugging — replace with a real error tracker (Sentry, etc.) when available
-    console.error('[ErrorBoundary] Caught error:', error, info.componentStack);
+    log.error('[ErrorBoundary] caught error', {
+      error,
+      componentStack: info.componentStack,
+    });
   }
 
   handleReload = () => {

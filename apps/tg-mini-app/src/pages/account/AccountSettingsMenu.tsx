@@ -1,46 +1,30 @@
-import { Link } from "react-router-dom";
-import { usePrivy } from "@privy-io/react-auth";
-import { useTranslation } from "react-i18next";
+import { Link } from 'react-router-dom';
+
+const SETTINGS_ROUTES = [
+  { path: '/account/settings/personal', label: 'Personal Information' },
+  { path: '/account/settings/notifications', label: 'Notifications' },
+  { path: '/account/settings/private-key', label: 'Private Key' },
+  { path: '/account/settings/language', label: 'Language' },
+  { path: '/account/settings/support', label: 'Support' },
+  { path: '/account/settings/legal', label: 'Legal' },
+];
 
 export function AccountSettingsMenu() {
-  const { t } = useTranslation();
-  const privy = usePrivy() as any;
-  const settingsRoutes = [
-    { path: "/account/settings/approvals", label: t("accountSettings.approvals") },
-    { path: "/account/settings/personal", label: t("accountSettings.personalInfo") },
-    { path: "/account/settings/notifications", label: t("accountSettings.notifications") },
-    { path: "/account/settings/private-key", label: t("accountSettings.privateKey") },
-    { path: "/account/settings/language", label: t("accountSettings.language") },
-    { path: "/account/settings/support", label: t("accountSettings.support") },
-    { path: "/account/settings/legal", label: t("accountSettings.legal") },
-  ];
-
   return (
-    <div className="min-h-full bg-background px-4 py-5 space-y-4">
-      <h1 className="text-2xl font-bold text-foreground">{t("accountSettings.title")}</h1>
-
+    <div className="min-h-full bg-background px-4 py-5">
+      <h1 className="mb-4 text-2xl font-bold text-foreground">Account settings</h1>
       <div className="overflow-hidden rounded-2xl border border-separator bg-white shadow-sm">
-        {settingsRoutes.map((route, index) => (
+        {SETTINGS_ROUTES.map((route, index) => (
           <Link
             key={route.path}
             to={route.path}
-            className={`flex w-full items-center justify-between px-4 py-4 text-left text-sm font-semibold text-foreground transition-colors active:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${index < settingsRoutes.length - 1 ? "border-b border-separator" : ""}`}
+            className={`flex w-full items-center justify-between px-4 py-4 text-left text-sm font-semibold text-foreground active:bg-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${index < SETTINGS_ROUTES.length - 1 ? 'border-b border-separator' : ''}`}
           >
             <span>{route.label}</span>
-            <span className="text-muted" aria-hidden="true">
-              {"\u203a"}
-            </span>
+            <span className="text-muted" aria-hidden="true">{'\u203a'}</span>
           </Link>
         ))}
       </div>
-
-      <button
-        type="button"
-        onClick={() => privy.logout()}
-        className="w-full rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-negative transition-colors active:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200"
-      >
-        {t("account.logOut")}
-      </button>
     </div>
   );
 }

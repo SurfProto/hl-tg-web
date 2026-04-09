@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { log } from './logger';
 
 interface EnsureUserInput {
   telegramId?: string;
@@ -57,7 +58,7 @@ export async function ensureUser(input: EnsureUserInput) {
       return data;
     }
   } catch (err) {
-    console.warn('[supabase] ensureUser failed', err);
+    log.warn('[supabase] ensureUser failed', { error: err, input });
     return null;
   }
 }
@@ -75,7 +76,10 @@ export async function getCurrentUserRecord(walletAddress?: string) {
     if (error) throw error;
     return data;
   } catch (err) {
-    console.warn('[supabase] getCurrentUserRecord failed', err);
+    log.warn('[supabase] getCurrentUserRecord failed', {
+      error: err,
+      walletAddress,
+    });
     return null;
   }
 }

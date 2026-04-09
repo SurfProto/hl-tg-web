@@ -7,13 +7,23 @@
     "dev": "turbo dev",
     "lint": "turbo lint",
     "test": "turbo test",
+    "test:watch": "turbo test:watch",
+    "test:coverage": "turbo test:coverage",
+    "test:e2e": "playwright test",
     "format": "prettier --write \"**/*.{ts,tsx,md}\""
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@repo/eslint-config": "workspace:*",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@vitest/coverage-v8": "^2.1.9",
+    "jsdom": "^29.0.2",
+    "msw": "^2.13.1",
     "prettier": "^3.2.5",
     "turbo": "^2.0.0",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.9"
   },
   "packageManager": "pnpm@9.1.0",
   "engines": {

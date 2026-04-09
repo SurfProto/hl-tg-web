@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { getMarketBaseAsset, getMarketDisplayName, getMarketSearchTerms } from '@repo/hyperliquid-sdk';
 import type { EnrichedMarket, MarketStats } from '@repo/types';
 import { MarketListItem } from './MarketListItem';
@@ -24,7 +23,6 @@ export function AllMarketsSheet({
 }: AllMarketsSheetProps) {
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
-  const { t } = useTranslation();
 
   const filtered = useMemo(() => {
     if (!query.trim()) return markets;
@@ -50,7 +48,7 @@ export function AllMarketsSheet({
         type="button"
         className="absolute inset-0 bg-black/40"
         onClick={onClose}
-        aria-label={t('allMarkets.ariaClose')}
+        aria-label="Close all markets"
       />
 
       <div
@@ -65,13 +63,11 @@ export function AllMarketsSheet({
 
         <div className="flex-shrink-0 px-4 pt-2 pb-1">
           <div className="mb-3 flex items-center justify-between">
-            <h2 id="all-markets-title" className="text-base font-bold text-foreground">{t('allMarkets.title')}</h2>
-            <span className="text-xs font-medium text-gray-400">
-              {t('allMarkets.marketCount', { count: markets.length })}
-            </span>
+            <h2 id="all-markets-title" className="text-base font-bold text-foreground">All Markets</h2>
+            <span className="text-xs font-medium text-gray-400">{markets.length} markets</span>
           </div>
 
-          <label htmlFor="all-markets-search-input" className="sr-only">{t('allMarkets.searchLabel')}</label>
+          <label htmlFor="all-markets-search-input" className="sr-only">Search all markets</label>
           <div className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2.5 focus-within:ring-2 focus-within:ring-primary/30">
             <svg
               className="h-4 w-4 flex-shrink-0 text-gray-400"
@@ -89,7 +85,7 @@ export function AllMarketsSheet({
               value={query}
               name="all-markets-search"
               autoComplete="off"
-              placeholder={t('allMarkets.searchPlaceholder')}
+              placeholder="Search markets…"
               onChange={(event) => setQuery(event.target.value)}
               className="flex-1 bg-transparent text-sm text-foreground placeholder-gray-400 focus:outline-none"
             />
@@ -98,7 +94,7 @@ export function AllMarketsSheet({
                 type="button"
                 onClick={() => setQuery('')}
                 className="text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 rounded-full"
-                aria-label={t('allMarkets.ariaClearSearch')}
+                aria-label="Clear all markets search"
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -110,7 +106,7 @@ export function AllMarketsSheet({
 
         <div className="flex-1 divide-y divide-separator overflow-y-auto overscroll-contain">
           {filtered.length === 0 ? (
-            <div className="py-12 text-center text-sm text-gray-400">{t('allMarkets.noMarketsFound')}</div>
+            <div className="py-12 text-center text-sm text-gray-400">No markets found</div>
           ) : (
             filtered.map(({ market }) => {
               const coin = market.name;

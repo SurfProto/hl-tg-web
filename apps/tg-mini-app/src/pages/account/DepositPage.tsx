@@ -34,6 +34,10 @@ function isTerminalState(state: OnrampAppState) {
   return state === "success" || state === "failed" || state === "expired";
 }
 
+function isValidTrc20Address(addr: string): boolean {
+  return /^T[a-zA-Z0-9]{33}$/.test(addr);
+}
+
 export function DepositPage() {
   const privy = usePrivy() as any;
   const { getAccessToken } = useToken();
@@ -57,6 +61,7 @@ export function DepositPage() {
   const [quote, setQuote] = useState<OnrampQuote | null>(null);
   const [order, setOrder] = useState<OnrampOrderStatus | null>(null);
   const [fiatError, setFiatError] = useState<string | null>(null);
+  const [tronAddress, setTronAddress] = useState("");
   const [isBootstrapping, setIsBootstrapping] = useState(false);
   const [isQuoting, setIsQuoting] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
@@ -207,9 +212,16 @@ export function DepositPage() {
     };
   }, [getAccessToken, order, queryClient, t, view]);
 
+  const isTrc20 = bootstrapData?.service.network === "TRC20";
+
   const requestQuote = async () => {
     if (!email) {
       setFiatState("email_required");
+      return;
+    }
+
+    if (isTrc20 && !isValidTrc20Address(tronAddress)) {
+      setFiatError(t("deposit.trc20AddressInvalid"));
       return;
     }
 
@@ -227,6 +239,11 @@ export function DepositPage() {
       const accessToken = await getAccessToken();
       if (!accessToken) {
         throw new Error(t("deposit.authRequired"));
+      }
+
+      if (isTrc20 && tronAddress !== bootstrapData?.walletAddress) {
+        const updated = await bootstrapOnramp(accessToken, { email, walletAddress: tronAddress });
+        setBootstrapData(updated);
       }
 
       const response = await fetchOnrampQuote(accessToken, amount);
@@ -250,6 +267,11 @@ export function DepositPage() {
       return;
     }
 
+    if (isTrc20 && !isValidTrc20Address(tronAddress)) {
+      setFiatError(t("deposit.trc20AddressInvalid"));
+      return;
+    }
+
     const amount = Number(fiatAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
       setFiatError(t("deposit.invalidFiatAmount"));
@@ -264,6 +286,11 @@ export function DepositPage() {
       const accessToken = await getAccessToken();
       if (!accessToken) {
         throw new Error(t("deposit.authRequired"));
+      }
+
+      if (isTrc20 && tronAddress !== bootstrapData?.walletAddress) {
+        const updated = await bootstrapOnramp(accessToken, { email, walletAddress: tronAddress });
+        setBootstrapData(updated);
       }
 
       const response = await checkoutOnramp(accessToken, amount);
@@ -335,19 +362,22 @@ export function DepositPage() {
     bootstrapData?.kycStatus === "verified_local"
       ? t("deposit.verifiedEmail")
       : t("deposit.pendingVerification");
-  const destinationAddress =
-    bootstrapData?.walletAddress ?? address ?? t("deposit.connectWallet");
+  const destinationAddress = isTrc20
+    ? tronAddress
+    : (bootstrapData?.walletAddress ?? address ?? t("deposit.connectWallet"));
   const isEmailRequired = !email || fiatState === "email_required";
+  const isTrc20AddressValid = !isTrc20 || isValidTrc20Address(tronAddress);
   const showQuoteCard = Boolean(quote);
   const showOrderCard = Boolean(order);
   const canRequestQuote =
-    !isEmailRequired && !isBootstrapping && !isQuoting && !isCheckingOut;
+    !isEmailRequired && !isBootstrapping && !isQuoting && !isCheckingOut && isTrc20AddressValid;
   const canCheckout = Boolean(
     quote &&
       !isEmailRequired &&
       !isBootstrapping &&
       !isCheckingOut &&
-      !order,
+      !order &&
+      isTrc20AddressValid,
   );
 
   return (
@@ -447,9 +477,30 @@ export function DepositPage() {
             </div>
             <div>
               <p className="text-xs text-muted">{t("deposit.destinationWallet")}</p>
-              <div className="mt-2 rounded-2xl bg-surface px-4 py-3 font-mono text-sm text-foreground break-all">
-                {destinationAddress}
-              </div>
+              {isTrc20 ? (
+                <div className="mt-2 space-y-1">
+                  <input
+                    type="text"
+                    inputMode="text"
+                    autoComplete="off"
+                    value={tronAddress}
+                    onChange={(e) => {
+                      setTronAddress(e.target.value.trim());
+                      setQuote(null);
+                    }}
+                    placeholder={t("deposit.trc20AddressPlaceholder")}
+                    className="w-full rounded-2xl border border-separator bg-surface px-4 py-3 font-mono text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  />
+                  <p className="text-xs text-muted">{t("deposit.trc20AddressHint")}</p>
+                  {tronAddress && !isValidTrc20Address(tronAddress) && (
+                    <p className="text-xs text-negative">{t("deposit.trc20AddressInvalid")}</p>
+                  )}
+                </div>
+              ) : (
+                <div className="mt-2 rounded-2xl bg-surface px-4 py-3 font-mono text-sm text-foreground break-all">
+                  {destinationAddress}
+                </div>
+              )}
             </div>
             <div className="flex items-start justify-between gap-3">
               <div>

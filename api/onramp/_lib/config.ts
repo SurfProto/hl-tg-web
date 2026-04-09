@@ -26,7 +26,7 @@ function getRequired(env: EnvLike, key: string): string {
 }
 
 export function getOnrampConfig(env: EnvLike = process.env): OnrampConfig {
-  const appSymbol = env.ONRAMP_SYMBOL ?? "RUB-USDC";
+  const appSymbol = env.ONRAMP_SYMBOL ?? "RUB-USDT";
 
   return {
     baseUrl: getRequired(env, "ONRAMP_BASE_URL").replace(/\/+$/, ""),
@@ -35,7 +35,7 @@ export function getOnrampConfig(env: EnvLike = process.env): OnrampConfig {
     serviceId: getRequired(env, "ONRAMP_SERVICE_ID"),
     appSymbol,
     providerSymbol: env.ONRAMP_PROVIDER_SYMBOL ?? appSymbol,
-    network: env.ONRAMP_NETWORK ?? "ARBITRUM",
+    network: env.ONRAMP_NETWORK ?? "TRC20",
     returnUrl: env.ONRAMP_RETURN_URL ?? null,
     privyAppId: env.ONRAMP_PRIVY_APP_ID ?? env.VITE_PRIVY_APP_ID ?? null,
     supabaseUrl: getRequired(env, "SUPABASE_URL"),

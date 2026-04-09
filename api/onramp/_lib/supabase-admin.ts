@@ -129,34 +129,19 @@ export async function upsertOnrampUser(config: OnrampConfig, input: UpsertUserIn
     kyc_checked_at: input.kycCheckedAt,
   };
 
-  if (existingUser) {
-    const rows = await supabaseRequest<SupabaseUserRow[]>(
-      config,
-      `users?id=eq.${existingUser.id}&select=*`,
-      {
-        method: "PATCH",
-        headers: buildHeaders(config, {
-          Prefer: "return=representation",
-        }),
-        body: JSON.stringify(payload),
-      },
-    );
-
-    return rows[0];
+  if (!existingUser) {
+    throw new Error("USER_NOT_FOUND: Open the app via Telegram first to create your account before using onramp");
   }
 
   const rows = await supabaseRequest<SupabaseUserRow[]>(
     config,
-    "users?select=*",
+    `users?id=eq.${existingUser.id}&select=*`,
     {
-      method: "POST",
+      method: "PATCH",
       headers: buildHeaders(config, {
         Prefer: "return=representation",
       }),
-      body: JSON.stringify({
-        ...payload,
-        username: normalizedEmail,
-      }),
+      body: JSON.stringify(payload),
     },
   );
 

@@ -98,6 +98,10 @@
     "enterValidSl": "Введите действительную цену стоп-лосса.",
     "enterValidTp": "Введите действительную цену тейк-профита.",
     "marketMetadataUnavailable": "Метаданные рынка недоступны.",
+    "loadingMarketPrice": "Загрузка цены...",
+    "marketPriceUnavailable": "Цена недоступна.",
+    "loadingBalance": "Загрузка баланса...",
+    "balanceUnavailable": "Баланс недоступен.",
     "checkOrderDetails": "Проверьте детали ордера и попробуйте снова.",
     "orderPlacedWithProtection": "Ордер {{side}} размещён с защитой",
     "orderPlacedProtectionFailed": "Ордер {{side}} размещён, но защита не создана. {{error}}",
@@ -134,6 +138,8 @@
     "saving": "Сохранение...",
     "ariaClose": "Закрыть настройки защиты",
     "markPrice": "Рынок {{price}}",
+    "loadingMarkPrice": "Загрузка цены рынка...",
+    "markPriceUnavailable": "Цена рынка недоступна.",
     "slPrice": "SL {{price}}",
     "tpPrice": "TP {{price}}"
   },
@@ -366,7 +372,10 @@
     "open": "Откр.",
     "high": "Макс",
     "low": "Мин",
-    "vol": "Объём"
+    "vol": "Объём",
+    "loadingMarketPrice": "Загрузка цены...",
+    "marketPriceUnavailable": "Цена недоступна.",
+    "marketStatsUnavailable": "Статистика рынка недоступна."
   },
   "tradingSetup": {
     "titleReauth": "Переавторизовать торговлю",
@@ -392,10 +401,12 @@
     "totalEquity": "Общий капитал",
     "availableForTrading": "Доступно для торговли {{amount}}",
     "deposit": "Депозит",
-    "withdraw": "Вывод"
+    "withdraw": "Вывод",
+    "balanceUnavailable": "Данные баланса недоступны."
   },
   "marketList": {
-    "volume": "Объём {{volume}}"
+    "volume": "Объём {{volume}}",
+    "priceUnavailable": "Цена недоступна"
   },
   "numPad": {
     "delete": "Удалить",

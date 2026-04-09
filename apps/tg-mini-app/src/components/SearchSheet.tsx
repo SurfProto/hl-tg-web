@@ -7,9 +7,9 @@ import {
   getMarketSearchTerms,
   useMarketData,
   useMarketStats,
-  useMids,
 } from '@repo/hyperliquid-sdk';
 import type { AnyMarket } from '@repo/types';
+import { getAsyncValueState } from '../lib/async-value-state';
 import { formatPrice } from '../utils/format';
 import { MarketListItem } from './MarketListItem';
 
@@ -25,8 +25,7 @@ export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
   const { t } = useTranslation();
 
   const { data: markets } = useMarketData();
-  const { data: mids } = useMids();
-  const { data: marketStats } = useMarketStats();
+  const { data: marketStats, isError: marketStatsError } = useMarketStats();
 
   const allMarkets: AnyMarket[] = useMemo(() => [
     // Spot disabled — perps only
@@ -129,8 +128,14 @@ export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
               const coin = market.name;
               const displayName = getMarketDisplayName(market);
               const iconCoin = getMarketBaseAsset(market);
-              const price = mids?.[coin] ? parseFloat(mids[coin]) : null;
               const stats = marketStats?.[coin];
+              const hasPrice =
+                typeof stats?.markPx === 'number' && Number.isFinite(stats.markPx) && stats.markPx > 0;
+              const priceState = getAsyncValueState({
+                hasValue: hasPrice,
+                isLoading: !marketStats && !marketStatsError,
+                isError: marketStatsError || (!!marketStats && !hasPrice),
+              });
 
               return (
                 <MarketListItem
@@ -139,8 +144,9 @@ export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
                   displayName={displayName}
                   iconCoin={iconCoin}
                   marketType={market.type}
-                  price={price != null ? formatPrice(price) : '\u2014'}
-                  change24h={stats?.change24h ?? 0}
+                  price={hasPrice ? formatPrice(stats!.markPx) : ''}
+                  priceState={priceState}
+                  change24h={priceState === 'ready' ? stats?.change24h ?? 0 : null}
                   maxLeverage={market.type === 'perp' ? market.maxLeverage : undefined}
                   onClick={() => {
                     onSelect(coin);

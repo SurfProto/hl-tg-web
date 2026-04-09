@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getMarketBaseAsset, getMarketDisplayName, getMarketSearchTerms } from '@repo/hyperliquid-sdk';
 import type { EnrichedMarket, MarketStats } from '@repo/types';
+import { getAsyncValueState } from '../lib/async-value-state';
 import { formatPrice } from '../utils/format';
 import { MarketListItem } from './MarketListItem';
 
@@ -16,12 +17,12 @@ interface AllMarketsSheetProps {
   isOpen: boolean;
   onClose: () => void;
   markets: EnrichedMarket[];
-  mids: Record<string, string> | undefined;
   marketStats: Record<string, MarketStats> | undefined;
+  marketStatsError?: boolean;
   onSelect: (coin: string) => void;
 }
 
-export function AllMarketsSheet({ isOpen, onClose, markets, mids, marketStats, onSelect }: AllMarketsSheetProps) {
+export function AllMarketsSheet({ isOpen, onClose, markets, marketStats, marketStatsError = false, onSelect }: AllMarketsSheetProps) {
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const { t } = useTranslation();
@@ -116,8 +117,14 @@ export function AllMarketsSheet({ isOpen, onClose, markets, mids, marketStats, o
               const coin = market.name;
               const displayName = getMarketDisplayName(market);
               const iconCoin = getMarketBaseAsset(market);
-              const price = mids?.[coin] ? parseFloat(mids[coin]) : null;
               const stats = marketStats?.[coin];
+              const hasPrice =
+                typeof stats?.markPx === 'number' && Number.isFinite(stats.markPx) && stats.markPx > 0;
+              const priceState = getAsyncValueState({
+                hasValue: hasPrice,
+                isLoading: !marketStats && !marketStatsError,
+                isError: marketStatsError || (!!marketStats && !hasPrice),
+              });
 
               return (
                 <MarketListItem
@@ -126,8 +133,9 @@ export function AllMarketsSheet({ isOpen, onClose, markets, mids, marketStats, o
                   displayName={displayName}
                   iconCoin={iconCoin}
                   marketType={market.type}
-                  price={price != null ? formatPrice(price) : '\u2014'}
-                  change24h={stats?.change24h ?? 0}
+                  price={hasPrice ? formatPrice(stats!.markPx) : ''}
+                  priceState={priceState}
+                  change24h={priceState === 'ready' ? stats?.change24h ?? 0 : null}
                   volume={stats ? formatVolume(stats.dayNtlVlm) : undefined}
                   maxLeverage={market.type === 'perp' ? market.maxLeverage : undefined}
                   onClick={() => onSelect(coin)}

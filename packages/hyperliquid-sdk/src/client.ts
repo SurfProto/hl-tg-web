@@ -131,7 +131,7 @@ interface NormalizedOrderContext {
   tif: "Gtc" | "Ioc" | "Alo";
   cloid: `0x${string}`;
   debug?: {
-    executionSource: "mid";
+    executionSource: "mid" | "assetCtx" | "orderbook";
     formattedPrice: string;
     rawExecutionPrice: number;
     referencePrice: number;
@@ -620,6 +620,75 @@ export class HyperliquidClient {
       : this.stripTrailingZeros(truncated.toFixed(decimals));
   }
 
+  private parsePositiveNumber(value: unknown): number | null {
+    const parsed =
+      typeof value === "number"
+        ? value
+        : typeof value === "string"
+          ? parseFloat(value)
+          : NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }
+
+  private getCachedMidPrice(market: CachedMarket): number | null {
+    if (!this.midsCache || Date.now() >= this.midsCache.expiresAt) {
+      return null;
+    }
+
+    for (const alias of market.aliases) {
+      const parsed = this.parsePositiveNumber(this.midsCache.data?.[alias]);
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+
+    return null;
+  }
+
+  private async resolveMarketPrice(
+    market: CachedMarket,
+  ): Promise<
+    | {
+        executionSource: "mid" | "assetCtx" | "orderbook";
+        price: number;
+      }
+    | null
+  > {
+    const cachedMid = this.getCachedMidPrice(market);
+    if (cachedMid != null) {
+      return { executionSource: "mid", price: cachedMid };
+    }
+
+    try {
+      const assetCtxPrice = this.parsePositiveNumber(
+        (await this.getAssetCtx(market.name))?.markPx,
+      );
+      if (assetCtxPrice != null) {
+        return { executionSource: "assetCtx", price: assetCtxPrice };
+      }
+    } catch {
+      // Fall through to orderbook fallback.
+    }
+
+    try {
+      const orderbook = await this.getOrderbook(market.name);
+      const bestBid = this.parsePositiveNumber(orderbook?.levels?.bids?.[0]?.px);
+      const bestAsk = this.parsePositiveNumber(orderbook?.levels?.asks?.[0]?.px);
+      const midpoint =
+        bestBid != null && bestAsk != null
+          ? (bestBid + bestAsk) / 2
+          : bestBid ?? bestAsk ?? null;
+
+      if (midpoint != null) {
+        return { executionSource: "orderbook", price: midpoint };
+      }
+    } catch {
+      // Surface null below when every fallback path fails.
+    }
+
+    return null;
+  }
+
   private limitSignificantFigures(
     value: string,
     maxSignificant: number,
@@ -692,10 +761,9 @@ export class HyperliquidClient {
   }
 
   private async getReferencePrice(market: CachedMarket): Promise<number> {
-    const mids = await this.getMids();
-    for (const alias of market.aliases) {
-      const mid = mids?.[alias];
-      if (mid != null) return parseFloat(mid);
+    const marketPrice = await this.resolveMarketPrice(market);
+    if (marketPrice != null) {
+      return marketPrice.price;
     }
     throw new Error(`No live market price available for ${market.name}`);
   }
@@ -715,29 +783,23 @@ export class HyperliquidClient {
     market: CachedMarket,
     side: OrderSide,
   ) {
-    const mids = await this.getMids();
-    let midPrice: number | null = null;
+    const marketPrice = await this.resolveMarketPrice(market);
 
-    for (const alias of market.aliases) {
-      const mid = mids?.[alias];
-      if (mid != null) {
-        midPrice = parseFloat(mid);
-        break;
-      }
-    }
-
-    if (!midPrice || !Number.isFinite(midPrice) || midPrice <= 0) {
+    if (marketPrice == null) {
       throw new Error(
         `Market price unavailable for ${market.name}. Please retry in a moment.`,
       );
     }
 
-    const rawExecutionPrice = this.getAggressiveMarketPrice(midPrice, side);
+    const rawExecutionPrice = this.getAggressiveMarketPrice(
+      marketPrice.price,
+      side,
+    );
 
     return {
-      executionSource: "mid" as const,
+      executionSource: marketPrice.executionSource,
       rawExecutionPrice,
-      referencePrice: midPrice,
+      referencePrice: marketPrice.price,
     };
   }
 
@@ -1137,6 +1199,11 @@ export class HyperliquidClient {
     }
     this.midsCache = { data: merged, expiresAt: Date.now() + 3000 };
     return merged;
+  }
+
+  async getMarketPrice(coin: string): Promise<number | null> {
+    const market = await this.resolveMarket(coin);
+    return (await this.resolveMarketPrice(market))?.price ?? null;
   }
 
   // Get orderbook

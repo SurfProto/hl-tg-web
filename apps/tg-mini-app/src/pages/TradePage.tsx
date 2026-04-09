@@ -7,7 +7,7 @@ import {
   getAvailableCollateralForMarket,
   getMarketDisplayName,
   useMarketData,
-  useMids,
+  useMarketPrice,
   usePlaceOrder,
   useSetupTrading,
   useUpsertPositionProtection,
@@ -28,6 +28,7 @@ import {
   type PositionDirection,
   type ProtectionDraft,
 } from "../lib/protection";
+import { getAsyncValueState } from "../lib/async-value-state";
 import { formatPrice } from "../utils/format";
 
 function formatUsdInput(value: number): string {
@@ -72,8 +73,18 @@ export function TradePage() {
   }, [searchParams]);
 
   const { data: markets } = useMarketData();
-  const { data: mids } = useMids();
-  const { data: userState } = useUserState();
+  const {
+    data: currentPrice,
+    isError: marketPriceError,
+    isLoading: marketPriceLoading,
+    refetch: refetchMarketPrice,
+  } = useMarketPrice(symbol);
+  const {
+    data: userState,
+    isError: userStateError,
+    isLoading: userStateLoading,
+    refetch: refetchUserState,
+  } = useUserState();
   const placeOrder = usePlaceOrder();
   const upsertPositionProtection = useUpsertPositionProtection();
 
@@ -127,11 +138,20 @@ export function TradePage() {
     [maxLeverage],
   );
 
-  const currentPrice = mids?.[symbol] ? parseFloat(mids[symbol]) : null;
   const amountNum = parseFloat(amount) || 0;
   const limitPriceNum = parseFloat(limitPrice) || 0;
   const positionDirection: PositionDirection =
     side === "buy" ? "long" : "short";
+  const priceState = getAsyncValueState({
+    hasValue: currentPrice != null,
+    isLoading: marketPriceLoading,
+    isError: marketPriceError,
+  });
+  const balanceState = getAsyncValueState({
+    hasValue: Boolean(userState),
+    isLoading: userStateLoading,
+    isError: userStateError,
+  });
 
   const availableMarginUsd = useMemo(
     () =>
@@ -221,6 +241,30 @@ export function TradePage() {
       };
     }
 
+    if (priceState !== "ready") {
+      return {
+        isValid: false,
+        minMarginUsd,
+        minSizeUsd,
+        reason:
+          priceState === "loading"
+            ? t("trade.loadingMarketPrice")
+            : t("trade.marketPriceUnavailable"),
+      };
+    }
+
+    if (balanceState !== "ready") {
+      return {
+        isValid: false,
+        minMarginUsd,
+        minSizeUsd,
+        reason:
+          balanceState === "loading"
+            ? t("trade.loadingBalance")
+            : t("trade.balanceUnavailable"),
+      };
+    }
+
     return validateOrderInput(
       {
         coin: symbol,
@@ -255,8 +299,10 @@ export function TradePage() {
     selectedMarket,
     side,
     symbol,
+    balanceState,
     validationAvailableBalance,
     validationReferencePrice,
+    priceState,
   ]);
 
   const liquidationPx = useMemo(() => {
@@ -454,10 +500,23 @@ export function TradePage() {
               {t("trade.perp")}
             </span>
           </div>
-          {currentPrice != null && (
+          {priceState === "ready" ? (
             <span className="text-sm font-medium text-gray-600 tabular-nums ml-1">
-              {formatPrice(currentPrice)}
+              {formatPrice(currentPrice!)}
             </span>
+          ) : priceState === "loading" ? (
+            <span className="ml-1 flex items-center gap-2 text-xs font-medium text-gray-400">
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-gray-200 border-t-primary" />
+              {t("trade.loadingMarketPrice")}
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void refetchMarketPrice()}
+              className="ml-1 rounded-full bg-surface px-3 py-1 text-xs font-semibold text-primary transition-colors active:bg-gray-100"
+            >
+              {t("common.retry")}
+            </button>
           )}
         </div>
 
@@ -520,20 +579,37 @@ export function TradePage() {
           </div>
           {step === "amount" ? (
             <div className="mt-2 text-center text-sm text-gray-400">
-              <div>
-                {t("trade.availableMargin")}
-                {availableMarginUsd.toLocaleString("en-US", {
-                  maximumFractionDigits: 2,
-                })}
-              </div>
-              <div>
-                {t("trade.maxSize")}
-                {maxPositionUsd.toLocaleString("en-US", {
-                  maximumFractionDigits: 2,
-                })}
-                {t("trade.at")}
-                {leverage}x
-              </div>
+              {balanceState === "ready" ? (
+                <>
+                  <div>
+                    {t("trade.availableMargin")}
+                    {availableMarginUsd.toLocaleString("en-US", {
+                      maximumFractionDigits: 2,
+                    })}
+                  </div>
+                  <div>
+                    {t("trade.maxSize")}
+                    {maxPositionUsd.toLocaleString("en-US", {
+                      maximumFractionDigits: 2,
+                    })}
+                    {t("trade.at")}
+                    {leverage}x
+                  </div>
+                </>
+              ) : balanceState === "loading" ? (
+                <div>{t("trade.loadingBalance")}</div>
+              ) : (
+                <div className="flex items-center justify-center gap-2">
+                  <span>{t("trade.balanceUnavailable")}</span>
+                  <button
+                    type="button"
+                    onClick={() => void refetchUserState()}
+                    className="rounded-full bg-surface px-3 py-1 text-xs font-semibold text-primary transition-colors active:bg-gray-100"
+                  >
+                    {t("common.retry")}
+                  </button>
+                </div>
+              )}
               {selectedPerpMarket?.isHip3 ? (
                 <div>
                   {t("trade.collateralAsset")}
@@ -809,9 +885,11 @@ export function TradePage() {
         onChange={setProtectionDraft}
         direction={positionDirection}
         marketLabel={displayName}
-        currentPrice={currentPrice}
+        currentPrice={currentPrice ?? null}
         referencePrice={
-          orderType === "limit" ? limitPriceNum || currentPrice : currentPrice
+          orderType === "limit"
+            ? limitPriceNum || currentPrice || null
+            : currentPrice ?? null
         }
         size={estimatedProtectionSize}
         submitLabel={protectionSubmitDisabled ? t("common.done") : t("trade.applyProtection")}

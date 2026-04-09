@@ -17,13 +17,13 @@ import {
   getMarketDisplayName,
   useMarketData,
   useMarketStats,
-  useMids,
 } from "@repo/hyperliquid-sdk";
 import type { AnyMarket, MarketCategory, MarketSubCategory } from "@repo/types";
 import { BalanceHero } from "../components/BalanceHero";
 import { CategoryPills } from "../components/CategoryPills";
 import { MarketListItem } from "../components/MarketListItem";
 import { MarketListItemSkeleton } from "../components/MarketListItemSkeleton";
+import { getAsyncValueState } from "../lib/async-value-state";
 import { log } from "../lib/logger";
 import { formatPrice } from "../utils/format";
 import { getHomeMarketViewState } from "./home-state";
@@ -77,7 +77,6 @@ export function HomePage() {
     isLoading: marketsLoading,
     refetch: refetchMarkets,
   } = useMarketData();
-  const { data: mids, error: midsError, isError: midsQueryFailed } = useMids();
   const {
     data: marketStats,
     error: marketStatsError,
@@ -139,12 +138,6 @@ export function HomePage() {
       log.warn("[home] market metadata query failed", { error: marketsError });
     }
   }, [marketsError, marketsQueryFailed]);
-
-  useEffect(() => {
-    if (midsQueryFailed) {
-      log.warn("[home] mids query failed", { error: midsError });
-    }
-  }, [midsError, midsQueryFailed]);
 
   useEffect(() => {
     if (marketStatsQueryFailed) {
@@ -270,8 +263,16 @@ export function HomePage() {
               const coin = market.name;
               const displayName = getMarketDisplayName(market);
               const iconCoin = getMarketBaseAsset(market);
-              const price = mids?.[coin] ? parseFloat(mids[coin]) : null;
               const stats = marketStats?.[coin];
+              const hasPrice =
+                typeof stats?.markPx === "number" &&
+                Number.isFinite(stats.markPx) &&
+                stats.markPx > 0;
+              const priceState = getAsyncValueState({
+                hasValue: hasPrice,
+                isLoading: !marketStats && !marketStatsQueryFailed,
+                isError: marketStatsQueryFailed || (!!marketStats && !hasPrice),
+              });
 
               return (
                 <MarketListItem
@@ -280,8 +281,9 @@ export function HomePage() {
                   displayName={displayName}
                   iconCoin={iconCoin}
                   marketType={market.type}
-                  price={price != null ? formatPrice(price) : "\u2014"}
-                  change24h={stats?.change24h ?? 0}
+                  price={hasPrice ? formatPrice(stats!.markPx) : ""}
+                  priceState={priceState}
+                  change24h={priceState === "ready" ? stats?.change24h ?? 0 : null}
                   volume={stats ? formatVolume(stats.dayNtlVlm) : undefined}
                   maxLeverage={
                     market.type === "perp" ? market.maxLeverage : undefined
@@ -359,8 +361,8 @@ export function HomePage() {
             isOpen={allMarketsOpen}
             onClose={() => setAllMarketsOpen(false)}
             markets={sortedFiltered}
-            mids={mids}
             marketStats={marketStats}
+            marketStatsError={marketStatsQueryFailed}
             onSelect={(coin: string) => {
               setAllMarketsOpen(false);
               navigate(`/coin/${encodeURIComponent(coin)}`);

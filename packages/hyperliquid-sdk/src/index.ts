@@ -16,6 +16,7 @@ export {
   useHyperliquid,
   useMarketData,
   useMids,
+  useMarketPrice,
   useOrderbook,
   useCandles,
   useUserState,

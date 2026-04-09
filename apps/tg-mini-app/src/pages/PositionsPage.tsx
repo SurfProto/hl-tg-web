@@ -7,12 +7,13 @@ import {
   useFills,
   useCancelOrder,
   useClosePosition,
-  useMids,
+  useMarketPrice,
   useUpsertPositionProtection,
 } from "@repo/hyperliquid-sdk";
 import type { OpenOrder } from "@repo/types";
 import { ProtectionSheet } from "../components/ProtectionSheet";
 import { TokenIcon } from "../components/TokenIcon";
+import { getAsyncValueState } from "../lib/async-value-state";
 import { useHaptics } from "../hooks/useHaptics";
 import { useToast } from "../hooks/useToast";
 import {
@@ -38,6 +39,324 @@ interface EditingProtectionState {
   entryPrice: number;
   size: number;
   draft: ProtectionDraft;
+}
+
+interface PositionCardProps {
+  position: any;
+  openOrders: OpenOrder[];
+  pendingCloseCoin: string | null;
+  onEditProtection: (state: EditingProtectionState) => void;
+  onClosePosition: (coin: string, displayName: string) => void;
+  onTradeMore: (coin: string, side: "long" | "short") => void;
+}
+
+function PositionCard({
+  position,
+  openOrders,
+  pendingCloseCoin,
+  onEditProtection,
+  onClosePosition,
+  onTradeMore,
+}: PositionCardProps) {
+  const navigate = useNavigate();
+  const haptics = useHaptics();
+  const { t } = useTranslation();
+  const { data: currentPrice, isError, isLoading } = useMarketPrice(position.coin);
+  const priceState = getAsyncValueState({
+    hasValue: currentPrice != null,
+    isLoading,
+    isError,
+  });
+  const pnl = position.unrealizedPnl ?? 0;
+  const isPositive = pnl >= 0;
+  const isLong = position.szi > 0;
+  const direction: PositionDirection = isLong ? "long" : "short";
+  const displayName = position.coin.includes(":")
+    ? position.coin.split(":")[1]
+    : position.coin;
+  const protectionOrders = openOrders.filter(
+    (order: OpenOrder) =>
+      order.coin === position.coin && order.isTrigger && order.reduceOnly,
+  );
+  const protectionState = getProtectionState(
+    protectionOrders,
+    direction,
+    currentPrice ?? null,
+    position.szi,
+  );
+
+  return (
+    <div
+      onClick={() => navigate(`/coin/${encodeURIComponent(position.coin)}`)}
+      className="rounded-2xl border border-separator bg-white p-4 shadow-sm"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <TokenIcon coin={displayName.split("/")[0]} />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="truncate font-semibold text-foreground">
+                {displayName}
+              </p>
+              <span
+                className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                  isLong
+                    ? "bg-blue-50 text-primary"
+                    : "bg-gray-100 text-gray-700"
+                }`}
+              >
+                {isLong ? t("common.long") : t("common.short")}
+              </span>
+            </div>
+            <p className="mt-1 text-sm text-muted">
+              {Math.abs(position.szi)} @ {formatPrice(position.entryPx)}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex-shrink-0 text-right">
+          <p
+            className={`text-sm font-semibold ${isPositive ? "text-positive" : "text-negative"}`}
+          >
+            {isPositive ? "+" : "-"}
+            {formatUsd(pnl)}
+          </p>
+          <p className="mt-1 text-xs text-muted">
+            {priceState === "ready"
+              ? t("positions.markPrice", { price: formatPrice(currentPrice!) })
+              : priceState === "loading"
+                ? t("positions.loadingMarkPrice")
+                : t("positions.markPriceUnavailable")}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+        <div className="rounded-xl bg-surface px-3 py-2">
+          <p className="text-xs text-muted">{t("positions.positionValue")}</p>
+          <p className="mt-1 font-semibold text-foreground">
+            {formatUsd(position.positionValue ?? 0)}
+          </p>
+        </div>
+        <div className="rounded-xl bg-surface px-3 py-2">
+          <p className="text-xs text-muted">{t("positions.leverage")}</p>
+          <p className="mt-1 font-semibold text-foreground">
+            {position.leverage.value}x {position.leverage.type}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-[20px] border border-separator bg-surface px-3 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground">
+              {t("positions.protection")}
+            </p>
+            <p className="mt-1 text-xs text-muted">
+              {protectionState.stopLoss || protectionState.takeProfit
+                ? t("positions.manageSlTp")
+                : t("positions.addSlTp")}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              haptics.light();
+              onEditProtection({
+                coin: position.coin,
+                direction,
+                displayName,
+                currentPrice: currentPrice ?? null,
+                entryPrice: position.entryPx,
+                size: Math.abs(position.szi),
+                draft: createProtectionDraft(
+                  protectionState.stopLoss?.triggerPx ?? null,
+                  protectionState.takeProfit?.triggerPx ?? null,
+                ),
+              });
+            }}
+            className="flex-shrink-0 rounded-full bg-white px-3 py-2 text-xs font-semibold text-primary shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 active:bg-gray-100"
+          >
+            {protectionState.stopLoss || protectionState.takeProfit
+              ? t("positions.editProtection")
+              : t("positions.addProtection")}
+          </button>
+        </div>
+
+        {protectionState.stopLoss || protectionState.takeProfit ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {protectionState.stopLoss?.triggerPx != null && (
+              <span className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 shadow-sm">
+                SL {formatPrice(protectionState.stopLoss.triggerPx)}
+              </span>
+            )}
+            {protectionState.takeProfit?.triggerPx != null && (
+              <span className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-emerald-600 shadow-sm">
+                TP {formatPrice(protectionState.takeProfit.triggerPx)}
+              </span>
+            )}
+            {protectionState.needsReview && (
+              <span className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
+                {t("positions.reviewProtection")}
+              </span>
+            )}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-4 flex gap-3">
+        <button
+          onClick={(event) => {
+            event.stopPropagation();
+            haptics.medium();
+            onClosePosition(position.coin, displayName);
+          }}
+          disabled={pendingCloseCoin === position.coin}
+          className="flex-1 rounded-full bg-[#111827] px-4 py-3 text-sm font-semibold text-white transition-opacity active:opacity-80"
+        >
+          {pendingCloseCoin === position.coin
+            ? t("common.closing")
+            : t("common.close")}
+        </button>
+        <button
+          onClick={(event) => {
+            event.stopPropagation();
+            onTradeMore(position.coin, isLong ? "short" : "long");
+          }}
+          className="flex-1 rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white transition-colors active:bg-primary-dark"
+        >
+          {t("positions.tradeMore")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface OpenOrderCardProps {
+  order: any;
+  linkedPosition?: any;
+  pendingCancelOid: number | null;
+  onCancel: (order: any) => void;
+}
+
+function OpenOrderCard({
+  order,
+  linkedPosition,
+  pendingCancelOid,
+  onCancel,
+}: OpenOrderCardProps) {
+  const haptics = useHaptics();
+  const { t } = useTranslation();
+  const { data: orderCurrentPrice, isError, isLoading } = useMarketPrice(order.coin);
+  const priceState = getAsyncValueState({
+    hasValue: orderCurrentPrice != null,
+    isLoading,
+    isError,
+  });
+  const orderCoin = order.coin.includes(":")
+    ? order.coin.split(":")[1]
+    : order.coin;
+  const orderDirection: PositionDirection | null = linkedPosition
+    ? linkedPosition.szi > 0
+      ? "long"
+      : "short"
+    : null;
+  const protectionKind = orderDirection
+    ? classifyProtectionOrder(
+        order as OpenOrder,
+        orderDirection,
+        priceState === "ready" ? (orderCurrentPrice ?? null) : null,
+      )
+    : null;
+  const orderBadgeLabel =
+    protectionKind === "stopLoss"
+      ? "SL"
+      : protectionKind === "takeProfit"
+        ? "TP"
+        : order.side === "buy"
+          ? t("coinDetail.buyButton")
+          : t("coinDetail.sellButton");
+  const orderTypeLabel =
+    order.orderType === "market"
+      ? t("trade.orderTypeMarket")
+      : t("trade.orderTypeLimit");
+
+  return (
+    <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <TokenIcon coin={orderCoin.split("/")[0]} />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="truncate font-semibold text-foreground">
+                {orderCoin}
+              </p>
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                  protectionKind === "stopLoss"
+                    ? "bg-rose-50 text-rose-600"
+                    : protectionKind === "takeProfit"
+                      ? "bg-emerald-50 text-emerald-600"
+                      : order.side === "buy"
+                        ? "bg-blue-50 text-primary"
+                        : "bg-gray-100 text-gray-700"
+                }`}
+              >
+                {orderBadgeLabel}
+              </span>
+            </div>
+            <p className="mt-1 text-sm text-muted">
+              {protectionKind
+                ? t("positions.reduceOnlyTrigger")
+                : t("positions.orderType", { type: orderTypeLabel })}
+            </p>
+            <p className="mt-1 text-xs text-muted">
+              {priceState === "ready"
+                ? t("positions.markPrice", { price: formatPrice(orderCurrentPrice!) })
+                : priceState === "loading"
+                  ? t("positions.loadingMarkPrice")
+                  : t("positions.markPriceUnavailable")}
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={(event) => {
+            event.stopPropagation();
+            haptics.medium();
+            onCancel(order);
+          }}
+          disabled={pendingCancelOid === order.oid}
+          className="rounded-full bg-red-50 px-4 py-2 text-sm font-semibold text-negative transition-colors active:bg-red-100"
+        >
+          {pendingCancelOid === order.oid
+            ? t("common.canceling")
+            : t("common.cancel")}
+        </button>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+        <div className="rounded-xl bg-surface px-3 py-2">
+          <p className="text-xs text-muted">{t("positions.size")}</p>
+          <p className="mt-1 font-semibold text-foreground">{order.sz}</p>
+        </div>
+        <div className="rounded-xl bg-surface px-3 py-2">
+          <p className="text-xs text-muted">
+            {protectionKind
+              ? t("positions.triggerPrice")
+              : t("positions.limitPrice")}
+          </p>
+          <p className="mt-1 font-semibold text-foreground">
+            {protectionKind && order.triggerPx != null
+              ? formatPrice(order.triggerPx)
+              : order.limitPx
+                ? formatPrice(order.limitPx)
+                : "\u2014"}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function PositionsEmptyState() {
@@ -93,7 +412,6 @@ export function PositionsPage() {
   const { data: userState } = useUserState();
   const { data: openOrders } = useOpenOrders();
   const { data: fills } = useFills();
-  const { data: mids } = useMids();
   const cancelOrder = useCancelOrder();
   const closePosition = useClosePosition();
   const upsertPositionProtection = useUpsertPositionProtection();
@@ -167,197 +485,37 @@ export function PositionsPage() {
           {positions.length === 0 ? (
             <PositionsEmptyState />
           ) : (
-            positions.map((position: any) => {
-              const currentPrice = mids?.[position.coin]
-                ? parseFloat(mids[position.coin])
-                : position.entryPx;
-              const pnl = position.unrealizedPnl ?? 0;
-              const isPositive = pnl >= 0;
-              const isLong = position.szi > 0;
-              const direction: PositionDirection = isLong ? "long" : "short";
-              const displayName = position.coin.includes(":")
-                ? position.coin.split(":")[1]
-                : position.coin;
-              const protectionOrders = (openOrders ?? []).filter(
-                (order: OpenOrder) =>
-                  order.coin === position.coin &&
-                  order.isTrigger &&
-                  order.reduceOnly,
-              );
-              const protectionState = getProtectionState(
-                protectionOrders,
-                direction,
-                currentPrice,
-                position.szi,
-              );
-
-              return (
-                <div
-                  key={position.coin}
-                  onClick={() =>
-                    navigate(`/coin/${encodeURIComponent(position.coin)}`)
-                  }
-                  className="rounded-2xl border border-separator bg-white p-4 shadow-sm"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <TokenIcon coin={displayName.split("/")[0]} />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="truncate font-semibold text-foreground">
-                            {displayName}
-                          </p>
-                          <span
-                            className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
-                              isLong
-                                ? "bg-blue-50 text-primary"
-                                : "bg-gray-100 text-gray-700"
-                            }`}
-                          >
-                            {isLong ? t("common.long") : t("common.short")}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-sm text-muted">
-                          {Math.abs(position.szi)} @{" "}
-                          {formatPrice(position.entryPx)}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex-shrink-0 text-right">
-                      <p
-                        className={`text-sm font-semibold ${isPositive ? "text-positive" : "text-negative"}`}
-                      >
-                        {isPositive ? "+" : "-"}
-                        {formatUsd(pnl)}
-                      </p>
-                      <p className="mt-1 text-xs text-muted">
-                        {t("positions.markPrice", { price: formatPrice(currentPrice) })}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                    <div className="rounded-xl bg-surface px-3 py-2">
-                      <p className="text-xs text-muted">{t("positions.positionValue")}</p>
-                      <p className="mt-1 font-semibold text-foreground">
-                        {formatUsd(position.positionValue ?? 0)}
-                      </p>
-                    </div>
-                    <div className="rounded-xl bg-surface px-3 py-2">
-                      <p className="text-xs text-muted">{t("positions.leverage")}</p>
-                      <p className="mt-1 font-semibold text-foreground">
-                        {position.leverage.value}x {position.leverage.type}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 rounded-[20px] border border-separator bg-surface px-3 py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-foreground">
-                          {t("positions.protection")}
-                        </p>
-                        <p className="mt-1 text-xs text-muted">
-                          {protectionState.stopLoss ||
-                          protectionState.takeProfit
-                            ? t("positions.manageSlTp")
-                            : t("positions.addSlTp")}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          haptics.light();
-                          setEditingProtection({
-                            coin: position.coin,
-                            direction,
-                            displayName,
-                            currentPrice,
-                            entryPrice: position.entryPx,
-                            size: Math.abs(position.szi),
-                            draft: createProtectionDraft(
-                              protectionState.stopLoss?.triggerPx ?? null,
-                              protectionState.takeProfit?.triggerPx ?? null,
-                            ),
-                          });
-                        }}
-                        className="flex-shrink-0 rounded-full bg-white px-3 py-2 text-xs font-semibold text-primary shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 active:bg-gray-100"
-                      >
-                        {protectionState.stopLoss || protectionState.takeProfit
-                          ? t("positions.editProtection")
-                          : t("positions.addProtection")}
-                      </button>
-                    </div>
-
-                    {protectionState.stopLoss || protectionState.takeProfit ? (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {protectionState.stopLoss?.triggerPx != null && (
-                          <span className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 shadow-sm">
-                            SL {formatPrice(protectionState.stopLoss.triggerPx)}
-                          </span>
-                        )}
-                        {protectionState.takeProfit?.triggerPx != null && (
-                          <span className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-emerald-600 shadow-sm">
-                            TP{" "}
-                            {formatPrice(protectionState.takeProfit.triggerPx)}
-                          </span>
-                        )}
-                        {protectionState.needsReview && (
-                          <span className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
-                            {t("positions.reviewProtection")}
-                          </span>
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="mt-4 flex gap-3">
-                    <button
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        haptics.medium();
-                        setPendingCloseCoin(position.coin);
-                        closePosition.mutate(position.coin, {
-                          onSuccess: () => {
-                            setPendingCloseCoin(null);
-                            haptics.success();
-                            toast.success(t("positions.positionClosed", { name: displayName }));
-                          },
-                          onError: (error) => {
-                            setPendingCloseCoin(null);
-                            haptics.error();
-                            toast.error(
-                              error instanceof Error
-                                ? error.message
-                                : t("positions.closeFailed"),
-                            );
-                          },
-                        });
-                      }}
-                      disabled={pendingCloseCoin === position.coin}
-                      className="flex-1 rounded-full bg-[#111827] px-4 py-3 text-sm font-semibold text-white transition-opacity active:opacity-80"
-                    >
-                      {pendingCloseCoin === position.coin
-                        ? t("common.closing")
-                        : t("common.close")}
-                    </button>
-                    <button
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        navigate(
-                          `/trade/${encodeURIComponent(position.coin)}?side=${isLong ? "short" : "long"}`,
-                        );
-                      }}
-                      className="flex-1 rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white transition-colors active:bg-primary-dark"
-                    >
-                      {t("positions.tradeMore")}
-                    </button>
-                  </div>
-                </div>
-              );
-            })
+            positions.map((position: any) => (
+              <PositionCard
+                key={position.coin}
+                position={position}
+                openOrders={openOrders ?? []}
+                pendingCloseCoin={pendingCloseCoin}
+                onEditProtection={setEditingProtection}
+                onClosePosition={(coin, displayName) => {
+                  setPendingCloseCoin(coin);
+                  closePosition.mutate(coin, {
+                    onSuccess: () => {
+                      setPendingCloseCoin(null);
+                      haptics.success();
+                      toast.success(t("positions.positionClosed", { name: displayName }));
+                    },
+                    onError: (error) => {
+                      setPendingCloseCoin(null);
+                      haptics.error();
+                      toast.error(
+                        error instanceof Error
+                          ? error.message
+                          : t("positions.closeFailed"),
+                      );
+                    },
+                  });
+                }}
+                onTradeMore={(coin, side) => {
+                  navigate(`/trade/${encodeURIComponent(coin)}?side=${side}`);
+                }}
+              />
+            ))
           )}
         </div>
       )}
@@ -367,130 +525,36 @@ export function PositionsPage() {
           {!openOrders || openOrders.length === 0 ? (
             <PositionsEmptyState />
           ) : (
-            openOrders.map((order: any) => {
-              const orderCoin = order.coin.includes(":")
-                ? order.coin.split(":")[1]
-                : order.coin;
-              const linkedPosition = positionsByCoin.get(order.coin);
-              const orderDirection: PositionDirection | null = linkedPosition
-                ? linkedPosition.szi > 0
-                  ? "long"
-                  : "short"
-                : null;
-              const orderCurrentPrice = mids?.[order.coin]
-                ? parseFloat(mids[order.coin])
-                : (linkedPosition?.entryPx ?? null);
-              const protectionKind = orderDirection
-                ? classifyProtectionOrder(
-                    order as OpenOrder,
-                    orderDirection,
-                    orderCurrentPrice,
-                  )
-                : null;
-              const orderBadgeLabel =
-                protectionKind === "stopLoss"
-                  ? "SL"
-                  : protectionKind === "takeProfit"
-                    ? "TP"
-                    : order.side === "buy"
-                      ? t("coinDetail.buyButton")
-                      : t("coinDetail.sellButton");
-              const orderTypeLabel =
-                order.orderType === "market"
-                  ? t("trade.orderTypeMarket")
-                  : t("trade.orderTypeLimit");
-
-              return (
-                <div
-                  key={order.oid}
-                  className="rounded-2xl border border-separator bg-white p-4 shadow-sm"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <TokenIcon coin={orderCoin.split("/")[0]} />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="truncate font-semibold text-foreground">
-                            {orderCoin}
-                          </p>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                              protectionKind === "stopLoss"
-                                ? "bg-rose-50 text-rose-600"
-                                : protectionKind === "takeProfit"
-                                  ? "bg-emerald-50 text-emerald-600"
-                                  : order.side === "buy"
-                                    ? "bg-blue-50 text-primary"
-                                    : "bg-gray-100 text-gray-700"
-                            }`}
-                          >
-                            {orderBadgeLabel}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-sm text-muted">
-                          {protectionKind
-                            ? t("positions.reduceOnlyTrigger")
-                            : t("positions.orderType", { type: orderTypeLabel })}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        haptics.medium();
-                        setPendingCancelOid(order.oid);
-                        cancelOrder.mutate(
-                          { coin: order.coin, oid: order.oid },
-                          {
-                            onSuccess: () => {
-                              setPendingCancelOid(null);
-                              haptics.success();
-                              toast.success(t("positions.orderCancelled"));
-                            },
-                            onError: (error) => {
-                              setPendingCancelOid(null);
-                              haptics.error();
-                              toast.error(
-                                error instanceof Error
-                                  ? error.message
-                                  : t("positions.cancelFailed"),
-                              );
-                            },
-                          },
+            openOrders.map((order: any) => (
+              <OpenOrderCard
+                key={order.oid}
+                order={order}
+                linkedPosition={positionsByCoin.get(order.coin)}
+                pendingCancelOid={pendingCancelOid}
+                onCancel={(targetOrder) => {
+                  setPendingCancelOid(targetOrder.oid);
+                  cancelOrder.mutate(
+                    { coin: targetOrder.coin, oid: targetOrder.oid },
+                    {
+                      onSuccess: () => {
+                        setPendingCancelOid(null);
+                        haptics.success();
+                        toast.success(t("positions.orderCancelled"));
+                      },
+                      onError: (error) => {
+                        setPendingCancelOid(null);
+                        haptics.error();
+                        toast.error(
+                          error instanceof Error
+                            ? error.message
+                            : t("positions.cancelFailed"),
                         );
-                      }}
-                      disabled={pendingCancelOid === order.oid}
-                      className="rounded-full bg-red-50 px-4 py-2 text-sm font-semibold text-negative transition-colors active:bg-red-100"
-                    >
-                      {pendingCancelOid === order.oid
-                        ? t("common.canceling")
-                        : t("common.cancel")}
-                    </button>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                    <div className="rounded-xl bg-surface px-3 py-2">
-                      <p className="text-xs text-muted">{t("positions.size")}</p>
-                      <p className="mt-1 font-semibold text-foreground">
-                        {order.sz}
-                      </p>
-                    </div>
-                    <div className="rounded-xl bg-surface px-3 py-2">
-                      <p className="text-xs text-muted">
-                        {protectionKind ? t("positions.triggerPrice") : t("positions.limitPrice")}
-                      </p>
-                      <p className="mt-1 font-semibold text-foreground">
-                        {protectionKind && order.triggerPx != null
-                          ? formatPrice(order.triggerPx)
-                          : order.limitPx
-                            ? formatPrice(order.limitPx)
-                            : "\u2014"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })
+                      },
+                    },
+                  );
+                }}
+              />
+            ))
           )}
         </div>
       )}

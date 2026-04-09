@@ -526,6 +526,18 @@ export function useMids() {
   });
 }
 
+export function useMarketPrice(coin: string) {
+  const { client } = usePublicHyperliquid();
+
+  return useQuery<number | null>({
+    queryKey: ["marketPrice", coin],
+    queryFn: () => client.getMarketPrice(coin),
+    enabled: !!coin,
+    staleTime: 2_000,
+    refetchInterval: 10_000,
+  });
+}
+
 /**
  * Hook to fetch orderbook
  */

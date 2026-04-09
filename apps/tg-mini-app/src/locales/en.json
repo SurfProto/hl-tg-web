@@ -99,6 +99,10 @@
     "enterValidSl": "Enter a valid stop loss trigger price.",
     "enterValidTp": "Enter a valid take profit trigger price.",
     "marketMetadataUnavailable": "Market metadata unavailable.",
+    "loadingMarketPrice": "Loading market price...",
+    "marketPriceUnavailable": "Market price unavailable.",
+    "loadingBalance": "Loading balance...",
+    "balanceUnavailable": "Balance unavailable.",
     "checkOrderDetails": "Check your order details and try again.",
     "orderPlacedWithProtection": "{{side}} order placed with protection",
     "orderPlacedProtectionFailed": "{{side}} order placed, but protection was not created. {{error}}",
@@ -135,6 +139,8 @@
     "saving": "Saving...",
     "ariaClose": "Close protection settings",
     "markPrice": "Mark {{price}}",
+    "loadingMarkPrice": "Loading mark price...",
+    "markPriceUnavailable": "Mark price unavailable.",
     "slPrice": "SL {{price}}",
     "tpPrice": "TP {{price}}"
   },
@@ -368,7 +374,10 @@
     "open": "Open",
     "high": "High",
     "low": "Low",
-    "vol": "Vol"
+    "vol": "Vol",
+    "loadingMarketPrice": "Loading market price...",
+    "marketPriceUnavailable": "Market price unavailable.",
+    "marketStatsUnavailable": "Market stats unavailable."
   },
   "tradingSetup": {
     "titleReauth": "Reauthorize trading",
@@ -394,10 +403,12 @@
     "totalEquity": "Total Equity",
     "availableForTrading": "Available for trading {{amount}}",
     "deposit": "Deposit",
-    "withdraw": "Withdraw"
+    "withdraw": "Withdraw",
+    "balanceUnavailable": "Balance data unavailable."
   },
   "marketList": {
-    "volume": "Vol {{volume}}"
+    "volume": "Vol {{volume}}",
+    "priceUnavailable": "Price unavailable"
   },
   "numPad": {
     "delete": "Delete",

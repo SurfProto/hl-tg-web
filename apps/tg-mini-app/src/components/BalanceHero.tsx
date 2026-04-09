@@ -2,6 +2,7 @@ import { type ComponentType, Suspense, lazy, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUserState } from "@repo/hyperliquid-sdk";
 import { useTranslation } from "react-i18next";
+import { getAsyncValueState } from "../lib/async-value-state";
 import { UnifiedAccountBanner } from "./UnifiedAccountBanner";
 
 function lazyNamedModule<T extends Record<string, ComponentType<any>>>(
@@ -63,7 +64,12 @@ export function BalanceHero() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [showDeferredChart, setShowDeferredChart] = useState(false);
-  const { data: userState, isLoading: userStateLoading } = useUserState();
+  const {
+    data: userState,
+    isError: userStateError,
+    isLoading: userStateLoading,
+    refetch: refetchUserState,
+  } = useUserState();
 
   useEffect(() => {
     const showChart = () => setShowDeferredChart(true);
@@ -81,9 +87,38 @@ export function BalanceHero() {
 
   const totalValue = userState?.marginSummary?.accountValue ?? 0;
   const availableValue = userState?.availableBalance ?? 0;
+  const heroState = getAsyncValueState({
+    hasValue: Boolean(userState),
+    isLoading: userStateLoading,
+    isError: userStateError,
+  });
 
-  if (userStateLoading) {
+  if (heroState === "loading") {
     return <BalanceHeroSkeleton />;
+  }
+
+  if (heroState === "error") {
+    return (
+      <section className="border-b border-separator bg-white">
+        <div className="px-4 pb-5 pt-5">
+          <div className="rounded-[28px] border border-separator bg-surface px-5 py-5">
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-gray-400">
+              {t("balanceHero.totalEquity")}
+            </p>
+            <p className="mt-3 text-sm text-gray-500">
+              {t("balanceHero.balanceUnavailable")}
+            </p>
+            <button
+              type="button"
+              onClick={() => void refetchUserState()}
+              className="mt-4 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors active:bg-primary-dark"
+            >
+              {t("common.retry")}
+            </button>
+          </div>
+        </div>
+      </section>
+    );
   }
 
   return (

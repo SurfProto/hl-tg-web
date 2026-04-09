@@ -7,11 +7,12 @@ import {
   useAssetCtx,
   useCandles,
   useMarketData,
-  useMids,
+  useMarketPrice,
 } from "@repo/hyperliquid-sdk";
 import type { AnyMarket, Candle } from "@repo/types";
 import { Chart, type LiteCandleInspection } from "@repo/ui";
 import { StatRow } from "../components/StatRow";
+import { getAsyncValueState } from "../lib/async-value-state";
 import { TokenIcon } from "../components/TokenIcon";
 
 function formatPrice(price: number): string {
@@ -65,8 +66,17 @@ export function CoinDetailPage() {
     useState<LiteCandleInspection | null>(null);
 
   const { data: markets } = useMarketData();
-  const { data: mids } = useMids();
-  const { data: assetCtx } = useAssetCtx(symbol);
+  const {
+    data: price,
+    isError: priceError,
+    isLoading: priceLoading,
+    refetch: refetchPrice,
+  } = useMarketPrice(symbol);
+  const {
+    data: assetCtx,
+    isError: assetCtxError,
+    isLoading: assetCtxLoading,
+  } = useAssetCtx(symbol);
   const { data: candles } = useCandles(symbol, interval);
 
   // Spot disabled — all markets are perp
@@ -85,9 +95,18 @@ export function CoinDetailPage() {
   const baseToken = selectedMarket
     ? getMarketBaseAsset(selectedMarket)
     : getMarketBaseAsset(symbol);
-  const price = mids?.[symbol] ? parseFloat(mids[symbol]) : null;
   const change24h = assetCtx?.change24h ?? 0;
   const isPositive = change24h >= 0;
+  const priceState = getAsyncValueState({
+    hasValue: price != null,
+    isLoading: priceLoading,
+    isError: priceError,
+  });
+  const statsState = getAsyncValueState({
+    hasValue: assetCtx != null,
+    isLoading: assetCtxLoading,
+    isError: assetCtxError,
+  });
   const inspectionTooltip = useMemo(() => {
     if (!activeInspection) return null;
 
@@ -132,16 +151,38 @@ export function CoinDetailPage() {
       </div>
 
       <div className="px-4 pb-5">
-        <div className="text-[2.35rem] font-bold tracking-tight text-foreground tabular-nums">
-          {price != null ? formatPrice(price) : "\u2014"}
-        </div>
-        <div
-          className={`mt-2 text-sm font-semibold ${isPositive ? "text-positive" : "text-negative"}`}
-        >
-          {isPositive ? "+" : ""}
-          {change24h.toFixed(2)}%
-          <span className="ml-1 font-medium text-gray-400">{t("coinDetail.pastDay")}</span>
-        </div>
+        {priceState === "ready" ? (
+          <>
+            <div className="text-[2.35rem] font-bold tracking-tight text-foreground tabular-nums">
+              {formatPrice(price!)}
+            </div>
+            <div
+              className={`mt-2 text-sm font-semibold ${isPositive ? "text-positive" : "text-negative"}`}
+            >
+              {isPositive ? "+" : ""}
+              {change24h.toFixed(2)}%
+              <span className="ml-1 font-medium text-gray-400">{t("coinDetail.pastDay")}</span>
+            </div>
+          </>
+        ) : priceState === "loading" ? (
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-400">
+            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-gray-200 border-t-primary" />
+            {t("coinDetail.loadingMarketPrice")}
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <p className="text-sm font-medium text-amber-600">
+              {t("coinDetail.marketPriceUnavailable")}
+            </p>
+            <button
+              type="button"
+              onClick={() => void refetchPrice()}
+              className="rounded-full bg-surface px-3 py-1.5 text-xs font-semibold text-primary transition-colors active:bg-gray-100"
+            >
+              {t("common.retry")}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="px-4 pb-5">
@@ -214,24 +255,44 @@ export function CoinDetailPage() {
         <div className="overflow-hidden rounded-[24px] border border-black/[0.05] bg-white/90 px-5 py-2 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
           <StatRow
             label={t("coinDetail.change24h")}
-            value={`${isPositive ? "+" : ""}${change24h.toFixed(2)}%`}
+            value={
+              statsState === "ready"
+                ? `${isPositive ? "+" : ""}${change24h.toFixed(2)}%`
+                : statsState === "loading"
+                  ? t("common.loading")
+                  : t("coinDetail.marketStatsUnavailable")
+            }
             valueColor={isPositive ? "positive" : "negative"}
           />
           <StatRow
             label={t("coinDetail.volume24h")}
-            value={assetCtx ? formatVolume(assetCtx.dayNtlVlm) : "\u2014"}
+            value={
+              statsState === "ready"
+                ? formatVolume(assetCtx!.dayNtlVlm)
+                : statsState === "loading"
+                  ? t("common.loading")
+                  : t("coinDetail.marketStatsUnavailable")
+            }
           />
           <StatRow
             label={t("coinDetail.openInterest")}
             value={
-              assetCtx && price
-                ? formatVolume(assetCtx.openInterest * price)
-                : "\u2014"
+              statsState === "ready" && priceState === "ready"
+                ? formatVolume(assetCtx!.openInterest * price!)
+                : statsState === "loading" || priceState === "loading"
+                  ? t("common.loading")
+                  : t("coinDetail.marketStatsUnavailable")
             }
           />
           <StatRow
             label={t("coinDetail.fundingRate")}
-            value={assetCtx ? formatFunding(assetCtx.funding) : "\u2014"}
+            value={
+              statsState === "ready"
+                ? formatFunding(assetCtx!.funding)
+                : statsState === "loading"
+                  ? t("common.loading")
+                  : t("coinDetail.marketStatsUnavailable")
+            }
           />
         </div>
       </div>

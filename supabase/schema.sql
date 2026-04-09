@@ -9,9 +9,46 @@ create table if not exists users (
   wallet_address text unique,
   privy_user_id text unique,        -- Privy user.id for cross-reference
   username text,
+  email text,
+  kyc_status text,
+  kyc_source text,
+  kyc_checked_at timestamptz,
+  kyc_id text,
   language text default 'en',
   referral_code text unique,
   referred_by uuid references users(id),
+  created_at timestamptz default now()
+);
+
+create table if not exists verified_emails (
+  id uuid primary key default gen_random_uuid(),
+  email text not null,
+  normalized_email text not null unique,
+  created_at timestamptz default now()
+);
+
+create table if not exists onramp_orders (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references users(id) on delete cascade,
+  provider_order_id text unique not null,
+  external_order_id text unique,
+  service_id text,
+  provider_state text not null,
+  app_state text not null,
+  payin_amount numeric,
+  payin_currency text,
+  payout_amount numeric,
+  payout_currency text,
+  fee_amount numeric,
+  wallet_address text not null,
+  email text,
+  invoice_url text,
+  invoice_url_expires_at timestamptz,
+  provider_created_at timestamptz,
+  provider_touched_at timestamptz,
+  last_synced_at timestamptz default now(),
+  error_code text,
+  error_message text,
   created_at timestamptz default now()
 );
 
@@ -77,11 +114,13 @@ create table if not exists awards (
 
 -- Enable RLS on all tables
 alter table users enable row level security;
+alter table verified_emails enable row level security;
 alter table notification_preferences enable row level security;
 alter table user_points enable row level security;
 alter table referral_earnings enable row level security;
 alter table weekly_rewards enable row level security;
 alter table awards enable row level security;
+alter table onramp_orders enable row level security;
 
 -- RLS Policies (see migrations/001_identity_and_rls.sql for the ALTER statements)
 -- users: public read, authenticated update own, open insert for ensureUser()

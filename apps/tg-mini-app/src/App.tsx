@@ -222,6 +222,7 @@ export function TelegramAuthGate({
         user?.email?.address ??
         undefined,
       walletAddress: user?.wallet?.address,
+      email: user?.email?.address,
     });
   }, [authenticated, ready, user]);
 

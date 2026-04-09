@@ -905,7 +905,6 @@ export function TradePage() {
         onClose={() => setSetupVisible(false)}
         setup={tradingSetup}
         isExpired={tradingStatus.isAgentExpired}
-        status={tradingStatus}
       />
     </div>
   );

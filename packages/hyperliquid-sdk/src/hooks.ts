@@ -22,6 +22,7 @@ import {
 } from "./agent";
 import {
   evaluateTradingSetupStatus,
+  getUnifiedApprovalState as getUnifiedApprovalSnapshot,
   getSupportedStableAssets,
 } from "./account-state";
 import type {
@@ -318,7 +319,7 @@ function getBuilderApprovalState(
   return isError ? "stale" : "checking";
 }
 
-function getUnifiedApprovalState(
+function getUnifiedApprovalRequirementState(
   approval: UnifiedApprovalState | undefined,
   isError: boolean,
 ): ApprovalRequirementState {
@@ -343,7 +344,10 @@ function buildTradingSetupStatus(args: {
     abstractionMode: args.abstractionMode,
     prefersUnifiedAccount: args.prefersUnifiedAccount,
     builderState: getBuilderApprovalState(args.builderMaxFee, args.builderError),
-    unifiedState: getUnifiedApprovalState(args.unifiedApproval, args.unifiedError),
+    unifiedState: getUnifiedApprovalRequirementState(
+      args.unifiedApproval,
+      args.unifiedError,
+    ),
   });
 
   return {
@@ -1503,30 +1507,38 @@ export function useApproveAgentTrading() {
 }
 
 export function useUnifiedAccountApproval() {
-  const { client } = useHyperliquid();
   const { user } = usePrivy();
+  const userStateQuery = useUserState();
   const walletAddress = user?.wallet?.address;
+  const storedMode = walletAddress ? getStoredUnifiedMode(walletAddress) : undefined;
 
-  return useQuery({
-    queryKey: ["userState", "unifiedApproval", walletAddress],
-    queryFn: async () => {
-      if (!client) throw new Error("Client not connected");
-      const accountState = await client.getUserState();
-      const result = {
-        enabled:
-          accountState.abstractionMode === "unifiedAccount" ||
-          accountState.abstractionMode === "portfolioMargin",
-        abstractionMode: accountState.abstractionMode,
-      } satisfies UnifiedApprovalState;
-      if (walletAddress) storeUnifiedMode(walletAddress, result.abstractionMode);
-      return result;
-    },
-    initialData: walletAddress ? getStoredUnifiedMode(walletAddress) : undefined,
-    enabled: !!client,
-    // Check once per session. Mid-session revocation surfaces via the
-    // order-placement error path. See plan Fix #3.
-    staleTime: Infinity,
-  });
+  const data = useMemo(() => {
+    return getUnifiedApprovalSnapshot(userStateQuery.data, storedMode);
+  }, [storedMode, userStateQuery.data]);
+
+  useEffect(() => {
+    if (walletAddress && data) {
+      storeUnifiedMode(walletAddress, data.abstractionMode);
+    }
+  }, [data, walletAddress]);
+
+  const refetch = useCallback(async () => {
+    const result = await userStateQuery.refetch();
+    const nextData = getUnifiedApprovalSnapshot(result.data, storedMode);
+    if (walletAddress && nextData) {
+      storeUnifiedMode(walletAddress, nextData.abstractionMode);
+    }
+    return {
+      ...result,
+      data: nextData,
+    };
+  }, [storedMode, userStateQuery, walletAddress]);
+
+  return {
+    ...userStateQuery,
+    data,
+    refetch,
+  };
 }
 
 export function useSetUnifiedAccount() {

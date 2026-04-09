@@ -1,4 +1,5 @@
 import type {
+  AccountState,
   AccountAbstractionMode,
   ApprovalRequirementState,
   StableBalanceState,
@@ -132,6 +133,42 @@ export function getActionableBalances(
   return {
     availableBalance: actionableFallback,
     withdrawableBalance: actionableFallback,
+  };
+}
+
+export function getNormalizedTotalEquity({
+  availableBalance,
+  assetPositions,
+}: {
+  availableBalance: number;
+  assetPositions: Array<{
+    position?: {
+      positionValue?: number;
+    };
+  }>;
+}): number {
+  const idleBalance = Number.isFinite(availableBalance) ? availableBalance : 0;
+  const openPositionValue = assetPositions.reduce((sum, assetPosition) => {
+    const positionValue = assetPosition.position?.positionValue ?? 0;
+    return sum + (Number.isFinite(positionValue) ? positionValue : 0);
+  }, 0);
+
+  return idleBalance + openPositionValue;
+}
+
+export function getUnifiedApprovalState(
+  accountState: Pick<AccountState, "abstractionMode"> | undefined,
+  fallback: { enabled: boolean; abstractionMode: AccountAbstractionMode } | undefined,
+): { enabled: boolean; abstractionMode: AccountAbstractionMode } | undefined {
+  if (!accountState) {
+    return fallback;
+  }
+
+  return {
+    enabled:
+      accountState.abstractionMode === "unifiedAccount" ||
+      accountState.abstractionMode === "portfolioMargin",
+    abstractionMode: accountState.abstractionMode,
   };
 }
 

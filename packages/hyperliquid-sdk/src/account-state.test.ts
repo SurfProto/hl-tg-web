@@ -4,6 +4,8 @@ import {
   evaluateTradingSetupStatus,
   getActionableBalances,
   getAvailableCollateralForMarket,
+  getNormalizedTotalEquity,
+  getUnifiedApprovalState,
   getVisibleStableBalances,
   inferAbstractionMode,
   normalizePerpStableBalance,
@@ -114,6 +116,63 @@ describe("getActionableBalances", () => {
     expect(getActionableBalances({}, 17)).toEqual({
       availableBalance: 17,
       withdrawableBalance: 17,
+    });
+  });
+});
+
+describe("getNormalizedTotalEquity", () => {
+  it("includes idle available balance when there are no open positions", () => {
+    expect(
+      getNormalizedTotalEquity({
+        availableBalance: 145,
+        assetPositions: [],
+      }),
+    ).toBe(145);
+  });
+
+  it("adds current position values on top of idle available balance", () => {
+    expect(
+      getNormalizedTotalEquity({
+        availableBalance: 120,
+        assetPositions: [
+          {
+            type: "oneWay",
+            position: { positionValue: 35.5 },
+          } as any,
+          {
+            type: "oneWay",
+            position: { positionValue: 64.5 },
+          } as any,
+        ],
+      }),
+    ).toBe(220);
+  });
+});
+
+describe("getUnifiedApprovalState", () => {
+  it("derives unified approval directly from cached user state", () => {
+    expect(
+      getUnifiedApprovalState(
+        {
+          abstractionMode: "portfolioMargin",
+        } as any,
+        undefined,
+      ),
+    ).toEqual({
+      enabled: true,
+      abstractionMode: "portfolioMargin",
+    });
+  });
+
+  it("falls back to stored mode when user state is not loaded yet", () => {
+    expect(
+      getUnifiedApprovalState(undefined, {
+        enabled: false,
+        abstractionMode: "standard",
+      }),
+    ).toEqual({
+      enabled: false,
+      abstractionMode: "standard",
     });
   });
 });

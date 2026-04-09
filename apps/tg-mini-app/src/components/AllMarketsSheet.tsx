@@ -2,16 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getMarketBaseAsset, getMarketDisplayName, getMarketSearchTerms } from '@repo/hyperliquid-sdk';
 import type { EnrichedMarket, MarketStats } from '@repo/types';
-import { getAsyncValueState } from '../lib/async-value-state';
-import { formatPrice } from '../utils/format';
 import { MarketListItem } from './MarketListItem';
-
-function formatVolume(vol: number): string {
-  if (vol >= 1_000_000_000) return `$${(vol / 1_000_000_000).toFixed(1)}B`;
-  if (vol >= 1_000_000) return `$${(vol / 1_000_000).toFixed(1)}M`;
-  if (vol >= 1_000) return `$${(vol / 1_000).toFixed(1)}K`;
-  return `$${vol.toFixed(0)}`;
-}
+import { getHomeMarketDisplayState } from '../pages/home-market-state';
 
 interface AllMarketsSheetProps {
   isOpen: boolean;
@@ -22,7 +14,14 @@ interface AllMarketsSheetProps {
   onSelect: (coin: string) => void;
 }
 
-export function AllMarketsSheet({ isOpen, onClose, markets, marketStats, marketStatsError = false, onSelect }: AllMarketsSheetProps) {
+export function AllMarketsSheet({
+  isOpen,
+  onClose,
+  markets,
+  marketStats,
+  marketStatsError = false,
+  onSelect,
+}: AllMarketsSheetProps) {
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const { t } = useTranslation();
@@ -117,13 +116,9 @@ export function AllMarketsSheet({ isOpen, onClose, markets, marketStats, marketS
               const coin = market.name;
               const displayName = getMarketDisplayName(market);
               const iconCoin = getMarketBaseAsset(market);
-              const stats = marketStats?.[coin];
-              const hasPrice =
-                typeof stats?.markPx === 'number' && Number.isFinite(stats.markPx) && stats.markPx > 0;
-              const priceState = getAsyncValueState({
-                hasValue: hasPrice,
-                isLoading: !marketStats && !marketStatsError,
-                isError: marketStatsError || (!!marketStats && !hasPrice),
+              const marketDisplayState = getHomeMarketDisplayState({
+                stats: marketStats?.[coin],
+                marketStatsFailed: marketStatsError,
               });
 
               return (
@@ -133,10 +128,14 @@ export function AllMarketsSheet({ isOpen, onClose, markets, marketStats, marketS
                   displayName={displayName}
                   iconCoin={iconCoin}
                   marketType={market.type}
-                  price={hasPrice ? formatPrice(stats!.markPx) : ''}
-                  priceState={priceState}
-                  change24h={priceState === 'ready' ? stats?.change24h ?? 0 : null}
-                  volume={stats ? formatVolume(stats.dayNtlVlm) : undefined}
+                  price={marketDisplayState.price ?? ''}
+                  priceState={marketDisplayState.dataState}
+                  change24h={
+                    marketDisplayState.dataState === 'ready'
+                      ? marketDisplayState.change24h
+                      : null
+                  }
+                  volume={marketDisplayState.volume ?? undefined}
                   maxLeverage={market.type === 'perp' ? market.maxLeverage : undefined}
                   onClick={() => onSelect(coin)}
                 />

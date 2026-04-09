@@ -23,9 +23,8 @@ import { BalanceHero } from "../components/BalanceHero";
 import { CategoryPills } from "../components/CategoryPills";
 import { MarketListItem } from "../components/MarketListItem";
 import { MarketListItemSkeleton } from "../components/MarketListItemSkeleton";
-import { getAsyncValueState } from "../lib/async-value-state";
 import { log } from "../lib/logger";
-import { formatPrice } from "../utils/format";
+import { getHomeMarketDisplayState } from "./home-market-state";
 import { getHomeMarketViewState } from "./home-state";
 
 function lazyNamedModule<T extends Record<string, ComponentType<any>>>(
@@ -54,13 +53,6 @@ const DEFERRED_ROUTE_PREFETCHERS = [
   () => import("./CoinDetailPage"),
 ];
 
-function formatVolume(vol: number): string {
-  if (vol >= 1_000_000_000) return `$${(vol / 1_000_000_000).toFixed(1)}B`;
-  if (vol >= 1_000_000) return `$${(vol / 1_000_000).toFixed(1)}M`;
-  if (vol >= 1_000) return `$${(vol / 1_000).toFixed(1)}K`;
-  return `$${vol.toFixed(0)}`;
-}
-
 export function HomePage() {
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -81,9 +73,8 @@ export function HomePage() {
     data: marketStats,
     error: marketStatsError,
     isError: marketStatsQueryFailed,
+    isLoading: marketStatsLoading,
   } = useMarketStats();
-  // Temporary UI removal: keep spot classification in shared market metadata,
-  // but hide the Spot pill on Home until the surface is re-enabled.
   const visibleCategories = CATEGORY_ORDER.filter(
     (category) => category !== "spot",
   );
@@ -119,7 +110,6 @@ export function HomePage() {
 
   const allMarkets: AnyMarket[] = useMemo(
     () => [
-      // Spot disabled — perps only
       ...(markets?.perp ?? []).map((market: any) => ({
         ...market,
         type: "perp" as const,
@@ -263,15 +253,10 @@ export function HomePage() {
               const coin = market.name;
               const displayName = getMarketDisplayName(market);
               const iconCoin = getMarketBaseAsset(market);
-              const stats = marketStats?.[coin];
-              const hasPrice =
-                typeof stats?.markPx === "number" &&
-                Number.isFinite(stats.markPx) &&
-                stats.markPx > 0;
-              const priceState = getAsyncValueState({
-                hasValue: hasPrice,
-                isLoading: !marketStats && !marketStatsQueryFailed,
-                isError: marketStatsQueryFailed || (!!marketStats && !hasPrice),
+              const marketDisplayState = getHomeMarketDisplayState({
+                stats: marketStats?.[coin],
+                marketStatsFailed:
+                  marketStatsQueryFailed && !marketStatsLoading,
               });
 
               return (
@@ -281,10 +266,14 @@ export function HomePage() {
                   displayName={displayName}
                   iconCoin={iconCoin}
                   marketType={market.type}
-                  price={hasPrice ? formatPrice(stats!.markPx) : ""}
-                  priceState={priceState}
-                  change24h={priceState === "ready" ? stats?.change24h ?? 0 : null}
-                  volume={stats ? formatVolume(stats.dayNtlVlm) : undefined}
+                  price={marketDisplayState.price ?? ""}
+                  priceState={marketDisplayState.dataState}
+                  change24h={
+                    marketDisplayState.dataState === "ready"
+                      ? marketDisplayState.change24h
+                      : null
+                  }
+                  volume={marketDisplayState.volume ?? undefined}
                   maxLeverage={
                     market.type === "perp" ? market.maxLeverage : undefined
                   }

@@ -25,6 +25,7 @@ import {
   combineStableBalances,
   getActionableBalances,
   getAvailableCollateralForMarket,
+  getNormalizedTotalEquity,
   getVisibleStableBalances,
   inferAbstractionMode,
   normalizePerpStableBalance,
@@ -1330,7 +1331,7 @@ export class HyperliquidClient {
       perpBalances: perpStableBalances,
     });
     const visibleStableBalances = getVisibleStableBalances(stableBalances);
-    const marginSummary = parseMarginSummary(baseState?.marginSummary);
+    const rawMarginSummary = parseMarginSummary(baseState?.marginSummary);
     const crossMarginSummary = parseMarginSummary(
       baseState?.crossMarginSummary,
     );
@@ -1339,6 +1340,39 @@ export class HyperliquidClient {
       stableBalances,
       visibleStableBalances.length === 0 ? rawWithdrawable : 0,
     );
+    const assetPositions = allStates.flatMap(({ dex, state }) =>
+      (state.assetPositions ?? []).map((assetPosition: any) => ({
+        type: assetPosition.type,
+        position: {
+          coin:
+            dex && !assetPosition.position.coin.includes(":")
+              ? `${dex}:${assetPosition.position.coin}`
+              : assetPosition.position.coin,
+          szi: parseFloat(assetPosition.position.szi),
+          leverage: {
+            type: assetPosition.position.leverage.type,
+            value: parseFloat(assetPosition.position.leverage.value),
+          },
+          entryPx: parseFloat(assetPosition.position.entryPx),
+          liquidationPx:
+            assetPosition.position.liquidationPx != null
+              ? parseFloat(assetPosition.position.liquidationPx)
+              : null,
+          marginUsed: parseFloat(assetPosition.position.marginUsed),
+          maxLeverage: parseFloat(assetPosition.position.maxLeverage),
+          positionValue: parseFloat(assetPosition.position.positionValue),
+          returnOnEquity: parseFloat(assetPosition.position.returnOnEquity),
+          unrealizedPnl: parseFloat(assetPosition.position.unrealizedPnl),
+        },
+      })),
+    );
+    const marginSummary = {
+      ...rawMarginSummary,
+      accountValue: getNormalizedTotalEquity({
+        availableBalance,
+        assetPositions,
+      }),
+    };
 
     const result: AccountState = {
       abstractionMode,
@@ -1353,32 +1387,7 @@ export class HyperliquidClient {
         baseState?.crossMaintenanceMarginUsed ?? "0",
       ),
       withdrawable: rawWithdrawable,
-      assetPositions: allStates.flatMap(({ dex, state }) =>
-        (state.assetPositions ?? []).map((assetPosition: any) => ({
-          type: assetPosition.type,
-          position: {
-            coin:
-              dex && !assetPosition.position.coin.includes(":")
-                ? `${dex}:${assetPosition.position.coin}`
-                : assetPosition.position.coin,
-            szi: parseFloat(assetPosition.position.szi),
-            leverage: {
-              type: assetPosition.position.leverage.type,
-              value: parseFloat(assetPosition.position.leverage.value),
-            },
-            entryPx: parseFloat(assetPosition.position.entryPx),
-            liquidationPx:
-              assetPosition.position.liquidationPx != null
-                ? parseFloat(assetPosition.position.liquidationPx)
-                : null,
-            marginUsed: parseFloat(assetPosition.position.marginUsed),
-            maxLeverage: parseFloat(assetPosition.position.maxLeverage),
-            positionValue: parseFloat(assetPosition.position.positionValue),
-            returnOnEquity: parseFloat(assetPosition.position.returnOnEquity),
-            unrealizedPnl: parseFloat(assetPosition.position.unrealizedPnl),
-          },
-        })),
-      ),
+      assetPositions,
     };
     this.userStateCache = { data: result, expiresAt: Date.now() + 2000 };
     return result;

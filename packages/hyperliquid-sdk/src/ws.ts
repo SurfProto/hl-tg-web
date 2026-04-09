@@ -8,7 +8,7 @@ export class WebSocketManager {
   private subscriptions: Map<string, Set<WsCallback>> = new Map();
   private statusListeners: Set<StatusCallback> = new Set();
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
+  private maxReconnectAttempts = 10;
   private reconnectDelay = 1000;
   private isConnecting = false;
   private testnet: boolean;

@@ -62,6 +62,7 @@ export function DepositPage() {
   const [order, setOrder] = useState<OnrampOrderStatus | null>(null);
   const [fiatError, setFiatError] = useState<string | null>(null);
   const [tronAddress, setTronAddress] = useState("");
+  const [addressMode, setAddressMode] = useState<"privy" | "trc20">("trc20");
   const [isBootstrapping, setIsBootstrapping] = useState(false);
   const [isQuoting, setIsQuoting] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
@@ -213,6 +214,7 @@ export function DepositPage() {
   }, [getAccessToken, order, queryClient, t, view]);
 
   const isTrc20 = bootstrapData?.service.network === "TRC20";
+  const resolvedPayoutAddress = addressMode === "privy" ? (address ?? null) : tronAddress || null;
 
   const requestQuote = async () => {
     if (!email) {
@@ -220,7 +222,7 @@ export function DepositPage() {
       return;
     }
 
-    if (isTrc20 && !isValidTrc20Address(tronAddress)) {
+    if (isTrc20 && addressMode === "trc20" && !isValidTrc20Address(tronAddress)) {
       setFiatError(t("deposit.trc20AddressInvalid"));
       return;
     }
@@ -241,8 +243,8 @@ export function DepositPage() {
         throw new Error(t("deposit.authRequired"));
       }
 
-      if (isTrc20 && tronAddress !== bootstrapData?.walletAddress) {
-        const updated = await bootstrapOnramp(accessToken, { email, walletAddress: tronAddress });
+      if (resolvedPayoutAddress !== bootstrapData?.walletAddress) {
+        const updated = await bootstrapOnramp(accessToken, { email, walletAddress: resolvedPayoutAddress });
         setBootstrapData(updated);
       }
 
@@ -267,7 +269,7 @@ export function DepositPage() {
       return;
     }
 
-    if (isTrc20 && !isValidTrc20Address(tronAddress)) {
+    if (isTrc20 && addressMode === "trc20" && !isValidTrc20Address(tronAddress)) {
       setFiatError(t("deposit.trc20AddressInvalid"));
       return;
     }
@@ -288,8 +290,8 @@ export function DepositPage() {
         throw new Error(t("deposit.authRequired"));
       }
 
-      if (isTrc20 && tronAddress !== bootstrapData?.walletAddress) {
-        const updated = await bootstrapOnramp(accessToken, { email, walletAddress: tronAddress });
+      if (resolvedPayoutAddress !== bootstrapData?.walletAddress) {
+        const updated = await bootstrapOnramp(accessToken, { email, walletAddress: resolvedPayoutAddress });
         setBootstrapData(updated);
       }
 
@@ -362,11 +364,9 @@ export function DepositPage() {
     bootstrapData?.kycStatus === "verified_local"
       ? t("deposit.verifiedEmail")
       : t("deposit.pendingVerification");
-  const destinationAddress = isTrc20
-    ? tronAddress
-    : (bootstrapData?.walletAddress ?? address ?? t("deposit.connectWallet"));
   const isEmailRequired = !email || fiatState === "email_required";
-  const isTrc20AddressValid = !isTrc20 || isValidTrc20Address(tronAddress);
+  const isTrc20AddressValid =
+    !isTrc20 || addressMode === "privy" || isValidTrc20Address(tronAddress);
   const showQuoteCard = Boolean(quote);
   const showOrderCard = Boolean(order);
   const canRequestQuote =
@@ -475,10 +475,33 @@ export function DepositPage() {
                 </p>
               </div>
             </div>
-            <div>
+            <div className="space-y-2">
               <p className="text-xs text-muted">{t("deposit.destinationWallet")}</p>
-              {isTrc20 ? (
-                <div className="mt-2 space-y-1">
+              {isTrc20 && (
+                <div className="flex rounded-2xl bg-surface p-1 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => { setAddressMode("privy"); setQuote(null); }}
+                    className={`flex-1 rounded-xl py-2 text-sm font-semibold transition-colors ${addressMode === "privy" ? "bg-white text-foreground shadow-sm" : "text-muted"}`}
+                  >
+                    {t("deposit.usePrivyWallet")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setAddressMode("trc20"); setQuote(null); }}
+                    className={`flex-1 rounded-xl py-2 text-sm font-semibold transition-colors ${addressMode === "trc20" ? "bg-white text-foreground shadow-sm" : "text-muted"}`}
+                  >
+                    {t("deposit.useExternalTrc20")}
+                  </button>
+                </div>
+              )}
+              {(!isTrc20 || addressMode === "privy") && (
+                <div className="rounded-2xl bg-surface px-4 py-3 font-mono text-sm text-foreground break-all">
+                  {address ?? t("deposit.connectWallet")}
+                </div>
+              )}
+              {isTrc20 && addressMode === "trc20" && (
+                <div className="space-y-1">
                   <input
                     type="text"
                     inputMode="text"
@@ -495,10 +518,6 @@ export function DepositPage() {
                   {tronAddress && !isValidTrc20Address(tronAddress) && (
                     <p className="text-xs text-negative">{t("deposit.trc20AddressInvalid")}</p>
                   )}
-                </div>
-              ) : (
-                <div className="mt-2 rounded-2xl bg-surface px-4 py-3 font-mono text-sm text-foreground break-all">
-                  {destinationAddress}
                 </div>
               )}
             </div>

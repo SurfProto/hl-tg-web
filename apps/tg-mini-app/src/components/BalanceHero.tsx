@@ -80,7 +80,7 @@ export function BalanceHero() {
   }, []);
 
   const totalValue = userState?.marginSummary?.accountValue ?? 0;
-  const availableValue = userState?.withdrawable ?? 0;
+  const availableValue = userState?.availableBalance ?? 0;
 
   if (userStateLoading) {
     return <BalanceHeroSkeleton />;

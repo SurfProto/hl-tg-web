@@ -133,7 +133,7 @@ export function AccountPage() {
     t("account.traderFallback");
 
   const totalEquity = userState?.marginSummary?.accountValue ?? 0;
-  const availableEquity = userState?.withdrawable ?? 0;
+  const availableBalance = userState?.availableBalance ?? 0;
   const visibleStableBalances = userState?.visibleStableBalances ?? [];
 
   const rangePnl = useMemo(
@@ -281,8 +281,8 @@ export function AccountPage() {
           loading={shellLoading}
         />
         <MetricCard
-          label={t("account.availableEquity")}
-          value={formatUsd(availableEquity)}
+          label={t("account.availableBalance")}
+          value={formatUsd(availableBalance)}
           helper={t("account.readyToTrade")}
           loading={shellLoading}
         />

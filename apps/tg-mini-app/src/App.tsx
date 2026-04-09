@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { PrivyProvider, usePrivy, type User } from "@privy-io/react-auth";
 import { useTranslation } from "react-i18next";
 import { arbitrum } from "viem/chains";
-import { useSetupTrading } from "@repo/hyperliquid-sdk";
+import { useMarketData, useSetupTrading } from "@repo/hyperliquid-sdk";
 import { Layout } from "./components/Layout";
 import { HomePage } from "./pages/HomePage";
 import { ensureUser, getTelegramProfile } from "./lib/supabase";
@@ -12,6 +12,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ToastProvider } from "./components/Toast";
 import { PortfolioRangeProvider } from "./hooks/usePortfolioRange";
 import { log } from "./lib/logger";
+import { teardownStartupShell } from "./lib/startup";
 import "./index.css";
 import "./lib/i18n";
 
@@ -184,6 +185,36 @@ function TradingSetupPrefetcher() {
   return null;
 }
 
+function StartupShellController({
+  authSettled,
+  ready,
+}: {
+  authSettled: boolean;
+  ready: boolean;
+}) {
+  const { data: markets, isError: marketsError, isLoading: marketsLoading } =
+    useMarketData();
+  const startupShellTornDownRef = React.useRef(false);
+
+  useEffect(() => {
+    if (startupShellTornDownRef.current) {
+      return;
+    }
+
+    const marketBootstrapSettled =
+      !marketsLoading && (marketsError || Boolean(markets));
+
+    if (!ready || !authSettled || !marketBootstrapSettled) {
+      return;
+    }
+
+    startupShellTornDownRef.current = true;
+    teardownStartupShell();
+  }, [authSettled, markets, marketsError, marketsLoading, ready]);
+
+  return null;
+}
+
 export function TelegramAuthGate({
   children,
 }: {
@@ -195,6 +226,7 @@ export function TelegramAuthGate({
   const [loginError, setLoginError] = useState<string | null>(null);
 
   const isTMA = Boolean(window.Telegram?.WebApp?.initData);
+  const authSettled = !isTMA || authenticated || loginError != null;
 
   useEffect(() => {
     if (!ready || authenticated || !isTMA) return;
@@ -259,6 +291,7 @@ export function TelegramAuthGate({
 
   return (
     <>
+      <StartupShellController authSettled={authSettled} ready={ready} />
       <TradingSetupPrefetcher />
       {children}
     </>

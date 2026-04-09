@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   combineStableBalances,
   evaluateTradingSetupStatus,
+  getActionableBalances,
   getAvailableCollateralForMarket,
   getVisibleStableBalances,
   inferAbstractionMode,
+  normalizePerpStableBalance,
   normalizeStableBalances,
 } from "./account-state";
 
@@ -41,6 +43,44 @@ describe("normalizeStableBalances", () => {
   });
 });
 
+describe("normalizePerpStableBalance", () => {
+  it("derives standard perp cash balances from raw usd and margin used instead of account value", () => {
+    expect(
+      normalizePerpStableBalance({
+        totalRawUsd: "1250",
+        totalMarginUsed: "400",
+      }),
+    ).toEqual({
+      total: 1250,
+      hold: 400,
+      available: 850,
+      perp: {
+        total: 1250,
+        hold: 400,
+        available: 850,
+      },
+    });
+  });
+
+  it("clamps available balance to zero when margin used exceeds raw usd", () => {
+    expect(
+      normalizePerpStableBalance({
+        totalRawUsd: "50",
+        totalMarginUsed: "80",
+      }),
+    ).toEqual({
+      total: 50,
+      hold: 50,
+      available: 0,
+      perp: {
+        total: 50,
+        hold: 50,
+        available: 0,
+      },
+    });
+  });
+});
+
 describe("getVisibleStableBalances", () => {
   it("only returns stable assets with a positive total or hold", () => {
     expect(
@@ -53,6 +93,28 @@ describe("getVisibleStableBalances", () => {
       { asset: "USDT", total: 0, hold: 1.25, available: 0 },
       { asset: "USDE", total: 8.5, hold: 0, available: 8.5 },
     ]);
+  });
+});
+
+describe("getActionableBalances", () => {
+  it("sums actual available balances across supported assets", () => {
+    expect(
+      getActionableBalances({
+        USDC: { total: 100, hold: 35, available: 65 },
+        USDH: { total: 30, hold: 0, available: 30 },
+        USDT: { total: 5, hold: 5, available: 0 },
+      }),
+    ).toEqual({
+      availableBalance: 95,
+      withdrawableBalance: 95,
+    });
+  });
+
+  it("falls back when no actual stable balances are visible", () => {
+    expect(getActionableBalances({}, 17)).toEqual({
+      availableBalance: 17,
+      withdrawableBalance: 17,
+    });
   });
 });
 

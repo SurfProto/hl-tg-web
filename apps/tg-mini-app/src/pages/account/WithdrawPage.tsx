@@ -16,9 +16,10 @@ export function WithdrawPage() {
     userState?.abstractionMode === 'portfolioMargin' ||
     userState?.abstractionMode === 'dexAbstraction';
   const visibleStableBalances = userState?.visibleStableBalances ?? [];
-  const withdrawable = isUnifiedLike
-    ? (userState?.stableBalances.USDC?.available ?? 0)
-    : (userState?.withdrawable ?? 0);
+  const withdrawable =
+    userState?.stableBalances.USDC?.available ??
+    userState?.withdrawableBalance ??
+    0;
   const destination = user?.wallet?.address;
 
   return (

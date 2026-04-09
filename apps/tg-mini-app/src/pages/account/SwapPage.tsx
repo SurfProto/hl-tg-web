@@ -61,7 +61,10 @@ export function SwapPage() {
     userState?.abstractionMode === "dexAbstraction";
   const visibleStableBalances = userState?.visibleStableBalances ?? [];
 
-  const perpUsdcBalance = userState?.withdrawable ?? 0;
+  const perpUsdcBalance =
+    userState?.stableBalances.USDC?.available ??
+    userState?.withdrawableBalance ??
+    0;
   const spotBalances = useMemo(() => {
     const next = new Map<StableSwapAsset, number>();
 

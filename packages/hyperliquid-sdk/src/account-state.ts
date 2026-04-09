@@ -72,6 +72,30 @@ export function normalizeStableBalances(
   return result;
 }
 
+export function normalizePerpStableBalance({
+  totalRawUsd,
+  totalMarginUsed,
+}: {
+  totalRawUsd?: unknown;
+  totalMarginUsed?: unknown;
+}): StableBalanceState {
+  const total = Math.max(0, parseBalanceAmount(totalRawUsd));
+  const marginUsed = Math.max(0, parseBalanceAmount(totalMarginUsed));
+  const available = Math.max(0, total - marginUsed);
+  const hold = Math.min(total, marginUsed);
+
+  return {
+    total,
+    hold,
+    available,
+    perp: {
+      total,
+      hold,
+      available,
+    },
+  };
+}
+
 export function getVisibleStableBalances(
   stableBalances: Partial<Record<StableSwapAsset, StableBalanceState>>,
 ): VisibleStableBalance[] {
@@ -81,6 +105,34 @@ export function getVisibleStableBalances(
     if (balance.total <= 0 && balance.hold <= 0) return [];
     return [{ asset, ...balance }];
   });
+}
+
+export function getActionableBalances(
+  stableBalances: Partial<Record<StableSwapAsset, StableBalanceState>>,
+  fallbackBalance: number = 0,
+): {
+  availableBalance: number;
+  withdrawableBalance: number;
+} {
+  const availableBalance = SUPPORTED_STABLE_ASSETS.reduce(
+    (sum, asset) => sum + (stableBalances[asset]?.available ?? 0),
+    0,
+  );
+  const hasVisibleStableBalances =
+    getVisibleStableBalances(stableBalances).length > 0;
+
+  if (hasVisibleStableBalances) {
+    return {
+      availableBalance,
+      withdrawableBalance: availableBalance,
+    };
+  }
+
+  const actionableFallback = Math.max(0, fallbackBalance);
+  return {
+    availableBalance: actionableFallback,
+    withdrawableBalance: actionableFallback,
+  };
 }
 
 function mergeStableBalanceStates(

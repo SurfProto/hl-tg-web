@@ -11,6 +11,11 @@ interface ProviderEnvelope<T> {
   error_code: string | null;
 }
 
+function looksLikeHtml(body: string): boolean {
+  const trimmed = body.trim().toLowerCase();
+  return trimmed.startsWith("<!doctype html") || trimmed.startsWith("<html");
+}
+
 export interface ProviderQuote {
   symbol: string;
   payin_breakdown: {
@@ -82,7 +87,27 @@ async function providerRequest<T>(
     body: input.method === "POST" ? JSON.stringify(input.body ?? {}) : undefined,
   });
 
-  const payload = (await response.json()) as ProviderEnvelope<T>;
+  const rawBody = await response.text();
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+
+  if (contentType.includes("text/html") || looksLikeHtml(rawBody)) {
+    throw new HttpError(
+      response.status || 502,
+      "PROVIDER_HTML_RESPONSE",
+      `Onramp provider returned HTML for ${input.path}`,
+    );
+  }
+
+  let payload: ProviderEnvelope<T>;
+  try {
+    payload = JSON.parse(rawBody) as ProviderEnvelope<T>;
+  } catch {
+    throw new HttpError(
+      response.status || 502,
+      "PROVIDER_INVALID_JSON",
+      `Onramp provider returned invalid JSON for ${input.path}`,
+    );
+  }
 
   if (!response.ok || !payload.success || !payload.data) {
     throw new HttpError(

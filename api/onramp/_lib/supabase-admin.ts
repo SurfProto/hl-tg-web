@@ -59,6 +59,11 @@ interface PersistOrderInput {
   errorMessage: string | null;
 }
 
+function looksLikeHtml(body: string): boolean {
+  const trimmed = body.trim().toLowerCase();
+  return trimmed.startsWith("<!doctype html") || trimmed.startsWith("<html");
+}
+
 function buildHeaders(config: OnrampConfig, extra?: Record<string, string>) {
   return {
     apikey: config.supabaseServiceRoleKey,
@@ -79,7 +84,18 @@ async function supabaseRequest<T>(config: OnrampConfig, path: string, init?: Req
     return null as T;
   }
 
-  return (await response.json()) as T;
+  const rawBody = await response.text();
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+
+  if (contentType.includes("text/html") || looksLikeHtml(rawBody)) {
+    throw new Error(`Supabase returned HTML for ${path}`);
+  }
+
+  try {
+    return JSON.parse(rawBody) as T;
+  } catch {
+    throw new Error(`Supabase returned invalid JSON for ${path}`);
+  }
 }
 
 function normalizeEmail(email: string | null | undefined): string | null {

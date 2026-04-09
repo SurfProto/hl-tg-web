@@ -2,7 +2,7 @@ import { requirePrivySession } from "./_lib/auth";
 import { createAndPersistOrder } from "./_lib/checkout";
 import { getOnrampConfig } from "./_lib/config";
 import { ensureMethod, json, parseJsonBody, withJsonRoute, HttpError } from "./_lib/http";
-import { getRequestOrigin, parseAmount } from "./_lib/request";
+import { parseAmount } from "./_lib/request";
 import { getUserByPrivyUserId } from "./_lib/supabase-admin";
 
 interface CheckoutBody {
@@ -25,7 +25,6 @@ export default async function handler(request: any, response: any) {
 
     const body = parseJsonBody<CheckoutBody>(request);
     const amount = parseAmount(body.amount);
-    const returnBaseUrl = config.returnUrl ?? `${getRequestOrigin(request)}/account/deposit`;
     const order = await createAndPersistOrder({
       config,
       user: {
@@ -35,7 +34,6 @@ export default async function handler(request: any, response: any) {
         kycId: user.kyc_id,
       },
       amount,
-      returnBaseUrl,
     });
 
     json(response, 200, {

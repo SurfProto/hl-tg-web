@@ -103,6 +103,7 @@ export async function precalcOnramp(config: OnrampConfig, amount: number): Promi
     body: {
       amount,
       direction: "FORWARD",
+      fee_strategy: "SERVICE",
       service_id: config.serviceId,
       symbol: config.providerSymbol,
     },
@@ -113,7 +114,6 @@ export interface CreatePreorderInput {
   address: string;
   amount: number;
   externalOrderId: string;
-  returnUrl: string;
   userEmail: string;
   userKycId?: string | null;
 }
@@ -131,11 +131,10 @@ export async function createOnrampPreorder(
       network: config.network,
       user_kyc_id: input.userKycId ?? undefined,
       user_email: input.userEmail,
-      desc_public: "USDC onramp",
       amount: input.amount,
+      fee_strategy: "SERVICE",
       symbol: config.providerSymbol,
       external_order_id: input.externalOrderId,
-      return_url: input.returnUrl,
     },
   });
 }

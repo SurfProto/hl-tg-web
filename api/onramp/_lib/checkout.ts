@@ -5,7 +5,6 @@ import { confirmOnrampOrder, createOnrampPreorder, getOnrampOrder } from "./prov
 import { toOrderStatus } from "./responses";
 import { persistOrder } from "./supabase-admin";
 import type { OnrampOrderStatus } from "./types";
-import { buildReturnUrl } from "./urls";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -20,17 +19,14 @@ export async function createAndPersistOrder(input: {
     kycId: string | null;
   };
   amount: number;
-  returnBaseUrl: string;
 }): Promise<OnrampOrderStatus> {
   const externalOrderId = `onramp_${randomUUID()}`;
-  const returnUrl = buildReturnUrl(input.returnBaseUrl, externalOrderId);
   const preorder = await createOnrampPreorder(input.config, {
     address: input.user.walletAddress,
     amount: input.amount,
     externalOrderId,
-    returnUrl,
     userEmail: input.user.email,
-    userKycId: input.user.kycId,
+    userKycId: input.user.kycId ?? input.user.id,
   });
 
   let confirmed = await confirmOnrampOrder(input.config, preorder.id);

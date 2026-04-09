@@ -24,7 +24,9 @@ import { BalanceHero } from "../components/BalanceHero";
 import { CategoryPills } from "../components/CategoryPills";
 import { MarketListItem } from "../components/MarketListItem";
 import { MarketListItemSkeleton } from "../components/MarketListItemSkeleton";
+import { log } from "../lib/logger";
 import { formatPrice } from "../utils/format";
+import { getHomeMarketViewState } from "./home-state";
 
 function lazyNamedModule<T extends Record<string, ComponentType<any>>>(
   loader: () => Promise<T>,
@@ -68,10 +70,19 @@ export function HomePage() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [allMarketsOpen, setAllMarketsOpen] = useState(false);
 
-  const { data: markets, isLoading: marketsLoading } = useMarketData();
-  const { data: mids, isLoading: midsLoading } = useMids();
-  const { data: marketStats, isLoading: marketStatsLoading } = useMarketStats();
-  const isLoading = marketsLoading || midsLoading || marketStatsLoading;
+  const {
+    data: markets,
+    error: marketsError,
+    isError: marketsQueryFailed,
+    isLoading: marketsLoading,
+    refetch: refetchMarkets,
+  } = useMarketData();
+  const { data: mids, error: midsError, isError: midsQueryFailed } = useMids();
+  const {
+    data: marketStats,
+    error: marketStatsError,
+    isError: marketStatsQueryFailed,
+  } = useMarketStats();
   // Temporary UI removal: keep spot classification in shared market metadata,
   // but hide the Spot pill on Home until the surface is re-enabled.
   const visibleCategories = CATEGORY_ORDER.filter(
@@ -85,7 +96,7 @@ export function HomePage() {
   }, [selectedCategory]);
 
   useEffect(() => {
-    if (isLoading) return;
+    if (!markets || marketsQueryFailed) return;
 
     const prefetchDeferredRoutes = () => {
       for (const prefetchRoute of DEFERRED_ROUTE_PREFETCHERS) {
@@ -105,7 +116,7 @@ export function HomePage() {
 
     const timeoutId = window.setTimeout(prefetchDeferredRoutes, 120);
     return () => window.clearTimeout(timeoutId);
-  }, [isLoading]);
+  }, [markets, marketsQueryFailed]);
 
   const allMarkets: AnyMarket[] = useMemo(
     () => [
@@ -117,6 +128,29 @@ export function HomePage() {
     ],
     [markets],
   );
+  const homeMarketViewState = getHomeMarketViewState({
+    marketsLoading,
+    marketsError: marketsQueryFailed,
+    marketCount: allMarkets.length,
+  });
+
+  useEffect(() => {
+    if (marketsQueryFailed) {
+      log.warn("[home] market metadata query failed", { error: marketsError });
+    }
+  }, [marketsError, marketsQueryFailed]);
+
+  useEffect(() => {
+    if (midsQueryFailed) {
+      log.warn("[home] mids query failed", { error: midsError });
+    }
+  }, [midsError, midsQueryFailed]);
+
+  useEffect(() => {
+    if (marketStatsQueryFailed) {
+      log.warn("[home] market stats query failed", { error: marketStatsError });
+    }
+  }, [marketStatsError, marketStatsQueryFailed]);
 
   const priceChanges: Record<string, number> = useMemo(() => {
     if (!marketStats) return {};
@@ -207,13 +241,26 @@ export function HomePage() {
       )}
 
       <div className="bg-white border-t border-separator">
-        {isLoading ? (
+        {homeMarketViewState === "loading" ? (
           <div className="divide-y divide-separator">
             {Array.from({ length: HOME_ROW_COUNT }, (_, index) => (
               <MarketListItemSkeleton key={index} />
             ))}
           </div>
-        ) : sortedFiltered.length === 0 ? (
+        ) : homeMarketViewState === "error" ? (
+          <div className="px-4 py-16 text-center">
+            <p className="text-sm text-gray-500">
+              {t("home.marketDataUnavailable")}
+            </p>
+            <button
+              type="button"
+              onClick={() => void refetchMarkets()}
+              className="mt-4 rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white transition-colors active:bg-primary-dark"
+            >
+              {t("common.retry")}
+            </button>
+          </div>
+        ) : homeMarketViewState === "empty" || sortedFiltered.length === 0 ? (
           <div className="py-16 text-center text-gray-400 text-sm">
             {t("home.noMarkets")}
           </div>

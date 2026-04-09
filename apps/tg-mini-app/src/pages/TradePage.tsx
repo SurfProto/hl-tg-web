@@ -139,7 +139,7 @@ export function TradePage() {
         ? getAvailableCollateralForMarket({
             abstractionMode: userState.abstractionMode,
             stableBalances: userState.stableBalances,
-            fallbackWithdrawable: userState.withdrawable,
+            fallbackWithdrawable: userState.withdrawableBalance,
             marketName: symbol,
           })
         : 0,

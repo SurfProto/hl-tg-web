@@ -23,9 +23,11 @@ import type {
 } from "@repo/types";
 import {
   combineStableBalances,
+  getActionableBalances,
   getAvailableCollateralForMarket,
   getVisibleStableBalances,
   inferAbstractionMode,
+  normalizePerpStableBalance,
   normalizeStableBalances,
 } from "./account-state";
 import {
@@ -1244,18 +1246,10 @@ export class HyperliquidClient {
         : "USDC";
       if (!collateralAsset) return result;
 
-      const total = parseFloat(state?.marginSummary?.accountValue ?? "0");
-      const available = parseFloat(state?.withdrawable ?? "0");
-      const normalized: StableBalanceState = {
-        total,
-        hold: Math.max(0, total - available),
-        available,
-        perp: {
-          total,
-          hold: Math.max(0, total - available),
-          available,
-        },
-      };
+      const normalized = normalizePerpStableBalance({
+        totalRawUsd: state?.marginSummary?.totalRawUsd,
+        totalMarginUsed: state?.marginSummary?.totalMarginUsed,
+      });
 
       result[collateralAsset] = mergeStableBalanceState(
         result[collateralAsset],
@@ -1269,20 +1263,14 @@ export class HyperliquidClient {
       perpBalances: perpStableBalances,
     });
     const visibleStableBalances = getVisibleStableBalances(stableBalances);
-    const totalStableBalance = visibleStableBalances.reduce(
-      (sum, balance) => sum + balance.total,
-      0,
-    );
-    const availableStableBalance = visibleStableBalances.reduce(
-      (sum, balance) => sum + balance.available,
-      0,
-    );
-    const useSpotAsSourceOfTruth =
-      abstractionMode === "unifiedAccount" ||
-      abstractionMode === "portfolioMargin";
     const marginSummary = parseMarginSummary(baseState?.marginSummary);
     const crossMarginSummary = parseMarginSummary(
       baseState?.crossMarginSummary,
+    );
+    const rawWithdrawable = parseFloat(baseState?.withdrawable ?? "0");
+    const { availableBalance, withdrawableBalance } = getActionableBalances(
+      stableBalances,
+      visibleStableBalances.length === 0 ? rawWithdrawable : 0,
     );
 
     const result: AccountState = {
@@ -1290,30 +1278,14 @@ export class HyperliquidClient {
       hip3DexAbstractionEnabled: hip3DexAbstraction,
       stableBalances,
       visibleStableBalances,
-      marginSummary: useSpotAsSourceOfTruth
-        ? {
-            ...marginSummary,
-            accountValue:
-              totalStableBalance > 0
-                ? totalStableBalance
-                : marginSummary.accountValue,
-          }
-        : marginSummary,
-      crossMarginSummary: useSpotAsSourceOfTruth
-        ? {
-            ...crossMarginSummary,
-            accountValue:
-              totalStableBalance > 0
-                ? totalStableBalance
-                : crossMarginSummary.accountValue,
-          }
-        : crossMarginSummary,
+      availableBalance,
+      withdrawableBalance,
+      marginSummary,
+      crossMarginSummary,
       crossMaintenanceMarginUsed: parseFloat(
         baseState?.crossMaintenanceMarginUsed ?? "0",
       ),
-      withdrawable: useSpotAsSourceOfTruth
-        ? availableStableBalance
-        : parseFloat(baseState?.withdrawable ?? "0"),
+      withdrawable: rawWithdrawable,
       assetPositions: allStates.flatMap(({ dex, state }) =>
         (state.assetPositions ?? []).map((assetPosition: any) => ({
           type: assetPosition.type,
@@ -2329,7 +2301,7 @@ export class HyperliquidClient {
     return getAvailableCollateralForMarket({
       abstractionMode: args.accountState.abstractionMode,
       stableBalances: args.accountState.stableBalances,
-      fallbackWithdrawable: args.accountState.withdrawable,
+      fallbackWithdrawable: args.accountState.withdrawableBalance,
       marketName: args.marketName,
     });
   }

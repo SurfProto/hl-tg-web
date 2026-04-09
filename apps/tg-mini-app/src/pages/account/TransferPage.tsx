@@ -15,7 +15,10 @@ export function TransferPage() {
     userState?.abstractionMode === 'dexAbstraction';
 
   const perpsTransferable =
-    userState?.stableBalances.USDC?.perp?.available ?? userState?.withdrawable ?? 0;
+    userState?.stableBalances.USDC?.perp?.available ??
+    userState?.stableBalances.USDC?.available ??
+    userState?.withdrawableBalance ??
+    0;
   const spotUsdcEntry = spotBalance?.balances?.find((balance: any) => balance.coin === 'USDC');
   const spotUsdcAvailable = spotUsdcEntry
     ? Math.max(0, parseFloat(spotUsdcEntry.total ?? '0') - parseFloat(spotUsdcEntry.hold ?? '0'))

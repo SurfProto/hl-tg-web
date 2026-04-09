@@ -120,10 +120,12 @@ export {
 export {
   evaluateTradingSetupStatus,
   combineStableBalances,
+  getActionableBalances,
   getAvailableCollateralForMarket,
   getSupportedStableAssets,
   getVisibleStableBalances,
   inferAbstractionMode,
+  normalizePerpStableBalance,
   normalizeStableBalances,
 } from "./account-state";
 

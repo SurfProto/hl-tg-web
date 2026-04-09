@@ -24,7 +24,12 @@ export function PortfolioSummary({ accountState, spotUsdcBalance = 0, spotUsdhBa
     );
   }
 
-  const { marginSummary, crossMarginSummary, crossMaintenanceMarginUsed, withdrawable } = accountState;
+  const {
+    availableBalance,
+    crossMaintenanceMarginUsed,
+    crossMarginSummary,
+    marginSummary,
+  } = accountState;
   
   // Calculate metrics
   const totalPnl = marginSummary.totalRawUsd - marginSummary.accountValue;
@@ -115,7 +120,7 @@ export function PortfolioSummary({ accountState, spotUsdcBalance = 0, spotUsdhBa
             <span className="text-gray-400">Available Balance</span>
           </div>
           <span className="font-medium text-green-500">
-            ${withdrawable.toFixed(2)}
+            ${availableBalance.toFixed(2)}
           </span>
         </div>
 

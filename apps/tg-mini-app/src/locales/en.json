@@ -42,7 +42,8 @@
   "home": {
     "seeAllMarkets": "See all {{count}} markets",
     "ariaSearch": "Search markets",
-    "noMarkets": "No markets"
+    "noMarkets": "No markets",
+    "marketDataUnavailable": "Market data unavailable."
   },
   "search": {
     "ariaClose": "Close market search",
@@ -224,6 +225,7 @@
     "approving": "Approving...",
     "accountSettings": "Account settings",
     "availableEquity": "Available Equity",
+    "availableBalance": "Available Balance",
     "accountValue": "Account value",
     "readyToTrade": "Ready to trade",
     "openSettings": "Open account settings",

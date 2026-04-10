@@ -13,6 +13,10 @@ import {
   checkoutOnramp,
   fetchOnrampQuote,
   fetchOnrampStatus,
+  getActiveOnrampOrder,
+  isOnrampUserVerified,
+  isTerminalOnrampState,
+  mergeRecentOnrampOrders,
   type OnrampAppState,
   type OnrampBootstrapData,
   type OnrampOrderStatus,
@@ -30,12 +34,15 @@ function openExternal(url?: string | null) {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
-function isTerminalState(state: OnrampAppState) {
-  return state === "success" || state === "failed" || state === "expired";
-}
-
 function isValidTrc20Address(addr: string): boolean {
   return /^T[a-zA-Z0-9]{33}$/.test(addr);
+}
+
+function getDisplayTimestamp(timestamp?: string | null) {
+  if (!timestamp) return null;
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleString();
 }
 
 export function DepositPage() {
@@ -60,6 +67,7 @@ export function DepositPage() {
     useState<OnrampBootstrapData | null>(null);
   const [quote, setQuote] = useState<OnrampQuote | null>(null);
   const [order, setOrder] = useState<OnrampOrderStatus | null>(null);
+  const [recentOrders, setRecentOrders] = useState<OnrampOrderStatus[]>([]);
   const [fiatError, setFiatError] = useState<string | null>(null);
   const [tronAddress, setTronAddress] = useState("");
   const [addressMode, setAddressMode] = useState<"privy" | "trc20">("trc20");
@@ -92,6 +100,7 @@ export function DepositPage() {
           setBootstrapData(null);
           setQuote(null);
           setOrder(null);
+          setRecentOrders([]);
           setFiatState("email_required");
           setFiatError(null);
         }
@@ -112,8 +121,10 @@ export function DepositPage() {
 
         if (cancelled) return;
 
-        setBootstrapData(nextBootstrap);
-        setOrder(nextBootstrap.activeOrder);
+        const nextActiveOrder = getActiveOnrampOrder(nextBootstrap.activeOrder);
+        setBootstrapData({ ...nextBootstrap, activeOrder: nextActiveOrder });
+        setOrder(nextActiveOrder);
+        setRecentOrders(nextBootstrap.recentOrders ?? []);
         setFiatState(nextBootstrap.state);
         setFiatError(null);
 
@@ -124,14 +135,22 @@ export function DepositPage() {
 
           if (cancelled) return;
 
-          setOrder(statusResponse.order);
-          setFiatState(statusResponse.state);
+          const returnedActiveOrder = getActiveOnrampOrder(statusResponse.order);
+          setOrder(returnedActiveOrder);
+          setFiatState(returnedActiveOrder ? statusResponse.state : "ready");
+          if (!returnedActiveOrder) {
+            setQuote(null);
+            setRecentOrders((current) => mergeRecentOnrampOrders(current, statusResponse.order));
+          }
           setBootstrapData((current) =>
             current
               ? {
                   ...current,
-                  state: statusResponse.state,
-                  activeOrder: statusResponse.order,
+                  state: returnedActiveOrder ? statusResponse.state : "ready",
+                  activeOrder: returnedActiveOrder,
+                  recentOrders: returnedActiveOrder
+                    ? current.recentOrders
+                    : mergeRecentOnrampOrders(current.recentOrders, statusResponse.order),
                 }
               : current,
           );
@@ -159,7 +178,7 @@ export function DepositPage() {
   }, [address, email, getAccessToken, returnExternalOrderId, t, view]);
 
   useEffect(() => {
-    if (view !== "fiat" || !order || isTerminalState(order.appState)) {
+    if (view !== "fiat" || !order || isTerminalOnrampState(order.appState)) {
       return;
     }
 
@@ -177,14 +196,22 @@ export function DepositPage() {
 
         if (cancelled) return;
 
-        setOrder(statusResponse.order);
-        setFiatState(statusResponse.state);
+        const nextActiveOrder = getActiveOnrampOrder(statusResponse.order);
+        setOrder(nextActiveOrder);
+        setFiatState(nextActiveOrder ? statusResponse.state : "ready");
+        if (!nextActiveOrder) {
+          setQuote(null);
+          setRecentOrders((current) => mergeRecentOnrampOrders(current, statusResponse.order));
+        }
         setBootstrapData((current) =>
           current
             ? {
                 ...current,
-                state: statusResponse.state,
-                activeOrder: statusResponse.order,
+                state: nextActiveOrder ? statusResponse.state : "ready",
+                activeOrder: nextActiveOrder,
+                recentOrders: nextActiveOrder
+                  ? current.recentOrders
+                  : mergeRecentOnrampOrders(current.recentOrders, statusResponse.order),
               }
             : current,
         );
@@ -245,7 +272,10 @@ export function DepositPage() {
 
       if (resolvedPayoutAddress !== bootstrapData?.walletAddress) {
         const updated = await bootstrapOnramp(accessToken, { email, walletAddress: resolvedPayoutAddress });
-        setBootstrapData(updated);
+        const updatedActiveOrder = getActiveOnrampOrder(updated.activeOrder);
+        setBootstrapData({ ...updated, activeOrder: updatedActiveOrder });
+        setOrder(updatedActiveOrder);
+        setRecentOrders(updated.recentOrders ?? []);
       }
 
       const response = await fetchOnrampQuote(accessToken, amount);
@@ -292,18 +322,29 @@ export function DepositPage() {
 
       if (resolvedPayoutAddress !== bootstrapData?.walletAddress) {
         const updated = await bootstrapOnramp(accessToken, { email, walletAddress: resolvedPayoutAddress });
-        setBootstrapData(updated);
+        const updatedActiveOrder = getActiveOnrampOrder(updated.activeOrder);
+        setBootstrapData({ ...updated, activeOrder: updatedActiveOrder });
+        setOrder(updatedActiveOrder);
+        setRecentOrders(updated.recentOrders ?? []);
       }
 
       const response = await checkoutOnramp(accessToken, amount);
-      setOrder(response.order);
-      setFiatState(response.state);
+      const nextActiveOrder = getActiveOnrampOrder(response.order);
+      setOrder(nextActiveOrder);
+      setFiatState(nextActiveOrder ? response.state : "ready");
+      if (!nextActiveOrder) {
+        setQuote(null);
+        setRecentOrders((current) => mergeRecentOnrampOrders(current, response.order));
+      }
       setBootstrapData((current) =>
         current
           ? {
               ...current,
-              state: response.state,
-              activeOrder: response.order,
+              state: nextActiveOrder ? response.state : "ready",
+              activeOrder: nextActiveOrder,
+              recentOrders: nextActiveOrder
+                ? current.recentOrders
+                : mergeRecentOnrampOrders(current.recentOrders, response.order),
             }
           : current,
       );
@@ -336,8 +377,25 @@ export function DepositPage() {
         orderId: order.id,
         externalOrderId: order.externalOrderId,
       });
-      setOrder(response.order);
-      setFiatState(response.state);
+      const nextActiveOrder = getActiveOnrampOrder(response.order);
+      setOrder(nextActiveOrder);
+      setFiatState(nextActiveOrder ? response.state : "ready");
+      if (!nextActiveOrder) {
+        setQuote(null);
+        setRecentOrders((current) => mergeRecentOnrampOrders(current, response.order));
+      }
+      setBootstrapData((current) =>
+        current
+          ? {
+              ...current,
+              state: nextActiveOrder ? response.state : "ready",
+              activeOrder: nextActiveOrder,
+              recentOrders: nextActiveOrder
+                ? current.recentOrders
+                : mergeRecentOnrampOrders(current.recentOrders, response.order),
+            }
+          : current,
+      );
       if (response.state === "success") {
         void queryClient.invalidateQueries();
       }
@@ -355,20 +413,26 @@ export function DepositPage() {
   const handleFiatAmountChange = (value: string) => {
     setFiatAmount(value);
     setQuote(null);
-    if (!order || isTerminalState(order.appState)) {
+    if (!order || isTerminalOnrampState(order.appState)) {
       setFiatState(email ? "ready" : "email_required");
     }
   };
 
+  const isVerifiedUser = bootstrapData ? isOnrampUserVerified(bootstrapData.kycStatus) : false;
   const verificationLabel =
     bootstrapData?.kycStatus === "verified_local"
       ? t("deposit.verifiedEmail")
-      : t("deposit.pendingVerification");
+      : bootstrapData?.kycStatus === "verified_kyc"
+        ? t("deposit.verifiedKyc")
+        : t("deposit.pendingVerification");
   const isEmailRequired = !email || fiatState === "email_required";
   const isTrc20AddressValid =
     !isTrc20 || addressMode === "privy" || isValidTrc20Address(tronAddress);
   const showQuoteCard = Boolean(quote);
-  const showOrderCard = Boolean(order);
+  const showOrderCard = Boolean(order && !isTerminalOnrampState(order.appState));
+  const terminalRecentOrders = recentOrders.filter((recentOrder) =>
+    isTerminalOnrampState(recentOrder.appState),
+  );
   const canRequestQuote =
     !isEmailRequired && !isBootstrapping && !isQuoting && !isCheckingOut && isTrc20AddressValid;
   const canCheckout = Boolean(
@@ -524,9 +588,29 @@ export function DepositPage() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs text-muted">{t("deposit.linkedEmail")}</p>
-                <p className="mt-1 text-sm text-foreground">
-                  {email ?? t("common.notLinked")}
-                </p>
+                <div className="mt-1 flex items-center gap-2">
+                  <p className="text-sm text-foreground">
+                    {email ?? t("common.notLinked")}
+                  </p>
+                  {isVerifiedUser && (
+                    <span
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white"
+                      aria-label={t("deposit.verifiedBadgeAria")}
+                      title={t("deposit.verifiedBadgeAria")}
+                    >
+                      <svg
+                        className="h-3.5 w-3.5"
+                        viewBox="0 0 20 20"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2.4}
+                        aria-hidden="true"
+                      >
+                        <path d="M4.5 10.5 8 14l7.5-8" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </span>
+                  )}
+                </div>
                 {email && (
                   <p className="mt-1 text-xs text-muted">{verificationLabel}</p>
                 )}
@@ -672,7 +756,7 @@ export function DepositPage() {
                   </span>
                 </div>
               </div>
-              {order.invoiceUrl && !isTerminalState(order.appState) && (
+              {order.invoiceUrl && !isTerminalOnrampState(order.appState) && (
                 <button
                   type="button"
                   onClick={() => openExternal(order.invoiceUrl)}
@@ -681,7 +765,7 @@ export function DepositPage() {
                   {t("deposit.openPaymentPage")}
                 </button>
               )}
-              {isTerminalState(order.appState) && (
+              {isTerminalOnrampState(order.appState) && (
                 <p
                   className={`text-sm ${
                     order.appState === "success"
@@ -698,6 +782,62 @@ export function DepositPage() {
                   )}
                 </p>
               )}
+            </div>
+          )}
+
+          {terminalRecentOrders.length > 0 && (
+            <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm space-y-3">
+              <p className="text-sm font-semibold text-foreground">
+                {t("deposit.orderHistoryTitle")}
+              </p>
+              <div className="space-y-3">
+                {terminalRecentOrders.map((recentOrder) => {
+                  const syncedAt = getDisplayTimestamp(recentOrder.lastSyncedAt);
+
+                  return (
+                    <div key={recentOrder.id} className="rounded-2xl bg-surface px-4 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p
+                            className={`text-sm font-semibold ${
+                              recentOrder.appState === "success" ? "text-positive" : "text-negative"
+                            }`}
+                          >
+                            {t(`deposit.status.${recentOrder.appState}`)}
+                          </p>
+                          {syncedAt && (
+                            <p className="mt-1 text-xs text-muted">
+                              {t("deposit.orderLastUpdated", { time: syncedAt })}
+                            </p>
+                          )}
+                        </div>
+                        <span className="text-right text-sm font-semibold text-foreground">
+                          {recentOrder.payoutAmount} {recentOrder.payoutCurrency}
+                        </span>
+                      </div>
+                      <div className="mt-3 space-y-1 text-xs text-muted">
+                        <div className="flex items-center justify-between gap-3">
+                          <span>{t("deposit.payin")}</span>
+                          <span className="text-foreground">
+                            {recentOrder.payinAmount} {recentOrder.payinCurrency}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <span>{t("deposit.orderId")}</span>
+                          <span className="font-mono text-foreground break-all text-right">
+                            {recentOrder.externalOrderId ?? recentOrder.id}
+                          </span>
+                        </div>
+                        {recentOrder.errorMessage && (
+                          <p className="text-negative">
+                            {t("deposit.orderError", { error: recentOrder.errorMessage })}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 

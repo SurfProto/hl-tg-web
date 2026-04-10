@@ -136,18 +136,21 @@ export async function upsertOnrampUser(config: OnrampConfig, input: UpsertUserIn
     (await getUserByPrivyUserId(config, input.privyUserId)) ??
     (input.walletAddress ? await getUserByWalletAddress(config, input.walletAddress) : null);
 
+  if (!existingUser) {
+    throw new Error("USER_NOT_FOUND: Open the app via Telegram first to create your account before using onramp");
+  }
+
   const payload = {
     privy_user_id: input.privyUserId,
     wallet_address: input.walletAddress,
     email: normalizedEmail,
-    kyc_status: input.kycStatus,
-    kyc_source: input.kycSource,
-    kyc_checked_at: input.kycCheckedAt,
+    kyc_status: input.kycStatus === "unknown" && existingUser.kyc_status ? existingUser.kyc_status : input.kycStatus,
+    kyc_source: input.kycStatus === "unknown" && existingUser.kyc_source ? existingUser.kyc_source : input.kycSource,
+    kyc_checked_at:
+      input.kycStatus === "unknown" && existingUser.kyc_checked_at
+        ? existingUser.kyc_checked_at
+        : input.kycCheckedAt,
   };
-
-  if (!existingUser) {
-    throw new Error("USER_NOT_FOUND: Open the app via Telegram first to create your account before using onramp");
-  }
 
   const rows = await supabaseRequest<SupabaseUserRow[]>(
     config,
@@ -211,6 +214,19 @@ export async function getActiveOrder(config: OnrampConfig, userId: string): Prom
   );
 
   return rows[0] ? mapOrderRow(rows[0]) : null;
+}
+
+export async function getRecentOrders(config: OnrampConfig, userId: string, limit = 5): Promise<OnrampOrderStatus[]> {
+  const boundedLimit = Math.max(1, Math.min(20, Math.floor(limit)));
+  const rows = await supabaseRequest<SupabaseOrderRow[]>(
+    config,
+    `onramp_orders?user_id=eq.${userId}&app_state=in.(success,failed,expired)&select=provider_order_id,external_order_id,service_id,provider_state,app_state,payin_amount,payin_currency,payout_amount,payout_currency,fee_amount,invoice_url,invoice_url_expires_at,error_code,error_message,last_synced_at&order=created_at.desc&limit=${boundedLimit}`,
+    {
+      headers: buildHeaders(config),
+    },
+  );
+
+  return rows.map(mapOrderRow);
 }
 
 export async function persistOrder(config: OnrampConfig, input: PersistOrderInput): Promise<OnrampOrderStatus> {

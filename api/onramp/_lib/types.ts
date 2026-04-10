@@ -11,7 +11,7 @@ export type OnrampAppState =
   | "failed"
   | "expired";
 
-export type OnrampKycStatus = "email_missing" | "verified_local" | "unknown";
+export type OnrampKycStatus = "email_missing" | "verified_local" | "verified_kyc" | "unknown";
 
 export interface OnrampOrderStatus {
   id: string;

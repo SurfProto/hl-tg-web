@@ -11,7 +11,7 @@ export type OnrampAppState =
   | "failed"
   | "expired";
 
-export type OnrampKycStatus = "email_missing" | "verified_local" | "unknown";
+export type OnrampKycStatus = "email_missing" | "verified_local" | "verified_kyc" | "unknown";
 
 export interface OnrampOrderStatus {
   id: string;
@@ -43,9 +43,11 @@ export interface OnrampBootstrapData {
   allowed: boolean;
   state: OnrampAppState;
   kycStatus: OnrampKycStatus;
+  isVerified: boolean;
   email: string | null;
   walletAddress: string | null;
   activeOrder: OnrampOrderStatus | null;
+  recentOrders: OnrampOrderStatus[];
   hasVerifiedEmailMatch: boolean;
   service: {
     serviceId: string;
@@ -59,6 +61,30 @@ interface Envelope<T> {
   data: T;
   error?: string;
   code?: string;
+}
+
+export function isTerminalOnrampState(state: OnrampAppState) {
+  return state === "success" || state === "failed" || state === "expired";
+}
+
+export function getActiveOnrampOrder(order: OnrampOrderStatus | null): OnrampOrderStatus | null {
+  return order && !isTerminalOnrampState(order.appState) ? order : null;
+}
+
+export function mergeRecentOnrampOrders(
+  orders: OnrampOrderStatus[],
+  order: OnrampOrderStatus | null,
+  limit = 5,
+): OnrampOrderStatus[] {
+  if (!order || !isTerminalOnrampState(order.appState)) {
+    return orders;
+  }
+
+  return [order, ...orders.filter((candidate) => candidate.id !== order.id)].slice(0, limit);
+}
+
+export function isOnrampUserVerified(status: OnrampKycStatus) {
+  return status === "verified_local" || status === "verified_kyc";
 }
 
 function looksLikeHtml(body: string): boolean {

@@ -1,7 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it, vi } from "vitest";
 
-import { fetchOnrampQuote } from "./onramp";
+import {
+  fetchOnrampQuote,
+  getActiveOnrampOrder,
+  isOnrampUserVerified,
+  mergeRecentOnrampOrders,
+  type OnrampOrderStatus,
+} from "./onramp";
 
 describe("onramp client", () => {
   it("surfaces a readable error when an API endpoint returns HTML", async () => {
@@ -18,7 +24,44 @@ describe("onramp client", () => {
       "returned HTML instead of JSON",
     );
   });
+
+  it("does not treat terminal orders as active", () => {
+    expect(getActiveOnrampOrder(makeOrder("ord_success", "success"))).toBeNull();
+    expect(getActiveOnrampOrder(makeOrder("ord_pending", "payment_pending"))?.id).toBe("ord_pending");
+  });
+
+  it("merges terminal orders into recent history without duplicates", () => {
+    const existing = [makeOrder("ord_old", "failed")];
+    const merged = mergeRecentOnrampOrders(existing, makeOrder("ord_old", "failed"));
+    const withNew = mergeRecentOnrampOrders(merged, makeOrder("ord_new", "expired"));
+
+    expect(withNew.map((order) => order.id)).toEqual(["ord_new", "ord_old"]);
+  });
+
+  it("marks local and KYC verified statuses as verified", () => {
+    expect(isOnrampUserVerified("verified_local")).toBe(true);
+    expect(isOnrampUserVerified("verified_kyc")).toBe(true);
+    expect(isOnrampUserVerified("unknown")).toBe(false);
+  });
 });
+
+function makeOrder(id: string, appState: OnrampOrderStatus["appState"]): OnrampOrderStatus {
+  return {
+    id,
+    externalOrderId: `${id}_external`,
+    providerState: appState.toUpperCase(),
+    appState,
+    payinAmount: "1000",
+    payinCurrency: "RUB",
+    payoutAmount: "12.33",
+    payoutCurrency: "USDT",
+    invoiceUrl: null,
+    invoiceUrlExpiresAt: null,
+    errorCode: null,
+    errorMessage: null,
+    lastSyncedAt: "2026-04-10T08:00:00.000Z",
+  };
+}
 
 describe("tg-mini-app vercel config", () => {
   it("preserves /api routes before the SPA catch-all rewrite", async () => {

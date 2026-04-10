@@ -1,4 +1,3 @@
-import { createSignature, serializeSignatureParams } from "./signer";
 import type { OnrampConfig } from "./config";
 import { HttpError } from "./http";
 
@@ -61,10 +60,6 @@ async function providerRequest<T>(
     body?: Record<string, string | number | undefined>;
   },
 ): Promise<T> {
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const signedParams = input.method === "GET" ? (input.params ?? {}) : (input.body ?? {});
-  const serialized = serializeSignatureParams(signedParams);
-  const signature = createSignature(serialized, timestamp, config.secret);
   const url = new URL(`${config.baseUrl}${input.path}`);
 
   if (input.method === "GET" && input.params) {
@@ -80,9 +75,7 @@ async function providerRequest<T>(
     method: input.method,
     headers: {
       "Content-Type": "application/json",
-      "X-Client-ID": config.clientId,
-      "X-Timestamp": timestamp,
-      "X-Signature": signature,
+      "X-Onramp-Proxy-Token": config.proxyToken,
     },
     body: input.method === "POST" ? JSON.stringify(input.body ?? {}) : undefined,
   });

@@ -5,8 +5,7 @@ import type { OnrampConfig } from "./config";
 
 const config: OnrampConfig = {
   baseUrl: "https://provider.example",
-  clientId: "client_123",
-  secret: "secret_123",
+  proxyToken: "proxy_token_123",
   serviceId: "svc_123",
   appSymbol: "RUB-USDT",
   providerSymbol: "RUB-USDT",

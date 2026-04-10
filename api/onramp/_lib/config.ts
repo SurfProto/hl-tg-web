@@ -4,8 +4,7 @@ interface EnvLike {
 
 export interface OnrampConfig {
   baseUrl: string;
-  clientId: string;
-  secret: string;
+  proxyToken: string;
   serviceId: string;
   appSymbol: string;
   providerSymbol: string;
@@ -30,8 +29,7 @@ export function getOnrampConfig(env: EnvLike = process.env): OnrampConfig {
 
   return {
     baseUrl: getRequired(env, "ONRAMP_BASE_URL").replace(/\/+$/, ""),
-    clientId: getRequired(env, "ONRAMP_CLIENT_ID"),
-    secret: getRequired(env, "ONRAMP_SECRET"),
+    proxyToken: getRequired(env, "ONRAMP_PROXY_TOKEN"),
     serviceId: getRequired(env, "ONRAMP_SERVICE_ID"),
     appSymbol,
     providerSymbol: env.ONRAMP_PROVIDER_SYMBOL ?? appSymbol,

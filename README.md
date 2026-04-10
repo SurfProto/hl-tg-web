@@ -78,7 +78,8 @@ See [.env.example](.env.example) for required variables:
 - `VITE_BUILDER_FEE`: Builder fee in tenths of basis points (50 = 5bp)
 - `VITE_SUPABASE_URL`: Supabase project URL
 - `VITE_SUPABASE_ANON_KEY`: Supabase anonymous key
-- `VITE_ONRAMP_URL`: On-ramp provider redirect URL
+- `ONRAMP_BASE_URL`: On-ramp proxy base URL used by Vercel serverless functions
+- `ONRAMP_PROXY_TOKEN`: Shared token used by Vercel to authenticate to the on-ramp proxy
 
 ## Deployment
 

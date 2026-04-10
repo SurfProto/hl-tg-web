@@ -5,8 +5,7 @@ import type { OnrampConfig } from "./config";
 
 const config: OnrampConfig = {
   baseUrl: "https://provider.example",
-  clientId: "client_123",
-  secret: "secret_123",
+  proxyToken: "proxy_token_123",
   serviceId: "svc_123",
   appSymbol: "RUB-USDT",
   providerSymbol: "RUB-USDT",
@@ -18,6 +17,38 @@ const config: OnrampConfig = {
 };
 
 describe("providerRequest", () => {
+  it("sends onramp requests to the proxy with the proxy token", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({
+        success: true,
+        data: {
+          symbol: "RUB-USDT",
+          payin_breakdown: {
+            amount: "1000",
+            currency: "RUB",
+          },
+          payout_breakdown: {
+            amount: "10",
+            currency: "USDT",
+          },
+        },
+      }),
+    );
+
+    await precalcOnramp(config, 1000);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      new URL("https://provider.example/externals/cex/precalc"),
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Onramp-Proxy-Token": "proxy_token_123",
+        },
+      }),
+    );
+  });
+
   it("throws a source-specific error when the provider returns HTML", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("<html><body>Bad Gateway</body></html>", {

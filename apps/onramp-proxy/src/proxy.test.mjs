@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createProxyHandler } from "./proxy.mjs";
 
 const env = {
-  ONRAMP_PROVIDER_BASE_URL: "https://moonlander-dev.tsunami.cash",
+  ONRAMP_PROVIDER_BASE_URL: "https://moonlander-dev.tsunami.cash/api/v2",
   ONRAMP_CLIENT_ID: "client_123",
   ONRAMP_SECRET: "secret_123",
   ONRAMP_PROXY_TOKEN: "proxy_token_123",
@@ -74,7 +74,7 @@ describe("onramp proxy handler", () => {
 
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledWith(
-      new URL("https://moonlander-dev.tsunami.cash/externals/cex/precalc"),
+      new URL("https://moonlander-dev.tsunami.cash/api/v2/externals/cex/precalc"),
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({

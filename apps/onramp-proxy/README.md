@@ -9,7 +9,7 @@ Create `/etc/onramp-proxy.env` on the VPS:
 ```env
 HOST=0.0.0.0
 PORT=8080
-ONRAMP_PROVIDER_BASE_URL=https://moonlander-dev.tsunami.cash
+ONRAMP_PROVIDER_BASE_URL=https://moonlander-dev.tsunami.cash/api/v2
 ONRAMP_CLIENT_ID=your_provider_client_id
 ONRAMP_SECRET=your_provider_secret
 ONRAMP_PROXY_TOKEN=shared_secret_between_vercel_and_proxy

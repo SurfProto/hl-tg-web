@@ -43,7 +43,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={{ add }}>
       {children}
       <div
-        className="fixed bottom-20 left-0 right-0 z-50 flex flex-col gap-2 px-4 pointer-events-none"
+        className="fixed toast-above-bottom-nav left-0 right-0 z-50 flex flex-col gap-2 px-4 pointer-events-none"
         aria-live="polite"
         aria-atomic="true"
       >

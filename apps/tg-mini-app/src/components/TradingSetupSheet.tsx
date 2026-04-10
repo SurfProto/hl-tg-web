@@ -1,17 +1,27 @@
 import { useEffect } from 'react';
 import type { UseMutationResult } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import type { TradingSetupStatus } from '@repo/types';
 
 interface TradingSetupSheetProps {
   isOpen: boolean;
   onClose: () => void;
   setup: UseMutationResult<void, Error, void, unknown>;
   isExpired?: boolean;
+  status?: TradingSetupStatus;
 }
 
-export function TradingSetupSheet({ isOpen, onClose, setup, isExpired = false }: TradingSetupSheetProps) {
+export function TradingSetupSheet({
+  isOpen,
+  onClose,
+  setup,
+  isExpired = false,
+  status,
+}: TradingSetupSheetProps) {
   const isPending = setup.isPending;
   const isSuccess = setup.isSuccess;
   const error = setup.error;
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (!isOpen || !isSuccess) return;
@@ -25,10 +35,17 @@ export function TradingSetupSheet({ isOpen, onClose, setup, isExpired = false }:
 
   if (!isOpen) return null;
 
+  const stepLabels: Record<'agent' | 'builder' | 'unified', string> = {
+    agent: isExpired ? t('tradingSetup.stepReauth') : t('tradingSetup.stepAuth'),
+    builder: t('tradingSetup.stepBuilderFee'),
+    unified: t('tradingSetup.stepUnified'),
+  };
+  const steps = (status?.pendingSteps ?? ['agent']).map((step) => stepLabels[step]);
+
   const statusLabel = (() => {
-    if (isSuccess) return 'Starting trading…';
-    if (!isPending) return 'Enable 1-click trading';
-    return 'Setting up…';
+    if (isSuccess) return t('tradingSetup.statusStarting');
+    if (!isPending) return t('tradingSetup.statusEnable');
+    return t('tradingSetup.statusSettingUp');
   })();
 
   return (
@@ -54,12 +71,12 @@ export function TradingSetupSheet({ isOpen, onClose, setup, isExpired = false }:
         </div>
 
         <h2 id="trading-setup-title" className="text-lg font-bold text-foreground text-center mb-2">
-          {isExpired ? 'Reauthorize trading' : '1-click trading'}
+          {isExpired ? t('tradingSetup.titleReauth') : t('tradingSetup.title1Click')}
         </h2>
         <p className="text-sm text-gray-500 text-center mb-6 leading-relaxed">
           {isExpired
-            ? 'Your trading key has expired. Reauthorize to continue trading instantly.'
-            : 'Authorize a local trading key once. All orders will sign instantly - no confirmations on every trade.'}
+            ? t('tradingSetup.descExpired')
+            : t('tradingSetup.desc1Click')}
         </p>
 
         {isSuccess ? (
@@ -69,33 +86,25 @@ export function TradingSetupSheet({ isOpen, onClose, setup, isExpired = false }:
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <p className="text-base font-bold text-foreground">All set!</p>
-            <p className="text-sm text-gray-500 mt-1">You can now trade anything instantly.</p>
+            <p className="text-base font-bold text-foreground">{t('tradingSetup.allSet')}</p>
+            <p className="text-sm text-gray-500 mt-1">{t('tradingSetup.readyToTrade')}</p>
           </div>
         ) : (
           <div className="space-y-2.5 mb-6">
-            <div className="flex items-center gap-3 px-3 py-2.5 bg-surface rounded-xl">
-              <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <span className="text-xs font-bold text-primary">1</span>
-              </div>
-              <span className="text-sm text-foreground">
-                {isExpired ? 'Reauthorize trading key' : 'Authorize trading key'}
-              </span>
-            </div>
-            {!isExpired && (
-              <div className="flex items-center gap-3 px-3 py-2.5 bg-surface rounded-xl">
+            {(steps.length > 0 ? steps : [t('tradingSetup.stepAuth')]).map((step, index) => (
+              <div key={step} className="flex items-center gap-3 px-3 py-2.5 bg-surface rounded-xl">
                 <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <span className="text-xs font-bold text-primary">2</span>
+                  <span className="text-xs font-bold text-primary">{index + 1}</span>
                 </div>
-                <span className="text-sm text-foreground">Enable builder fee</span>
+                <span className="text-sm text-foreground">{step}</span>
               </div>
-            )}
+            ))}
           </div>
         )}
 
         {error && !isSuccess && (
           <p className="text-xs text-center text-negative mb-3">
-            {error.message ?? 'Setup failed. Please try again.'}
+            {error.message ?? t('tradingSetup.setupFailed')}
           </p>
         )}
 
@@ -107,7 +116,15 @@ export function TradingSetupSheet({ isOpen, onClose, setup, isExpired = false }:
           disabled={isPending || isSuccess}
           className="w-full py-4 rounded-xl font-semibold text-sm bg-primary text-white disabled:opacity-50 active:opacity-80 transition-opacity"
         >
-          {isPending ? statusLabel : isSuccess ? statusLabel : error ? 'Retry' : isExpired ? 'Reauthorize' : 'Enable Trading'}
+          {isPending
+            ? statusLabel
+            : isSuccess
+              ? statusLabel
+              : error
+                ? t('tradingSetup.retryButton')
+                : isExpired
+                  ? t('tradingSetup.reauthButton')
+                  : t('tradingSetup.enableButton')}
         </button>
       </div>
     </div>

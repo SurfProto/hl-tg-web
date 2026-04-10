@@ -189,12 +189,13 @@ export async function getOnrampLimits(config: OnrampConfig): Promise<OnrampLimit
 
 export async function assertAmountWithinOnrampLimits(config: OnrampConfig, amount: number): Promise<OnrampLimits> {
   const limits = await getOnrampLimits(config);
+  const rangeMessage = `Quote amount must be between ${limits.minAmount} and ${limits.maxAmount} ${limits.currency}.`;
 
   if (amount < limits.minAmount) {
     throw new HttpError(
       400,
       "AMOUNT_BELOW_MINIMUM",
-      `Minimum quote amount is ${limits.minAmount} ${limits.currency}`,
+      rangeMessage,
     );
   }
 
@@ -202,7 +203,7 @@ export async function assertAmountWithinOnrampLimits(config: OnrampConfig, amoun
     throw new HttpError(
       400,
       "AMOUNT_ABOVE_MAXIMUM",
-      `Maximum quote amount is ${limits.maxAmount} ${limits.currency}`,
+      rangeMessage,
     );
   }
 

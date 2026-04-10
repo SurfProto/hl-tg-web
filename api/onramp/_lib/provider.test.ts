@@ -148,11 +148,13 @@ describe("getOnrampLimits", () => {
     await expect(assertAmountWithinOnrampLimits(config, 599)).rejects.toMatchObject({
       statusCode: 400,
       code: "AMOUNT_BELOW_MINIMUM",
+      message: "Quote amount must be between 600 and 50000 RUB.",
     });
 
     await expect(assertAmountWithinOnrampLimits(config, 50001)).rejects.toMatchObject({
       statusCode: 400,
       code: "AMOUNT_ABOVE_MAXIMUM",
+      message: "Quote amount must be between 600 and 50000 RUB.",
     });
   });
 });

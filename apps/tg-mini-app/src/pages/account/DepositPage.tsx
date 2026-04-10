@@ -56,9 +56,6 @@ function getAmountValidationMessage(
 ) {
   if (validation.ok === true) return null;
 
-  if (validation.code === "limits_unavailable") {
-    return t("deposit.limitsUnavailable");
-  }
   if (validation.code === "below_minimum" && limits) {
     return t("deposit.amountBelowMinimum", {
       amount: limits.minAmount,
@@ -733,7 +730,7 @@ export function DepositPage() {
               disabled={isEmailRequired}
               className="w-full rounded-2xl border border-separator bg-surface px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-50"
             />
-            {onrampLimits ? (
+            {onrampLimits && (
               <p className="text-xs text-muted">
                 {t("deposit.amountLimits", {
                   min: onrampLimits.minAmount,
@@ -741,10 +738,8 @@ export function DepositPage() {
                   currency: onrampLimits.currency,
                 })}
               </p>
-            ) : (
-              <p className="text-xs text-negative">{t("deposit.limitsUnavailable")}</p>
             )}
-            {amountValidation.ok === false && fiatAmount.trim() && amountValidation.code !== "limits_unavailable" && (
+            {amountValidation.ok === false && fiatAmount.trim() && (
               <p className="text-xs text-negative">{amountValidationMessage}</p>
             )}
             <button

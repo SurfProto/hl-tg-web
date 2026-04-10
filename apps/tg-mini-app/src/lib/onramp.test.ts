@@ -47,10 +47,10 @@ describe("onramp client", () => {
     expect(isOnrampUserVerified("unknown")).toBe(false);
   });
 
-  it("requires provider limits before allowing quote requests", () => {
-    expect(validateOnrampAmount("1000", null)).toMatchObject({
-      ok: false,
-      code: "limits_unavailable",
+  it("allows quote requests when bootstrap limits were not prefetched", () => {
+    expect(validateOnrampAmount("1000", null)).toEqual({
+      ok: true,
+      amount: 1000,
     });
   });
 

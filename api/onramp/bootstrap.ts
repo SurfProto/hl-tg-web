@@ -2,7 +2,6 @@ import { requirePrivySession } from "./_lib/auth";
 import { buildBootstrapState } from "./_lib/bootstrap";
 import { getOnrampConfig } from "./_lib/config";
 import { ensureMethod, json, parseJsonBody, withJsonRoute } from "./_lib/http";
-import { getOnrampLimits } from "./_lib/provider";
 import { getActiveOrder, getRecentOrders, hasVerifiedEmail, upsertOnrampUser } from "./_lib/supabase-admin";
 
 interface BootstrapBody {
@@ -32,7 +31,6 @@ export default async function handler(request: any, response: any) {
     });
     const activeOrder = await getActiveOrder(config, user.id);
     const recentOrders = await getRecentOrders(config, user.id, 5);
-    const limits = await getOnrampLimits(config).catch(() => null);
 
     // TODO: Enforce provider KYC status and hosted KYC redirect here in the next phase.
     const bootstrap = buildBootstrapState({
@@ -43,7 +41,7 @@ export default async function handler(request: any, response: any) {
       storedKycStatus: user.kyc_status,
       activeOrder,
       recentOrders,
-      limits,
+      limits: null,
     });
 
     json(response, 200, {

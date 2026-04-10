@@ -101,16 +101,16 @@ export function isOnrampUserVerified(status: OnrampKycStatus) {
 
 export type OnrampAmountValidation =
   | { ok: true; amount: number }
-  | { ok: false; code: "limits_unavailable" | "invalid_amount" | "below_minimum" | "above_maximum" };
+  | { ok: false; code: "invalid_amount" | "below_minimum" | "above_maximum" };
 
 export function validateOnrampAmount(amountInput: string | number, limits: OnrampLimits | null): OnrampAmountValidation {
-  if (!limits) {
-    return { ok: false, code: "limits_unavailable" };
-  }
-
   const amount = typeof amountInput === "number" ? amountInput : Number(amountInput);
   if (!Number.isFinite(amount) || amount <= 0) {
     return { ok: false, code: "invalid_amount" };
+  }
+
+  if (!limits) {
+    return { ok: true, amount };
   }
 
   if (amount < limits.minAmount) {

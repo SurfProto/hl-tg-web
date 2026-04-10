@@ -38,3 +38,9 @@ export interface OnrampQuote {
   payoutAmount: string;
   payoutCurrency: string;
 }
+
+export interface OnrampLimits {
+  minAmount: number;
+  maxAmount: number;
+  currency: string;
+}

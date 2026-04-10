@@ -86,4 +86,42 @@ describe("onramp proxy handler", () => {
       }),
     );
   });
+
+  it("signs and forwards provider service discovery requests", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        success: true,
+        data: [
+          {
+            id: "svc_123",
+            limits: [{ symbol: "RUB-USDT", min_amount: "600", max_amount: "50000" }],
+          },
+        ],
+      }),
+    );
+    const handler = createProxyHandler({ env, fetchImpl: fetchMock, now: () => 1_700_000_000_000 });
+
+    const response = await handler(
+      request("/externals/cex/services", {
+        method: "GET",
+        headers: {
+          "X-Onramp-Proxy-Token": "proxy_token_123",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith(
+      new URL("https://moonlander-dev.tsunami.cash/api/v2/externals/cex/services"),
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          "X-Client-ID": "client_123",
+          "X-Timestamp": "1700000000",
+          "X-Signature": expect.any(String),
+        }),
+      }),
+    );
+  });
 });

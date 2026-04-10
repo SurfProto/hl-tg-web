@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { precalcOnramp } from "./provider";
+import { assertAmountWithinOnrampLimits, getOnrampLimits, precalcOnramp } from "./provider";
 import type { OnrampConfig } from "./config";
 
 const config: OnrampConfig = {
@@ -78,6 +78,81 @@ describe("providerRequest", () => {
     await expect(precalcOnramp(config, 1000)).rejects.toMatchObject({
       message:
         "Onramp provider returned invalid JSON for /externals/cex/precalc (host: provider.example, status: 200, content-type: application/json)",
+    });
+  });
+});
+
+describe("getOnrampLimits", () => {
+  it("normalizes provider service limits for the configured service and symbol", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({
+        success: true,
+        data: [
+          {
+            id: "other_svc",
+            is_active: true,
+            limits: [{ symbol: "RUB-USDT", min_amount: "1", max_amount: "2" }],
+          },
+          {
+            id: "svc_123",
+            is_active: true,
+            limits: [{ symbol: "RUB-USDT", min_amount: "600", max_amount: "50000" }],
+          },
+        ],
+      }),
+    );
+
+    await expect(getOnrampLimits(config)).resolves.toEqual({
+      minAmount: 600,
+      maxAmount: 50000,
+      currency: "RUB",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      new URL("https://provider.example/externals/cex/services"),
+      expect.objectContaining({
+        method: "GET",
+      }),
+    );
+  });
+
+  it("blocks amount validation when provider limits are unavailable", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({
+        success: true,
+        data: [],
+      }),
+    );
+
+    await expect(assertAmountWithinOnrampLimits(config, 1000)).rejects.toMatchObject({
+      statusCode: 503,
+      code: "LIMITS_UNAVAILABLE",
+      message: "Quote limits are unavailable. Try again later.",
+    });
+  });
+
+  it("blocks quote amounts outside provider limits", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+      Promise.resolve(Response.json({
+        success: true,
+        data: [
+          {
+            id: "svc_123",
+            is_active: true,
+            limits: [{ symbol: "RUB-USDT", min_amount: "600", max_amount: "50000" }],
+          },
+        ],
+      })),
+    );
+
+    await expect(assertAmountWithinOnrampLimits(config, 599)).rejects.toMatchObject({
+      statusCode: 400,
+      code: "AMOUNT_BELOW_MINIMUM",
+    });
+
+    await expect(assertAmountWithinOnrampLimits(config, 50001)).rejects.toMatchObject({
+      statusCode: 400,
+      code: "AMOUNT_ABOVE_MAXIMUM",
     });
   });
 });

@@ -5,7 +5,10 @@ import {
   fetchOnrampQuote,
   getActiveOnrampOrder,
   isOnrampUserVerified,
+  isOnrampQuoteCurrent,
   mergeRecentOnrampOrders,
+  validateOnrampAmount,
+  type OnrampLimits,
   type OnrampOrderStatus,
 } from "./onramp";
 
@@ -42,6 +45,46 @@ describe("onramp client", () => {
     expect(isOnrampUserVerified("verified_local")).toBe(true);
     expect(isOnrampUserVerified("verified_kyc")).toBe(true);
     expect(isOnrampUserVerified("unknown")).toBe(false);
+  });
+
+  it("requires provider limits before allowing quote requests", () => {
+    expect(validateOnrampAmount("1000", null)).toMatchObject({
+      ok: false,
+      code: "limits_unavailable",
+    });
+  });
+
+  it("validates amounts against provider limits without hard-coded fallback", () => {
+    const limits: OnrampLimits = {
+      minAmount: 600,
+      maxAmount: 50000,
+      currency: "RUB",
+    };
+
+    expect(validateOnrampAmount("599", limits)).toMatchObject({
+      ok: false,
+      code: "below_minimum",
+    });
+    expect(validateOnrampAmount("50001", limits)).toMatchObject({
+      ok: false,
+      code: "above_maximum",
+    });
+    expect(validateOnrampAmount("600", limits)).toEqual({
+      ok: true,
+      amount: 600,
+    });
+  });
+
+  it("keeps the payment CTA only while the quote matches the current amount and wallet", () => {
+    const quoteRequest = {
+      amount: 1000,
+      walletAddress: "TQ5nY5fHHx4dGR7N7NjFKTE5qvGGvE7DqK",
+    };
+
+    expect(isOnrampQuoteCurrent(quoteRequest, 1000, "TQ5nY5fHHx4dGR7N7NjFKTE5qvGGvE7DqK")).toBe(true);
+    expect(isOnrampQuoteCurrent(quoteRequest, 1001, "TQ5nY5fHHx4dGR7N7NjFKTE5qvGGvE7DqK")).toBe(false);
+    expect(isOnrampQuoteCurrent(quoteRequest, 1000, "TDifferentWalletAddress111111111111111")).toBe(false);
+    expect(isOnrampQuoteCurrent(null, 1000, "TQ5nY5fHHx4dGR7N7NjFKTE5qvGGvE7DqK")).toBe(false);
   });
 });
 

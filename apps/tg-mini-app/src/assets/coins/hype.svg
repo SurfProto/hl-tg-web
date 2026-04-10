@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="HYPE">
+  <circle cx="32" cy="32" r="32" fill="#04161b"/>
+  <path fill="#62f5d1" d="M18 20h9v9h10v-9h9v24h-9v-9H27v9h-9V20Z"/>
+  <path fill="#fff" fill-opacity=".22" d="M18 20h28l-9 9H27l-9-9Z"/>
+</svg>

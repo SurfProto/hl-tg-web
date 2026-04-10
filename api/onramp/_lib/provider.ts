@@ -1,5 +1,7 @@
 import type { OnrampConfig } from "./config";
+import { getSymbolCurrencies } from "./config";
 import { HttpError } from "./http";
+import type { OnrampLimits } from "./types";
 
 interface ProviderEnvelope<T> {
   status_code: number;
@@ -39,6 +41,18 @@ export interface ProviderOrder {
   created_at: string | null;
   touched_at: string | null;
   state: string;
+}
+
+interface ProviderOnrampLimit {
+  symbol: string;
+  min_amount: string | number | null;
+  max_amount: string | number | null;
+}
+
+interface ProviderService {
+  id: string;
+  is_active?: boolean;
+  limits?: ProviderOnrampLimit[];
 }
 
 function toSearchParams(params: Record<string, string | undefined>) {
@@ -127,6 +141,72 @@ export async function precalcOnramp(config: OnrampConfig, amount: number): Promi
       symbol: config.providerSymbol,
     },
   });
+}
+
+function parseProviderLimitAmount(value: string | number | null | undefined): number | null {
+  const amount = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+function normalizeProviderLimit(config: OnrampConfig, service: ProviderService): OnrampLimits | null {
+  if (service.id !== config.serviceId || service.is_active === false || !Array.isArray(service.limits)) {
+    return null;
+  }
+
+  const limit = service.limits.find((candidate) => candidate.symbol === config.providerSymbol);
+  if (!limit) {
+    return null;
+  }
+
+  const minAmount = parseProviderLimitAmount(limit.min_amount);
+  const maxAmount = parseProviderLimitAmount(limit.max_amount);
+  if (minAmount == null || maxAmount == null || minAmount > maxAmount) {
+    return null;
+  }
+
+  return {
+    minAmount,
+    maxAmount,
+    currency: getSymbolCurrencies(config.appSymbol).payinCurrency,
+  };
+}
+
+export async function getOnrampLimits(config: OnrampConfig): Promise<OnrampLimits> {
+  const services = await providerRequest<ProviderService[]>(config, {
+    method: "GET",
+    path: "/externals/cex/services",
+  });
+
+  for (const service of services) {
+    const limits = normalizeProviderLimit(config, service);
+    if (limits) {
+      return limits;
+    }
+  }
+
+  throw new HttpError(503, "LIMITS_UNAVAILABLE", "Quote limits are unavailable. Try again later.");
+}
+
+export async function assertAmountWithinOnrampLimits(config: OnrampConfig, amount: number): Promise<OnrampLimits> {
+  const limits = await getOnrampLimits(config);
+
+  if (amount < limits.minAmount) {
+    throw new HttpError(
+      400,
+      "AMOUNT_BELOW_MINIMUM",
+      `Minimum quote amount is ${limits.minAmount} ${limits.currency}`,
+    );
+  }
+
+  if (amount > limits.maxAmount) {
+    throw new HttpError(
+      400,
+      "AMOUNT_ABOVE_MAXIMUM",
+      `Maximum quote amount is ${limits.maxAmount} ${limits.currency}`,
+    );
+  }
+
+  return limits;
 }
 
 export interface CreatePreorderInput {

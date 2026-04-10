@@ -1,7 +1,7 @@
 import { requirePrivySession } from "./_lib/auth";
 import { getOnrampConfig } from "./_lib/config";
 import { ensureMethod, json, parseJsonBody, withJsonRoute, HttpError } from "./_lib/http";
-import { precalcOnramp } from "./_lib/provider";
+import { assertAmountWithinOnrampLimits, precalcOnramp } from "./_lib/provider";
 import { toQuoteResponse } from "./_lib/responses";
 import { parseAmount } from "./_lib/request";
 import { getUserByPrivyUserId } from "./_lib/supabase-admin";
@@ -23,6 +23,7 @@ export default async function handler(request: any, response: any) {
 
     const body = parseJsonBody<QuoteBody>(request);
     const amount = parseAmount(body.amount);
+    await assertAmountWithinOnrampLimits(config, amount);
     const quote = await precalcOnramp(config, amount);
 
     json(response, 200, {

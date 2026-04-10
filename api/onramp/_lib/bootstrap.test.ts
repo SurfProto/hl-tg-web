@@ -12,6 +12,7 @@ describe("buildBootstrapState", () => {
       storedKycStatus: null,
       activeOrder: null,
       recentOrders: [],
+      limits: null,
     });
 
     expect(result.state).toBe("email_required");
@@ -28,11 +29,21 @@ describe("buildBootstrapState", () => {
       storedKycStatus: null,
       activeOrder: null,
       recentOrders: [],
+      limits: {
+        minAmount: 600,
+        maxAmount: 50000,
+        currency: "RUB",
+      },
     });
 
     expect(result.state).toBe("ready");
     expect(result.allowed).toBe(true);
     expect(result.kycStatus).toBe("verified_local");
+    expect(result.limits).toEqual({
+      minAmount: 600,
+      maxAmount: 50000,
+      currency: "RUB",
+    });
   });
 
   it("allows unknown emails in v1 but keeps the KYC harness state", () => {
@@ -60,6 +71,7 @@ describe("buildBootstrapState", () => {
       storedKycStatus: null,
       activeOrder,
       recentOrders: [],
+      limits: null,
     });
 
     expect(result.state).toBe("payment_pending");
@@ -93,6 +105,7 @@ describe("buildBootstrapState", () => {
       storedKycStatus: null,
       activeOrder: terminalOrder,
       recentOrders: [terminalOrder],
+      limits: null,
     });
 
     expect(result.state).toBe("ready");
@@ -109,6 +122,7 @@ describe("buildBootstrapState", () => {
       storedKycStatus: "approved",
       activeOrder: null,
       recentOrders: [],
+      limits: null,
     });
 
     expect(result.kycStatus).toBe("verified_kyc");

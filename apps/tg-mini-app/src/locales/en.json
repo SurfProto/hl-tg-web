@@ -276,7 +276,7 @@
   },
   "deposit": {
     "title": "Deposit funds",
-    "buyWithCard": "Buy with card",
+    "buyWithCard": "Buy crypto",
     "fiatDescription": "Buy USDC on Arbitrum with a card or bank payment",
     "depositCrypto": "Deposit crypto",
     "cryptoDescription": "Receive USDC on Arbitrum",
@@ -318,6 +318,10 @@
     "loadingOnramp": "Loading on-ramp...",
     "genericFiatError": "Something went wrong while loading on-ramp.",
     "invalidFiatAmount": "Enter a valid fiat amount.",
+    "limitsUnavailable": "Quote limits are unavailable. Try again later.",
+    "amountLimits": "Limits: {{min}}-{{max}} {{currency}}",
+    "amountBelowMinimum": "Minimum amount is {{amount}} {{currency}}.",
+    "amountAboveMaximum": "Maximum amount is {{amount}} {{currency}}.",
     "authRequired": "You need to be signed in to continue.",
     "walletBalance": "Wallet balance",
     "step1Title": "Step 1: receive USDC on Arbitrum",
@@ -351,6 +355,17 @@
       "success": "Completed",
       "failed": "Failed",
       "expired": "Expired"
+    },
+    "toast": {
+      "quote_loading": "Getting quote...",
+      "quote_ready": "Quote is ready.",
+      "checkout_pending": "Creating payment order...",
+      "invoice_pending": "Preparing payment page...",
+      "payment_pending": "Waiting for payment.",
+      "processing": "Payment received. Processing payout.",
+      "success": "Order completed.",
+      "failed": "Order failed.",
+      "expired": "Payment link expired."
     }
   },
   "withdraw": {

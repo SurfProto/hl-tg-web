@@ -273,7 +273,7 @@
   },
   "deposit": {
     "title": "Пополнить средства",
-    "buyWithCard": "Купить картой",
+    "buyWithCard": "Купить крипто",
     "fiatDescription": "Фиатный ввод",
     "depositCrypto": "Депозит криптовалюты",
     "cryptoDescription": "Получите USDC на Arbitrum",
@@ -328,6 +328,10 @@
     "loadingOnramp": "Загрузка on-ramp...",
     "genericFiatError": "Что-то пошло не так при загрузке on-ramp.",
     "invalidFiatAmount": "Введите корректную сумму.",
+    "limitsUnavailable": "Лимиты для котировки недоступны. Попробуйте позже.",
+    "amountLimits": "Лимиты: {{min}}-{{max}} {{currency}}",
+    "amountBelowMinimum": "Минимальная сумма {{amount}} {{currency}}.",
+    "amountAboveMaximum": "Максимальная сумма {{amount}} {{currency}}.",
     "authRequired": "Нужно войти, чтобы продолжить.",
     "usePrivyWallet": "Privy кошелёк",
     "useExternalTrc20": "Внешний TRC20",
@@ -348,6 +352,17 @@
       "success": "Завершено",
       "failed": "Ошибка",
       "expired": "Истекло"
+    },
+    "toast": {
+      "quote_loading": "Получаем котировку...",
+      "quote_ready": "Котировка готова.",
+      "checkout_pending": "Создаём заказ на оплату...",
+      "invoice_pending": "Готовим страницу оплаты...",
+      "payment_pending": "Ожидаем оплату.",
+      "processing": "Оплата получена. Обрабатываем выплату.",
+      "success": "Заказ завершён.",
+      "failed": "Заказ не удался.",
+      "expired": "Ссылка на оплату истекла."
     }
   },
   "withdraw": {

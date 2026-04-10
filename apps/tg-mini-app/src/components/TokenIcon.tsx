@@ -1,17 +1,30 @@
-import { useState } from 'react';
+import btcIcon from '../assets/coins/btc.svg';
+import ethIcon from '../assets/coins/eth.svg';
+import hypeIcon from '../assets/coins/hype.svg';
+import solIcon from '../assets/coins/sol.svg';
+import usdcIcon from '../assets/coins/usdc.svg';
+import usdtIcon from '../assets/coins/usdt.svg';
 
 interface TokenIconProps {
   coin: string;
   size?: number;
 }
 
-export function TokenIcon({ coin, size = 32 }: TokenIconProps) {
-  const [imgError, setImgError] = useState(false);
+const LOCAL_COIN_ICONS: Record<string, string> = {
+  BTC: btcIcon,
+  ETH: ethIcon,
+  HYPE: hypeIcon,
+  SOL: solIcon,
+  USDC: usdcIcon,
+  USDT: usdtIcon,
+};
 
-  const cdnUrl = `https://app.hyperliquid.xyz/coins/${coin.toUpperCase()}.svg`;
+export function TokenIcon({ coin, size = 32 }: TokenIconProps) {
+  const normalizedCoin = coin.toUpperCase();
+  const icon = LOCAL_COIN_ICONS[normalizedCoin];
   const initials = coin.replace(/[^A-Z0-9]/gi, '').slice(0, 2).toUpperCase();
 
-  if (imgError) {
+  if (!icon) {
     return (
       <div
         style={{ width: size, height: size, fontSize: size * 0.35 }}
@@ -24,13 +37,12 @@ export function TokenIcon({ coin, size = 32 }: TokenIconProps) {
 
   return (
     <img
-      src={cdnUrl}
+      src={icon}
       alt={coin}
       width={size}
       height={size}
       className="rounded-full flex-shrink-0"
       style={{ width: size, height: size }}
-      onError={() => setImgError(true)}
     />
   );
 }

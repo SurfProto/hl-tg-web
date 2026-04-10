@@ -1,5 +1,5 @@
 import { normalizeOrderState } from "./normalize";
-import type { OnrampAppState, OnrampKycStatus, OnrampOrderStatus } from "./types";
+import type { OnrampAppState, OnrampKycStatus, OnrampLimits, OnrampOrderStatus } from "./types";
 
 const KYC_VERIFIED_STATUSES = new Set(["approved", "complete", "completed", "success", "verified", "passed"]);
 
@@ -11,6 +11,7 @@ interface BuildBootstrapStateInput {
   storedKycStatus: string | null;
   activeOrder: OnrampOrderStatus | null;
   recentOrders: OnrampOrderStatus[];
+  limits: OnrampLimits | null;
 }
 
 interface BootstrapState {
@@ -22,6 +23,7 @@ interface BootstrapState {
   walletAddress: string | null;
   activeOrder: OnrampOrderStatus | null;
   recentOrders: OnrampOrderStatus[];
+  limits: OnrampLimits | null;
 }
 
 function isTerminalOrder(order: OnrampOrderStatus | null): boolean {
@@ -70,6 +72,7 @@ export function buildBootstrapState(input: BuildBootstrapStateInput): BootstrapS
       walletAddress: input.walletAddress,
       activeOrder: null,
       recentOrders,
+      limits: input.limits,
     };
   }
 
@@ -85,5 +88,6 @@ export function buildBootstrapState(input: BuildBootstrapStateInput): BootstrapS
     walletAddress: input.walletAddress,
     activeOrder,
     recentOrders,
+    limits: input.limits,
   };
 }

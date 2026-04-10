@@ -39,6 +39,17 @@ export interface OnrampQuote {
   payoutCurrency: string;
 }
 
+export interface OnrampLimits {
+  minAmount: number;
+  maxAmount: number;
+  currency: string;
+}
+
+export interface OnrampQuoteRequest {
+  amount: number;
+  walletAddress: string | null;
+}
+
 export interface OnrampBootstrapData {
   allowed: boolean;
   state: OnrampAppState;
@@ -48,6 +59,7 @@ export interface OnrampBootstrapData {
   walletAddress: string | null;
   activeOrder: OnrampOrderStatus | null;
   recentOrders: OnrampOrderStatus[];
+  limits: OnrampLimits | null;
   hasVerifiedEmailMatch: boolean;
   service: {
     serviceId: string;
@@ -85,6 +97,43 @@ export function mergeRecentOnrampOrders(
 
 export function isOnrampUserVerified(status: OnrampKycStatus) {
   return status === "verified_local" || status === "verified_kyc";
+}
+
+export type OnrampAmountValidation =
+  | { ok: true; amount: number }
+  | { ok: false; code: "limits_unavailable" | "invalid_amount" | "below_minimum" | "above_maximum" };
+
+export function validateOnrampAmount(amountInput: string | number, limits: OnrampLimits | null): OnrampAmountValidation {
+  if (!limits) {
+    return { ok: false, code: "limits_unavailable" };
+  }
+
+  const amount = typeof amountInput === "number" ? amountInput : Number(amountInput);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { ok: false, code: "invalid_amount" };
+  }
+
+  if (amount < limits.minAmount) {
+    return { ok: false, code: "below_minimum" };
+  }
+
+  if (amount > limits.maxAmount) {
+    return { ok: false, code: "above_maximum" };
+  }
+
+  return { ok: true, amount };
+}
+
+export function isOnrampQuoteCurrent(
+  quoteRequest: OnrampQuoteRequest | null,
+  amount: number,
+  walletAddress: string | null,
+) {
+  return Boolean(
+    quoteRequest &&
+      quoteRequest.amount === amount &&
+      quoteRequest.walletAddress === walletAddress,
+  );
 }
 
 function looksLikeHtml(body: string): boolean {

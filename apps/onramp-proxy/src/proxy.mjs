@@ -5,6 +5,7 @@ const ALLOWED_ROUTES = new Map([
   ["POST /externals/cex/order/preorder", true],
   ["POST /externals/cex/order/create", true],
   ["GET /externals/cex/order/get", true],
+  ["GET /externals/cex/services", true],
 ]);
 
 function json(status, body) {

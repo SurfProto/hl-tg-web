@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePrivy, useToken } from "@privy-io/react-auth";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -14,14 +14,18 @@ import {
   fetchOnrampQuote,
   fetchOnrampStatus,
   getActiveOnrampOrder,
+  isOnrampQuoteCurrent,
   isOnrampUserVerified,
   isTerminalOnrampState,
   mergeRecentOnrampOrders,
+  validateOnrampAmount,
   type OnrampAppState,
   type OnrampBootstrapData,
   type OnrampOrderStatus,
   type OnrampQuote,
+  type OnrampQuoteRequest,
 } from "../../lib/onramp";
+import { useToast } from "../../components/Toast";
 
 type DepositView = "choice" | "fiat" | "crypto";
 
@@ -45,12 +49,62 @@ function getDisplayTimestamp(timestamp?: string | null) {
   return date.toLocaleString();
 }
 
+function getAmountValidationMessage(
+  validation: ReturnType<typeof validateOnrampAmount>,
+  limits: OnrampBootstrapData["limits"],
+  t: (key: string, options?: Record<string, unknown>) => string,
+) {
+  if (validation.ok === true) return null;
+
+  if (validation.code === "limits_unavailable") {
+    return t("deposit.limitsUnavailable");
+  }
+  if (validation.code === "below_minimum" && limits) {
+    return t("deposit.amountBelowMinimum", {
+      amount: limits.minAmount,
+      currency: limits.currency,
+    });
+  }
+  if (validation.code === "above_maximum" && limits) {
+    return t("deposit.amountAboveMaximum", {
+      amount: limits.maxAmount,
+      currency: limits.currency,
+    });
+  }
+
+  return t("deposit.invalidFiatAmount");
+}
+
+function getToastTypeForStatus(state: OnrampAppState): "success" | "error" | "info" | null {
+  if (state === "success" || state === "quote_ready") {
+    return "success";
+  }
+  if (state === "failed" || state === "expired") {
+    return "error";
+  }
+  if (
+    state === "quote_loading" ||
+    state === "checkout_pending" ||
+    state === "invoice_pending" ||
+    state === "payment_pending" ||
+    state === "processing"
+  ) {
+    return "info";
+  }
+
+  return null;
+}
+
 export function DepositPage() {
   const privy = usePrivy() as any;
   const { getAccessToken } = useToken();
   const queryClient = useQueryClient();
   const { user } = privy;
   const { t } = useTranslation();
+  const toast = useToast();
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
+  const lastToastedStateRef = useRef<OnrampAppState | null>(null);
   const returnExternalOrderId =
     new URLSearchParams(window.location.search).get("onramp_external_order_id");
 
@@ -66,6 +120,7 @@ export function DepositPage() {
   const [bootstrapData, setBootstrapData] =
     useState<OnrampBootstrapData | null>(null);
   const [quote, setQuote] = useState<OnrampQuote | null>(null);
+  const [quoteRequest, setQuoteRequest] = useState<OnrampQuoteRequest | null>(null);
   const [order, setOrder] = useState<OnrampOrderStatus | null>(null);
   const [recentOrders, setRecentOrders] = useState<OnrampOrderStatus[]>([]);
   const [fiatError, setFiatError] = useState<string | null>(null);
@@ -81,6 +136,19 @@ export function DepositPage() {
   const { data: arbUsdcBalance, isLoading } = useArbitrumUsdcBalance(address);
   const fundWallet = useFundArbitrumUsdc();
   const bridge = useBridgeToHyperliquid();
+
+  useEffect(() => {
+    if (view !== "fiat") return;
+
+    const toastType = getToastTypeForStatus(fiatState);
+    if (!toastType || lastToastedStateRef.current === fiatState) {
+      return;
+    }
+
+    lastToastedStateRef.current = fiatState;
+    const message = t(`deposit.toast.${fiatState}`);
+    toastRef.current[toastType](message);
+  }, [fiatState, t, view]);
 
   const handleCopy = async () => {
     if (!address) return;
@@ -99,6 +167,7 @@ export function DepositPage() {
         if (!cancelled) {
           setBootstrapData(null);
           setQuote(null);
+          setQuoteRequest(null);
           setOrder(null);
           setRecentOrders([]);
           setFiatState("email_required");
@@ -140,6 +209,7 @@ export function DepositPage() {
           setFiatState(returnedActiveOrder ? statusResponse.state : "ready");
           if (!returnedActiveOrder) {
             setQuote(null);
+            setQuoteRequest(null);
             setRecentOrders((current) => mergeRecentOnrampOrders(current, statusResponse.order));
           }
           setBootstrapData((current) =>
@@ -157,11 +227,7 @@ export function DepositPage() {
         }
       } catch (error) {
         if (cancelled) return;
-        setFiatError(
-          error instanceof Error
-            ? error.message
-            : t("deposit.genericFiatError"),
-        );
+        setFiatFailure(error instanceof Error ? error.message : t("deposit.genericFiatError"));
         setFiatState(email ? "ready" : "email_required");
       } finally {
         if (!cancelled) {
@@ -201,6 +267,7 @@ export function DepositPage() {
         setFiatState(nextActiveOrder ? statusResponse.state : "ready");
         if (!nextActiveOrder) {
           setQuote(null);
+          setQuoteRequest(null);
           setRecentOrders((current) => mergeRecentOnrampOrders(current, statusResponse.order));
         }
         setBootstrapData((current) =>
@@ -221,11 +288,7 @@ export function DepositPage() {
         }
       } catch (error) {
         if (!cancelled) {
-          setFiatError(
-            error instanceof Error
-              ? error.message
-              : t("deposit.genericFiatError"),
-          );
+          setFiatFailure(error instanceof Error ? error.message : t("deposit.genericFiatError"));
         }
       }
     };
@@ -242,6 +305,18 @@ export function DepositPage() {
 
   const isTrc20 = bootstrapData?.service.network === "TRC20";
   const resolvedPayoutAddress = addressMode === "privy" ? (address ?? null) : tronAddress || null;
+  const onrampLimits = bootstrapData?.limits ?? null;
+  const amountValidation = validateOnrampAmount(fiatAmount, onrampLimits);
+
+  const setFiatFailure = (message: string) => {
+    setFiatError(message);
+    toastRef.current.error(message);
+  };
+
+  useEffect(() => {
+    setQuote(null);
+    setQuoteRequest(null);
+  }, [resolvedPayoutAddress]);
 
   const requestQuote = async () => {
     if (!email) {
@@ -250,16 +325,16 @@ export function DepositPage() {
     }
 
     if (isTrc20 && addressMode === "trc20" && !isValidTrc20Address(tronAddress)) {
-      setFiatError(t("deposit.trc20AddressInvalid"));
+      setFiatFailure(t("deposit.trc20AddressInvalid"));
       return;
     }
 
-    const amount = Number(fiatAmount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setFiatError(t("deposit.invalidFiatAmount"));
+    if (!amountValidation.ok) {
+      setFiatFailure(getAmountValidationMessage(amountValidation, onrampLimits, t) ?? t("deposit.invalidFiatAmount"));
       return;
     }
 
+    const { amount } = amountValidation;
     setIsQuoting(true);
     setFiatState("quote_loading");
     setFiatError(null);
@@ -280,13 +355,10 @@ export function DepositPage() {
 
       const response = await fetchOnrampQuote(accessToken, amount);
       setQuote(response.quote);
+      setQuoteRequest({ amount, walletAddress: resolvedPayoutAddress });
       setFiatState(response.state);
     } catch (error) {
-      setFiatError(
-        error instanceof Error
-          ? error.message
-          : t("deposit.genericFiatError"),
-      );
+      setFiatFailure(error instanceof Error ? error.message : t("deposit.genericFiatError"));
       setFiatState("ready");
     } finally {
       setIsQuoting(false);
@@ -300,16 +372,16 @@ export function DepositPage() {
     }
 
     if (isTrc20 && addressMode === "trc20" && !isValidTrc20Address(tronAddress)) {
-      setFiatError(t("deposit.trc20AddressInvalid"));
+      setFiatFailure(t("deposit.trc20AddressInvalid"));
       return;
     }
 
-    const amount = Number(fiatAmount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setFiatError(t("deposit.invalidFiatAmount"));
+    if (!amountValidation.ok) {
+      setFiatFailure(getAmountValidationMessage(amountValidation, onrampLimits, t) ?? t("deposit.invalidFiatAmount"));
       return;
     }
 
+    const { amount } = amountValidation;
     setIsCheckingOut(true);
     setFiatState("checkout_pending");
     setFiatError(null);
@@ -334,6 +406,7 @@ export function DepositPage() {
       setFiatState(nextActiveOrder ? response.state : "ready");
       if (!nextActiveOrder) {
         setQuote(null);
+        setQuoteRequest(null);
         setRecentOrders((current) => mergeRecentOnrampOrders(current, response.order));
       }
       setBootstrapData((current) =>
@@ -352,11 +425,7 @@ export function DepositPage() {
         openExternal(response.order.invoiceUrl);
       }
     } catch (error) {
-      setFiatError(
-        error instanceof Error
-          ? error.message
-          : t("deposit.genericFiatError"),
-      );
+      setFiatFailure(error instanceof Error ? error.message : t("deposit.genericFiatError"));
       setFiatState("ready");
     } finally {
       setIsCheckingOut(false);
@@ -382,6 +451,7 @@ export function DepositPage() {
       setFiatState(nextActiveOrder ? response.state : "ready");
       if (!nextActiveOrder) {
         setQuote(null);
+        setQuoteRequest(null);
         setRecentOrders((current) => mergeRecentOnrampOrders(current, response.order));
       }
       setBootstrapData((current) =>
@@ -400,11 +470,7 @@ export function DepositPage() {
         void queryClient.invalidateQueries();
       }
     } catch (error) {
-      setFiatError(
-        error instanceof Error
-          ? error.message
-          : t("deposit.genericFiatError"),
-      );
+      setFiatFailure(error instanceof Error ? error.message : t("deposit.genericFiatError"));
     } finally {
       setIsRefreshingStatus(false);
     }
@@ -413,6 +479,7 @@ export function DepositPage() {
   const handleFiatAmountChange = (value: string) => {
     setFiatAmount(value);
     setQuote(null);
+    setQuoteRequest(null);
     if (!order || isTerminalOnrampState(order.appState)) {
       setFiatState(email ? "ready" : "email_required");
     }
@@ -428,21 +495,32 @@ export function DepositPage() {
   const isEmailRequired = !email || fiatState === "email_required";
   const isTrc20AddressValid =
     !isTrc20 || addressMode === "privy" || isValidTrc20Address(tronAddress);
-  const showQuoteCard = Boolean(quote);
   const showOrderCard = Boolean(order && !isTerminalOnrampState(order.appState));
   const terminalRecentOrders = recentOrders.filter((recentOrder) =>
     isTerminalOnrampState(recentOrder.appState),
   );
-  const canRequestQuote =
-    !isEmailRequired && !isBootstrapping && !isQuoting && !isCheckingOut && isTrc20AddressValid;
-  const canCheckout = Boolean(
+  const amountValidationMessage = getAmountValidationMessage(amountValidation, onrampLimits, t);
+  const quoteMatchesCurrentInput = Boolean(
     quote &&
-      !isEmailRequired &&
-      !isBootstrapping &&
-      !isCheckingOut &&
-      !order &&
-      isTrc20AddressValid,
+      amountValidation.ok &&
+      isOnrampQuoteCurrent(quoteRequest, amountValidation.amount, resolvedPayoutAddress),
   );
+  const showQuoteCard = Boolean(quote && quoteMatchesCurrentInput);
+  const canUseFiatCta =
+    !isEmailRequired &&
+    !isBootstrapping &&
+    !isQuoting &&
+    !isCheckingOut &&
+    !order &&
+    isTrc20AddressValid &&
+    amountValidation.ok;
+  const fiatCtaLabel = quoteMatchesCurrentInput
+    ? isCheckingOut
+      ? t("deposit.creatingOrder")
+      : t("deposit.continueToPayment")
+    : isQuoting
+      ? t("deposit.loadingQuote")
+      : t("deposit.getQuote");
 
   return (
     <div className="min-h-full bg-background px-4 py-5">
@@ -468,13 +546,13 @@ export function DepositPage() {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={1.8}
-                  d="M3 7.5A2.5 2.5 0 015.5 5h13A2.5 2.5 0 0121 7.5v9A2.5 2.5 0 0118.5 19h-13A2.5 2.5 0 013 16.5v-9z"
+                  d="M4 4h5v5H4V4zm11 0h5v5h-5V4zM4 15h5v5H4v-5z"
                 />
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={1.8}
-                  d="M3 9h18M16 14h2"
+                  d="M15 15h2v2h-2v-2zm4 0h1v5h-5v-1m0-8h2m3 0v2"
                 />
               </svg>
               <p className="mt-3 font-semibold text-foreground">
@@ -500,7 +578,13 @@ export function DepositPage() {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={1.8}
-                  d="M12 3v18M7 8.5h6a3 3 0 010 6H9a3 3 0 000 6h8"
+                  d="M12 3.5 19.5 8v8L12 20.5 4.5 16V8L12 3.5z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.8}
+                  d="M8.5 10.25a3.5 3.5 0 106.25-2.15M9.25 15.9A3.5 3.5 0 1015.5 13.75"
                 />
               </svg>
               <p className="mt-3 font-semibold text-foreground">
@@ -525,34 +609,20 @@ export function DepositPage() {
           </button>
 
           <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted">{t("deposit.network")}</p>
-                <p className="mt-1 font-semibold text-foreground">
-                  {bootstrapData?.service.network ?? t("deposit.arbitrumOne")}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-muted">{t("deposit.asset")}</p>
-                <p className="mt-1 font-semibold text-foreground">
-                  {bootstrapData?.service.symbol ?? "RUB-USDC"}
-                </p>
-              </div>
-            </div>
             <div className="space-y-2">
               <p className="text-xs text-muted">{t("deposit.destinationWallet")}</p>
               {isTrc20 && (
                 <div className="flex rounded-2xl bg-surface p-1 gap-1">
                   <button
                     type="button"
-                    onClick={() => { setAddressMode("privy"); setQuote(null); }}
+                    onClick={() => { setAddressMode("privy"); setQuote(null); setQuoteRequest(null); }}
                     className={`flex-1 rounded-xl py-2 text-sm font-semibold transition-colors ${addressMode === "privy" ? "bg-white text-foreground shadow-sm" : "text-muted"}`}
                   >
                     {t("deposit.usePrivyWallet")}
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setAddressMode("trc20"); setQuote(null); }}
+                    onClick={() => { setAddressMode("trc20"); setQuote(null); setQuoteRequest(null); }}
                     className={`flex-1 rounded-xl py-2 text-sm font-semibold transition-colors ${addressMode === "trc20" ? "bg-white text-foreground shadow-sm" : "text-muted"}`}
                   >
                     {t("deposit.useExternalTrc20")}
@@ -574,6 +644,7 @@ export function DepositPage() {
                     onChange={(e) => {
                       setTronAddress(e.target.value.trim());
                       setQuote(null);
+                      setQuoteRequest(null);
                     }}
                     placeholder={t("deposit.trc20AddressPlaceholder")}
                     className="w-full rounded-2xl border border-separator bg-surface px-4 py-3 font-mono text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
@@ -662,26 +733,28 @@ export function DepositPage() {
               disabled={isEmailRequired}
               className="w-full rounded-2xl border border-separator bg-surface px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-50"
             />
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => void requestQuote()}
-                disabled={!canRequestQuote}
-                className="rounded-full bg-surface px-4 py-3 text-sm font-semibold text-foreground disabled:opacity-50"
-              >
-                {isQuoting ? t("deposit.loadingQuote") : t("deposit.getQuote")}
-              </button>
-              <button
-                type="button"
-                onClick={() => void startCheckout()}
-                disabled={!canCheckout}
-                className="rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                {isCheckingOut
-                  ? t("deposit.creatingOrder")
-                  : t("deposit.continueToPayment")}
-              </button>
-            </div>
+            {onrampLimits ? (
+              <p className="text-xs text-muted">
+                {t("deposit.amountLimits", {
+                  min: onrampLimits.minAmount,
+                  max: onrampLimits.maxAmount,
+                  currency: onrampLimits.currency,
+                })}
+              </p>
+            ) : (
+              <p className="text-xs text-negative">{t("deposit.limitsUnavailable")}</p>
+            )}
+            {amountValidation.ok === false && fiatAmount.trim() && amountValidation.code !== "limits_unavailable" && (
+              <p className="text-xs text-negative">{amountValidationMessage}</p>
+            )}
+            <button
+              type="button"
+              onClick={() => void (quoteMatchesCurrentInput ? startCheckout() : requestQuote())}
+              disabled={!canUseFiatCta}
+              className="w-full rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {fiatCtaLabel}
+            </button>
             <p className="text-xs text-muted">{t("deposit.pendingVerification")}</p>
           </div>
 

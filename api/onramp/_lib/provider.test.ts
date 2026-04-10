@@ -80,6 +80,26 @@ describe("providerRequest", () => {
         "Onramp provider returned invalid JSON for /externals/cex/precalc (host: provider.example, status: 200, content-type: application/json)",
     });
   });
+
+  it("preserves proxy JSON error codes and messages", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json(
+        {
+          success: false,
+          code: "NOT_FOUND",
+          error: "Unsupported onramp proxy route",
+          details: null,
+        },
+        { status: 404 },
+      ),
+    );
+
+    await expect(getOnrampLimits(config)).rejects.toMatchObject({
+      statusCode: 404,
+      code: "NOT_FOUND",
+      message: "Unsupported onramp proxy route",
+    });
+  });
 });
 
 describe("getOnrampLimits", () => {

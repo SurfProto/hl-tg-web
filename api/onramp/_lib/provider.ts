@@ -12,6 +12,13 @@ interface ProviderEnvelope<T> {
   error_code: string | null;
 }
 
+interface ProxyErrorEnvelope {
+  success: false;
+  code?: string;
+  error?: string;
+  details?: unknown;
+}
+
 function looksLikeHtml(body: string): boolean {
   const trimmed = body.trim().toLowerCase();
   return trimmed.startsWith("<!doctype html") || trimmed.startsWith("<html");
@@ -118,11 +125,12 @@ async function providerRequest<T>(
   }
 
   if (!response.ok || !payload.success || !payload.data) {
+    const proxyError = payload as unknown as ProxyErrorEnvelope;
     throw new HttpError(
       response.status || payload.status_code || 502,
-      payload.error_code ?? "PROVIDER_ERROR",
-      payload.message || "Provider request failed",
-      payload.error_details,
+      payload.error_code ?? proxyError.code ?? "PROVIDER_ERROR",
+      payload.message || proxyError.error || "Provider request failed",
+      payload.error_details ?? proxyError.details,
     );
   }
 

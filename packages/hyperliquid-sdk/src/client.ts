@@ -43,12 +43,23 @@ import { WebSocketManager } from "./ws";
 let HyperliquidSDK: any = null;
 let HyperliquidSigning: any = null;
 
+async function ensureNodeWebSocketGlobal() {
+  if (typeof globalThis.WebSocket !== "undefined") {
+    return;
+  }
+
+  const { WebSocket } = await import("ws");
+  (globalThis as typeof globalThis & { WebSocket: typeof WebSocket }).WebSocket =
+    WebSocket;
+}
+
 // Exported so that apps can fire-and-forget pre-warm these dynamic imports
 // during cold start (e.g. from main.tsx right after telegram bootstrap).
 // The chunk download + parse then overlaps with React mount / Privy auth,
 // removing the ~300–700ms penalty on the first order of a session.
 export async function loadHyperliquidSDK() {
   if (!HyperliquidSDK) {
+    await ensureNodeWebSocketGlobal();
     const module = await import("@nktkas/hyperliquid");
     HyperliquidSDK = module;
   }

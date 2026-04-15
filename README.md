@@ -7,6 +7,7 @@ A Telegram-first trading experience for Hyperliquid, built with React, TypeScrip
 This is a monorepo containing:
 
 - **apps/tg-mini-app**: Telegram Mini App (primary interface)
+- **apps/notification-worker**: External Telegram notification worker
 - **apps/web**: Desktop webapp (secondary interface)
 - **packages/ui**: Shared UI components
 - **packages/hyperliquid-sdk**: Hyperliquid SDK wrapper with builder code enforcement
@@ -78,8 +79,12 @@ See [.env.example](.env.example) for required variables:
 - `VITE_BUILDER_FEE`: Builder fee in tenths of basis points (50 = 5bp)
 - `VITE_SUPABASE_URL`: Supabase project URL
 - `VITE_SUPABASE_ANON_KEY`: Supabase anonymous key
+- `SUPABASE_SERVICE_ROLE_KEY`: Supabase service role key used by server-side jobs
+- `TELEGRAM_BOT_TOKEN`: Bot token for Telegram delivery
 - `ONRAMP_BASE_URL`: On-ramp proxy base URL used by Vercel serverless functions
 - `ONRAMP_PROXY_TOKEN`: Shared token used by Vercel to authenticate to the on-ramp proxy
+
+For the VPS deployment of the external notifications worker, see [apps/notification-worker/README.md](apps/notification-worker/README.md).
 
 ## Deployment
 

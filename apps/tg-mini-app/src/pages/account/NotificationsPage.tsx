@@ -15,12 +15,25 @@ const DEFAULT_PREFS: NotificationPrefs = {
   usdc_deposits: true,
 };
 
+type DeliveryState = 'active' | 'blocked' | 'invalid' | 'unavailable';
+
+function getDeliveryState(
+  telegramId: string | null | undefined,
+  channelStatus: string | null | undefined,
+): DeliveryState {
+  if (!telegramId) return 'unavailable';
+  if (channelStatus === 'blocked') return 'blocked';
+  if (channelStatus === 'invalid') return 'invalid';
+  return 'active';
+}
+
 export function NotificationsPage() {
   const { user } = usePrivy();
   const { t } = useTranslation();
   const walletAddress = user?.wallet?.address;
   const [prefs, setPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
   const [userId, setUserId] = useState<string | null>(null);
+  const [deliveryState, setDeliveryState] = useState<DeliveryState>('unavailable');
 
   useEffect(() => {
     void (async () => {
@@ -35,6 +48,13 @@ export function NotificationsPage() {
         .eq('user_id', record.id)
         .maybeSingle();
 
+      const { data: channel } = await supabase
+        .from('notification_channels')
+        .select('status')
+        .eq('user_id', record.id)
+        .eq('channel', 'telegram')
+        .maybeSingle();
+
       if (data) {
         setPrefs({
           liquidation_alerts: data.liquidation_alerts,
@@ -42,6 +62,8 @@ export function NotificationsPage() {
           usdc_deposits: data.usdc_deposits,
         });
       }
+
+      setDeliveryState(getDeliveryState(record.telegram_id, channel?.status));
     })();
   }, [walletAddress]);
 
@@ -56,6 +78,27 @@ export function NotificationsPage() {
     <div className="min-h-full bg-background px-4 py-5 space-y-4">
       <h1 className="text-2xl font-bold text-foreground">{t('notifications.title')}</h1>
       <p className="text-sm text-muted">{t('notifications.description')}</p>
+
+      <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
+        <p className="text-sm font-semibold text-foreground">
+          {deliveryState === 'blocked'
+            ? t('notifications.deliveryBlockedTitle')
+            : deliveryState === 'invalid'
+              ? t('notifications.deliveryInvalidTitle')
+              : deliveryState === 'active'
+                ? t('notifications.deliveryActiveTitle')
+                : t('notifications.deliveryUnavailableTitle')}
+        </p>
+        <p className="mt-1 text-sm text-muted">
+          {deliveryState === 'blocked'
+            ? t('notifications.deliveryBlockedBody')
+            : deliveryState === 'invalid'
+              ? t('notifications.deliveryInvalidBody')
+              : deliveryState === 'active'
+                ? t('notifications.deliveryActiveBody')
+                : t('notifications.deliveryUnavailableBody')}
+        </p>
+      </div>
 
       <div className="overflow-hidden rounded-2xl border border-separator bg-white shadow-sm">
         {([

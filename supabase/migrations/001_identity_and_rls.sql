@@ -15,6 +15,18 @@ alter table users
 alter table users
   add column if not exists privy_user_id text unique;
 
+create table if not exists notification_preferences (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references users(id) on delete cascade,
+  liquidation_alerts boolean default true,
+  order_fills boolean default true,
+  usdc_deposits boolean default true,
+  updated_at timestamptz default now(),
+  unique(user_id)
+);
+
+alter table notification_preferences enable row level security;
+
 -- ============================================================
 -- RLS Policies
 -- ============================================================

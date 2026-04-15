@@ -383,6 +383,14 @@
   "notifications": {
     "title": "Уведомления",
     "description": "Уведомления отправляются через Telegram-бота, привязанного к этому приложению.",
+    "deliveryActiveTitle": "Доставка в Telegram активна",
+    "deliveryActiveBody": "Оповещения будут отправляться через Telegram-бота, связанного с этим mini app.",
+    "deliveryBlockedTitle": "Доставка в Telegram заблокирована",
+    "deliveryBlockedBody": "Разблокируйте чат с ботом или заново откройте его, чтобы возобновить оповещения.",
+    "deliveryInvalidTitle": "Telegram-доставка требует внимания",
+    "deliveryInvalidBody": "Откройте Telegram-бота из привязанного аккаунта и перезапустите mini app.",
+    "deliveryUnavailableTitle": "Доставка в Telegram недоступна",
+    "deliveryUnavailableBody": "Откройте mini app из привязанного Telegram-аккаунта, чтобы получать оповещения.",
     "liquidationAlerts": "Оповещения о ликвидации",
     "orderFills": "Исполнение ордеров",
     "usdcDeposits": "Депозиты USDC"

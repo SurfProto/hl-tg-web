@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.8",
-    "tsx": "^4.20.6"
+    "tsx": "^4.20.6",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",

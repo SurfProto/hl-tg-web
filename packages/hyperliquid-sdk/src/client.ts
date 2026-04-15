@@ -49,8 +49,11 @@ async function ensureNodeWebSocketGlobal() {
   }
 
   const { WebSocket } = await import("ws");
-  (globalThis as typeof globalThis & { WebSocket: typeof WebSocket }).WebSocket =
-    WebSocket;
+  Object.defineProperty(globalThis, "WebSocket", {
+    value: WebSocket as unknown as typeof globalThis.WebSocket,
+    configurable: true,
+    writable: true,
+  });
 }
 
 // Exported so that apps can fire-and-forget pre-warm these dynamic imports

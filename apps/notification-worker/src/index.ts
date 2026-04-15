@@ -10,8 +10,11 @@ async function ensureNodeRuntimeGlobals(): Promise<void> {
   }
 
   const { WebSocket } = await import("ws");
-  (globalThis as typeof globalThis & { WebSocket: typeof WebSocket }).WebSocket =
-    WebSocket;
+  Object.defineProperty(globalThis, "WebSocket", {
+    value: WebSocket as unknown as typeof globalThis.WebSocket,
+    configurable: true,
+    writable: true,
+  });
 }
 
 function sleep(ms: number): Promise<void> {

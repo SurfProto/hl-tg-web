@@ -1,5 +1,6 @@
 import { createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { APP_TRADE_CLOID_PREFIX } from "@repo/types";
 import type {
   AccountState,
   AccountAbstractionMode,
@@ -758,7 +759,9 @@ export class HyperliquidClient {
     const hex = Array.from(bytes, (value) =>
       value.toString(16).padStart(2, "0"),
     ).join("");
-    return `0x${hex}`;
+    return `${APP_TRADE_CLOID_PREFIX}${hex.slice(
+      APP_TRADE_CLOID_PREFIX.length - 2,
+    )}` as `0x${string}`;
   }
 
   private async getReferencePrice(market: CachedMarket): Promise<number> {
@@ -2386,6 +2389,14 @@ export class HyperliquidClient {
   async usdClassTransfer(amount: string, toPerp: boolean) {
     const client = await this.getFundsClient();
     return client.usdClassTransfer({ amount, toPerp });
+  }
+
+  async usdSend(destination: string, amount: string) {
+    const client = await this.getFundsClient();
+    return client.usdSend({
+      amount,
+      destination: destination as `0x${string}`,
+    });
   }
 
   // Withdraw USDC from HL L1 to Arbitrum address (must be signed by main wallet, not agent)

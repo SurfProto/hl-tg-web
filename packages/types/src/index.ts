@@ -392,3 +392,122 @@ export interface TelegramInitData {
   auth_date: number;
   hash: string;
 }
+
+export type QuestId =
+  | "first_deposit"
+  | "first_trade"
+  | "referral_funded_friend"
+  | "second_deposit_7d";
+
+export const APP_TRADE_CLOID_PREFIX = "0x1a17";
+
+export type QuestStatus = "locked" | "in_progress" | "completed";
+
+export type RewardKind = "usdc" | "xp" | "tickets" | "raffle";
+
+export type RewardLedgerStatus = "pending" | "posted" | "failed";
+
+export interface QuestReward {
+  kind: RewardKind;
+  amount: number;
+  label: string;
+}
+
+export interface QuestProgress {
+  id: QuestId;
+  title: string;
+  description: string;
+  status: QuestStatus;
+  completedAt: string | null;
+  progressCurrent: number;
+  progressTarget: number;
+  rewards: QuestReward[];
+}
+
+export interface RewardLedgerEntry {
+  id: string;
+  userId: string;
+  seasonId: string | null;
+  weekStart: string | null;
+  questId: QuestId | null;
+  rewardKind: RewardKind;
+  amount: number;
+  asset: string | null;
+  status: RewardLedgerStatus;
+  idempotencyKey: string;
+  source: string;
+  description: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+  postedAt: string | null;
+}
+
+export interface VolumeXpGrant {
+  fillKey: string;
+  userId: string;
+  seasonId: string | null;
+  weekStart: string | null;
+  volumeUsd: number;
+  xp: number;
+  occurredAt: string;
+  rewardKind: "xp";
+}
+
+export interface LeaderboardEntry {
+  userId: string;
+  displayName: string;
+  rank: number;
+  eligibleVolume: number;
+  xp: number;
+  raffleEligible: boolean;
+}
+
+export interface WeeklyRaffleWinner {
+  userId: string;
+  displayName: string;
+  prizeUsdc: number;
+}
+
+export interface WeeklyRaffleSnapshot {
+  weekStart: string;
+  weekEnd: string;
+  cohortSize: number;
+  winnerCount: number;
+  cutoffVolume: number;
+  userRank: number | null;
+  userEligibleVolume: number;
+  userDistanceToCutoff: number;
+  userIsEligible: boolean;
+  winners: WeeklyRaffleWinner[];
+}
+
+export interface SeasonSnapshot {
+  seasonId: string | null;
+  name: string;
+  startsAt: string;
+  endsAt: string;
+  xpTotal: number;
+  questXpTotal: number;
+  volumeXpTotal: number;
+  eligibleVolume: number;
+  leaderboardRank: number | null;
+}
+
+export interface ReferralSummary {
+  referralCode: string;
+  referredCount: number;
+  fundedReferralCount: number;
+}
+
+export interface RewardsDashboard {
+  season: SeasonSnapshot;
+  quests: QuestProgress[];
+  referral: ReferralSummary;
+  leaderboard: {
+    entries: LeaderboardEntry[];
+    userRank: number | null;
+    userDistanceToCutoff: number;
+  };
+  weeklyRaffle: WeeklyRaffleSnapshot;
+  rewardHistory: RewardLedgerEntry[];
+}

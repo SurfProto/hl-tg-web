@@ -1,10 +1,22 @@
-import type { RewardsDashboard } from "@repo/types";
+import type { ReferralSummary, RewardsDashboard } from "@repo/types";
 
 interface Envelope<T> {
   code?: string;
   data: T;
   error?: string;
   success: boolean;
+}
+
+export class RewardsApiError extends Error {
+  code?: string;
+  status: number;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "RewardsApiError";
+    this.code = code;
+    this.status = status;
+  }
 }
 
 function looksLikeHtml(body: string) {
@@ -42,7 +54,11 @@ async function requestJson<T>(path: string, accessToken: string, init: RequestIn
   }
 
   if (!response.ok || !payload.success) {
-    throw new Error(payload.error ?? "Rewards request failed");
+    throw new RewardsApiError(
+      payload.error ?? "Rewards request failed",
+      response.status,
+      payload.code,
+    );
   }
 
   return payload.data;
@@ -53,6 +69,16 @@ export async function fetchRewardsDashboard(
   input: { startParam?: string | null; username?: string | null; walletAddress?: string | null },
 ) {
   return requestJson<RewardsDashboard>("/api/rewards/dashboard", accessToken, {
+    body: JSON.stringify(input),
+    method: "POST",
+  });
+}
+
+export async function applyReferralCode(
+  accessToken: string,
+  input: { referralCode: string },
+) {
+  return requestJson<ReferralSummary>("/api/rewards/referral/apply", accessToken, {
     body: JSON.stringify(input),
     method: "POST",
   });

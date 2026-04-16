@@ -1,7 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePrivy, useToken } from "@privy-io/react-auth";
-import type { QuestProgress, RewardLedgerEntry } from "@repo/types";
+import type { QuestProgress, ReferralSummary, RewardLedgerEntry, RewardsDashboard } from "@repo/types";
 import { useTranslation } from "react-i18next";
+import { ReferralCard } from "../components/ReferralCard";
+import { getTelegramStartParam } from "../lib/referrals";
 import { fetchRewardsDashboard } from "../lib/rewards";
 import { getTelegramProfile } from "../lib/supabase";
 
@@ -55,22 +57,33 @@ function getRewardValue(entry: RewardLedgerEntry) {
   return `${formatCompactNumber(entry.amount)} XP`;
 }
 
-async function copyText(value: string) {
-  await navigator.clipboard.writeText(value);
-}
-
 export function PointsPage() {
   const { t } = useTranslation();
   const { user } = usePrivy();
   const { getAccessToken } = useToken();
+  const queryClient = useQueryClient();
   const telegramProfile = getTelegramProfile();
-  const startParam = window.Telegram?.WebApp?.initDataUnsafe?.start_param ?? null;
+  const startParam = getTelegramStartParam();
   const username =
     telegramProfile?.username ??
     user?.telegram?.username ??
     user?.email?.address ??
     null;
   const walletAddress = user?.wallet?.address ?? null;
+
+  const accessTokenQuery = useQuery({
+    queryKey: ["rewardsAccessToken", user?.id],
+    queryFn: async () => {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        throw new Error("Missing access token");
+      }
+
+      return accessToken;
+    },
+    enabled: Boolean(user?.id),
+    staleTime: 30_000,
+  });
 
   const dashboardQuery = useQuery({
     queryKey: ["rewardsDashboard", walletAddress, startParam],
@@ -91,6 +104,14 @@ export function PointsPage() {
   });
 
   const dashboard = dashboardQuery.data;
+
+  const handleReferralApplied = async (referral: ReferralSummary) => {
+    queryClient.setQueryData<RewardsDashboard | undefined>(
+      ["rewardsDashboard", walletAddress, startParam],
+      (current) => (current ? { ...current, referral } : current),
+    );
+    await dashboardQuery.refetch();
+  };
 
   if (dashboardQuery.isLoading) {
     return (
@@ -244,38 +265,13 @@ export function PointsPage() {
         </div>
       </div>
 
-      <div className="rounded-3xl border border-separator bg-white p-4 shadow-sm">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-foreground">Referral challenge</p>
-            <p className="mt-1 text-sm text-muted">
-              Both sides unlock rewards after the invited trader completes a funded deposit.
-            </p>
-          </div>
-          <button
-            className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white"
-            onClick={() => void copyText(dashboard.referral.referralCode)}
-            type="button"
-          >
-            {t("common.share")}
-          </button>
-        </div>
-
-        <div className="mt-4 flex items-center justify-between rounded-2xl bg-surface px-4 py-3">
-          <div>
-            <p className="text-xs text-muted">Referral code</p>
-            <p className="mt-1 font-mono text-sm font-semibold text-foreground">
-              {dashboard.referral.referralCode}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-muted">Funded / total</p>
-            <p className="mt-1 text-sm font-semibold text-foreground">
-              {dashboard.referral.fundedReferralCount}/{dashboard.referral.referredCount}
-            </p>
-          </div>
-        </div>
-      </div>
+      {user?.id && accessTokenQuery.data ? (
+        <ReferralCard
+          accessToken={accessTokenQuery.data}
+          onApplied={handleReferralApplied}
+          referral={dashboard.referral}
+        />
+      ) : null}
 
       <div className="rounded-3xl border border-separator bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between gap-3">

@@ -139,6 +139,48 @@ describe("syncRewardsDashboard", () => {
     });
     expect(payout.sendRewardUsdc).not.toHaveBeenCalled();
   });
+
+  it("returns referral linkage state in the dashboard summary", async () => {
+    supabaseAdmin.getOrCreateRewardsUser.mockResolvedValue({
+      id: "user-1",
+      username: "user",
+      wallet_address: null,
+      referral_code: "CODE123",
+      referred_by: "referrer-1",
+    });
+    const { syncRewardsDashboard } = await import("./program");
+
+    const dashboard = await syncRewardsDashboard(
+      {
+        privyUserId: "privy-1",
+        referralStartParam: null,
+        username: "user",
+        walletAddress: null,
+      },
+      {
+        firstTradeThresholdUsd: 50,
+        fundedDepositThresholdUsd: 50,
+        hyperliquidTestnet: false,
+        privyAppId: null,
+        rafflePrizeAmounts: [100],
+        rewardsAdminKey: "admin-secret",
+        supabaseServiceRoleKey: "service-role",
+        supabaseUrl: "https://example.supabase.co",
+        treasuryPrivateKey: null,
+        weeklyRewardPoolUsd: 100,
+        weeklyTopTraderCohortSize: 10,
+        weeklyWinnerCount: 1,
+        xpPerUsd: 1,
+      },
+    );
+
+    expect(dashboard.referral).toMatchObject({
+      referralCode: "CODE123",
+      hasReferrer: true,
+      fundedReferralCount: 0,
+      referredCount: 0,
+    });
+  });
 });
 
 describe("runWeeklyRaffle", () => {

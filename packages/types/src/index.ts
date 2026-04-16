@@ -497,6 +497,7 @@ export interface ReferralSummary {
   referralCode: string;
   referredCount: number;
   fundedReferralCount: number;
+  hasReferrer: boolean;
 }
 
 export interface RewardsDashboard {

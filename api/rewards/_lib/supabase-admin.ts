@@ -215,6 +215,15 @@ export async function getUserById(config: RewardsConfig, userId: string) {
   return rows[0] ?? null;
 }
 
+export async function getUserByReferralCode(config: RewardsConfig, referralCode: string) {
+  const rows = await supabaseRequest<RewardsUserRow[]>(
+    config,
+    `users?referral_code=eq.${encodeURIComponent(referralCode)}&select=*`,
+    { headers: buildHeaders(config) },
+  );
+  return rows[0] ?? null;
+}
+
 export async function getUsersByIds(config: RewardsConfig, userIds: string[]) {
   if (userIds.length === 0) {
     return [];
@@ -310,6 +319,23 @@ export async function applyReferralCodeIfEligible(
     `users?id=eq.${input.user.id}&select=*`,
     {
       body: JSON.stringify({ referred_by: referrer.id }),
+      headers: buildHeaders(config, { Prefer: "return=representation" }),
+      method: "PATCH",
+    },
+  );
+  return rows[0];
+}
+
+export async function setUserReferrer(
+  config: RewardsConfig,
+  userId: string,
+  referrerId: string,
+) {
+  const rows = await supabaseRequest<RewardsUserRow[]>(
+    config,
+    `users?id=eq.${userId}&select=*`,
+    {
+      body: JSON.stringify({ referred_by: referrerId }),
       headers: buildHeaders(config, { Prefer: "return=representation" }),
       method: "PATCH",
     },

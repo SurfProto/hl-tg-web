@@ -74,6 +74,7 @@ pnpm --filter @repo/tg-mini-app build
 See [.env.example](.env.example) for required variables:
 
 - `VITE_PRIVY_APP_ID`: Privy application ID
+- `VITE_TELEGRAM_BOT_USERNAME`: Telegram bot username used for referral deep links
 - `VITE_HYPERLIQUID_TESTNET`: Use testnet (true/false)
 - `VITE_BUILDER_ADDRESS`: Your builder address for fee collection
 - `VITE_BUILDER_FEE`: Builder fee in tenths of basis points (50 = 5bp)

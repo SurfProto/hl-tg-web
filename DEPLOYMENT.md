@@ -28,6 +28,7 @@ cp .env.example .env
 ```env
 # Privy
 VITE_PRIVY_APP_ID=your_privy_app_id
+VITE_TELEGRAM_BOT_USERNAME=your_bot_username
 
 # Hyperliquid
 VITE_HYPERLIQUID_TESTNET=false

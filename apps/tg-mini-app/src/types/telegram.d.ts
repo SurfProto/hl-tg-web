@@ -8,6 +8,7 @@ interface TelegramWebApp {
   expand(): void;
   close(): void;
   openLink(url: string): void;
+  openTelegramLink?(url: string): void;
   MainButton: {
     text: string;
     show(): void;

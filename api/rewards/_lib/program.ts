@@ -1,10 +1,12 @@
 import type {
   QuestId,
+  ReferralSummary,
   RewardsDashboard,
   RewardKind,
   RewardLedgerEntry,
   WeeklyRaffleSnapshot,
 } from "../../../packages/types/src";
+import { HttpError } from "../../onramp/_lib/http";
 import {
   buildQuestSnapshot,
   buildTopTraderLeaderboard,
@@ -24,10 +26,12 @@ import {
   getSeasonLeaderboardRows,
   getSuccessfulOnrampDeposits,
   getUserById,
+  getUserByReferralCode,
   getUserPointsForSeason,
   getUsersByIds,
   getWeeklyVolumeRows,
   patchWeeklyReward,
+  setUserReferrer,
   upsertRewardLedgerEntries,
   upsertUserPoints,
   upsertWeeklyReward,
@@ -85,6 +89,18 @@ function normalizeReferralStartParam(startParam: string | null | undefined) {
   }
 
   return normalized.replace(/^ref[:_-]?/iu, "").toUpperCase();
+}
+
+function buildReferralSummary(
+  user: RewardsUserRow,
+  referralStats: { fundedReferralCount: number; referredCount: number },
+): ReferralSummary {
+  return {
+    referralCode: user.referral_code ?? "",
+    referredCount: referralStats.referredCount,
+    fundedReferralCount: referralStats.fundedReferralCount,
+    hasReferrer: Boolean(user.referred_by),
+  };
 }
 
 async function getFillSummaries(config: RewardsConfig, walletAddress: string, seasonStart: string) {
@@ -550,9 +566,7 @@ export async function syncRewardsDashboard(
     },
     quests: questSnapshot.quests,
     referral: {
-      fundedReferralCount: referralStats.fundedReferralCount,
-      referralCode: user.referral_code ?? "",
-      referredCount: referralStats.referredCount,
+      ...buildReferralSummary(user, referralStats),
     },
     rewardHistory,
     season: {
@@ -568,6 +582,52 @@ export async function syncRewardsDashboard(
     },
     weeklyRaffle: weeklySnapshot,
   };
+}
+
+export async function applyReferralCode(
+  privyUserId: string,
+  referralCodeInput: string,
+  config = getRewardsConfig(),
+): Promise<ReferralSummary> {
+  const referralCode = normalizeReferralStartParam(referralCodeInput);
+  if (!referralCode) {
+    throw new HttpError(400, "INVALID_REFERRAL_CODE", "Referral code is required");
+  }
+
+  let user = await getOrCreateRewardsUser(config, {
+    privyUserId,
+    username: null,
+    walletAddress: null,
+  });
+  user = await ensureReferralCode(config, user);
+
+  if (user.referred_by) {
+    throw new HttpError(409, "REFERRAL_ALREADY_SET", "Referral code already applied");
+  }
+
+  if (user.referral_code === referralCode) {
+    throw new HttpError(409, "SELF_REFERRAL_NOT_ALLOWED", "You cannot apply your own referral code");
+  }
+
+  const referrer = await getUserByReferralCode(config, referralCode);
+  if (!referrer) {
+    throw new HttpError(404, "REFERRAL_CODE_NOT_FOUND", "Referral code not found");
+  }
+
+  if (referrer.id === user.id) {
+    throw new HttpError(409, "SELF_REFERRAL_NOT_ALLOWED", "You cannot apply your own referral code");
+  }
+
+  user = await setUserReferrer(config, user.id, referrer.id);
+  const season = await getOrCreateActiveSeason(config);
+  const referralStats = await getFundedReferralStats(
+    config,
+    user.id,
+    season.starts_at,
+    config.fundedDepositThresholdUsd,
+  );
+
+  return buildReferralSummary(user, referralStats);
 }
 
 export async function runWeeklyRaffle(

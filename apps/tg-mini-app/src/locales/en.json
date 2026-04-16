@@ -200,7 +200,32 @@
     "yourVolume": "Your volume: $0.00",
     "claimComingSoon": "Claim coming soon",
     "awardsComingSoon": "Awards coming soon",
-    "awardsDescription": "Badges, streaks, and referral unlocks will appear here in a later phase."
+    "awardsDescription": "Badges, streaks, and referral unlocks will appear here in a later phase.",
+    "invite": "Invite",
+    "enterReferralCode": "Enter referral code",
+    "applyReferralCode": "Apply code",
+    "referral": {
+      "title": "Referral challenge",
+      "description": "Invite traders through Telegram. If someone missed the invite link, they can still enter your code here as a fallback.",
+      "fundedTotal": "Funded / total",
+      "copyInviteLink": "Copy invite link",
+      "copyCode": "Copy code",
+      "manualHint": "Best results come from the Telegram invite link. Manual code entry is only a backup path.",
+      "manualPlaceholder": "Paste referral code",
+      "linkedState": "A referral code has already been linked to this account.",
+      "toasts": {
+        "inviteOpened": "Invite opened in Telegram",
+        "inviteCopied": "Invite link copied",
+        "codeCopied": "Referral code copied",
+        "codeApplied": "Referral code applied"
+      },
+      "errors": {
+        "invalid": "Enter a valid referral code",
+        "notFound": "Referral code not found",
+        "alreadySet": "A referral code is already linked to this account",
+        "self": "You cannot apply your own referral code"
+      }
+    }
   },
   "account": {
     "sectionLabel": "Account",

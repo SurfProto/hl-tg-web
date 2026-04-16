@@ -127,8 +127,7 @@ async function loadPayoutModule() {
 }
 
 async function canSendRewards(config: RewardsConfig) {
-  const { hasRewardsTreasury } = await loadPayoutModule();
-  return hasRewardsTreasury(config);
+  return Boolean(config.treasuryPrivateKey);
 }
 
 async function sendPendingRewardUsdc(

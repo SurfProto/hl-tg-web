@@ -28,4 +28,11 @@ describe("server runtime import boundaries", () => {
     expect(programSource).toContain('return import("./payout.js");');
     expect(programSource).not.toContain('return import("./payout");');
   });
+
+  it("checks treasury configuration without importing payout code", () => {
+    const programSource = readSource("program.ts");
+
+    expect(programSource).toContain("return Boolean(config.treasuryPrivateKey);");
+    expect(programSource).not.toContain("const { hasRewardsTreasury } = await loadPayoutModule();");
+  });
 });

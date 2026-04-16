@@ -4,8 +4,9 @@ import type {
   QuestStatus,
   VolumeXpGrant,
 } from "../../../packages/types/src";
-import { APP_TRADE_CLOID_PREFIX } from "../../../packages/types/src";
-export { APP_TRADE_CLOID_PREFIX } from "../../../packages/types/src";
+
+// Keep the server runtime independent from the ESM-only shared types package.
+export const APP_TRADE_CLOID_PREFIX = "0x1a17";
 export const DEFAULT_FUNDED_DEPOSIT_THRESHOLD_USD = 50;
 export const DEFAULT_FIRST_TRADE_THRESHOLD_USD = 10;
 export const DEFAULT_XP_PER_USD = 1;

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   APP_TRADE_CLOID_PREFIX,
   buildQuestSnapshot,
@@ -127,5 +129,19 @@ describe("buildTopTraderLeaderboard", () => {
     expect(leaderboard.userRank).toBe(2);
     expect(leaderboard.cutoffVolume).toBe(200);
     expect(leaderboard.userDistanceToCutoff).toBe(0);
+  });
+});
+
+describe("engine module packaging", () => {
+  it("does not use a runtime value import from packages/types", () => {
+    const sourcePath = resolve(import.meta.dirname, "engine.ts");
+    const source = readFileSync(sourcePath, "utf8");
+
+    expect(source).not.toContain(
+      'import { APP_TRADE_CLOID_PREFIX } from "../../../packages/types/src";',
+    );
+    expect(source).not.toContain(
+      'export { APP_TRADE_CLOID_PREFIX } from "../../../packages/types/src";',
+    );
   });
 });

@@ -1,7 +1,7 @@
 import { createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { HyperliquidClient } from "../../../packages/hyperliquid-sdk/src/client";
 import type { RewardsConfig } from "./config";
+import { createRewardsHyperliquidClient } from "./hyperliquid-client";
 
 function formatUsdcAmount(amount: number) {
   return amount.toFixed(6).replace(/\.?0+$/, "");
@@ -28,7 +28,7 @@ export async function sendRewardUsdc(
         : "https://api.hyperliquid.xyz",
     ),
   });
-  const client = new HyperliquidClient({
+  const client = await createRewardsHyperliquidClient({
     customSigner: wallet,
     testnet: config.hyperliquidTestnet,
     walletAddress: account.address,

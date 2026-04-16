@@ -1,4 +1,3 @@
-import { HyperliquidClient } from "../../../packages/hyperliquid-sdk/src/client";
 import type {
   QuestId,
   RewardsDashboard,
@@ -12,6 +11,7 @@ import {
   buildVolumeXpGrants,
   isAppAttributedFill,
 } from "./engine";
+import { createRewardsHyperliquidClient } from "./hyperliquid-client";
 import { getRewardsConfig, type RewardsConfig } from "./config";
 import { hasRewardsTreasury, sendRewardUsdc } from "./payout";
 import {
@@ -80,7 +80,7 @@ function normalizeReferralStartParam(startParam: string | null | undefined) {
 }
 
 async function getFillSummaries(config: RewardsConfig, walletAddress: string, seasonStart: string) {
-  const client = new HyperliquidClient({
+  const client = await createRewardsHyperliquidClient({
     testnet: config.hyperliquidTestnet,
     walletAddress,
   });

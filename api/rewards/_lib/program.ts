@@ -123,7 +123,7 @@ async function getFillSummaries(config: RewardsConfig, walletAddress: string, se
 }
 
 async function loadPayoutModule() {
-  return import("./payout");
+  return import("./payout.js");
 }
 
 async function canSendRewards(config: RewardsConfig) {

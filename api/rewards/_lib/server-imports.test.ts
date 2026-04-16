@@ -21,4 +21,11 @@ describe("server runtime import boundaries", () => {
       'import { HyperliquidClient } from "../../../packages/hyperliquid-sdk/src/client";',
     );
   });
+
+  it("uses an emitted file extension for the lazy payout import", () => {
+    const programSource = readSource("program.ts");
+
+    expect(programSource).toContain('return import("./payout.js");');
+    expect(programSource).not.toContain('return import("./payout");');
+  });
 });

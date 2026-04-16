@@ -1,0 +1,19 @@
+[Unit]
+Description=Hyperliquid Telegram notification worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/hl-tg-web
+EnvironmentFile=/etc/hl-notification-worker.env
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/env pnpm --dir /opt/hl-tg-web --filter @repo/notification-worker start
+Restart=always
+RestartSec=5
+User=hl-notification-worker
+Group=hl-notification-worker
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

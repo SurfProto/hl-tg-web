@@ -386,6 +386,14 @@
   "notifications": {
     "title": "Notifications",
     "description": "Notifications are sent through the Telegram bot linked to this app.",
+    "deliveryActiveTitle": "Telegram delivery is active",
+    "deliveryActiveBody": "Alerts will be sent through the Telegram bot linked to this mini app.",
+    "deliveryBlockedTitle": "Telegram delivery is blocked",
+    "deliveryBlockedBody": "Unblock or restart the Telegram bot chat to resume alerts.",
+    "deliveryInvalidTitle": "Telegram delivery needs attention",
+    "deliveryInvalidBody": "Open the Telegram bot from the linked account, then relaunch the mini app.",
+    "deliveryUnavailableTitle": "Telegram delivery is unavailable",
+    "deliveryUnavailableBody": "Open this mini app from your linked Telegram account to receive alerts.",
     "liquidationAlerts": "Liquidation alerts",
     "orderFills": "Order fills",
     "usdcDeposits": "USDC deposits"

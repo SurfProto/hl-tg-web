@@ -1,4 +1,4 @@
-import { HyperliquidClient } from "@repo/hyperliquid-sdk";
+import { HyperliquidClient } from "../../../packages/hyperliquid-sdk/src/client";
 import type {
   QuestId,
   RewardsDashboard,

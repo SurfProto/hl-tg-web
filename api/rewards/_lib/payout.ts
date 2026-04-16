@@ -1,6 +1,6 @@
 import { createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { HyperliquidClient } from "@repo/hyperliquid-sdk";
+import { HyperliquidClient } from "../../../packages/hyperliquid-sdk/src/client";
 import type { RewardsConfig } from "./config";
 
 function formatUsdcAmount(amount: number) {

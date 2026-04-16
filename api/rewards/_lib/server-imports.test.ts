@@ -14,6 +14,9 @@ describe("server runtime import boundaries", () => {
     expect(programSource).not.toContain(
       'import { HyperliquidClient } from "../../../packages/hyperliquid-sdk/src/client";',
     );
+    expect(programSource).not.toContain(
+      'import { hasRewardsTreasury, sendRewardUsdc } from "./payout";',
+    );
     expect(payoutSource).not.toContain(
       'import { HyperliquidClient } from "../../../packages/hyperliquid-sdk/src/client";',
     );

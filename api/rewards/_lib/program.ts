@@ -11,9 +11,7 @@ import {
   buildVolumeXpGrants,
   isAppAttributedFill,
 } from "./engine";
-import { createRewardsHyperliquidClient } from "./hyperliquid-client";
 import { getRewardsConfig, type RewardsConfig } from "./config";
-import { hasRewardsTreasury, sendRewardUsdc } from "./payout";
 import {
   applyReferralCodeIfEligible,
   ensureReferralCode,
@@ -52,6 +50,16 @@ type FillSummary = {
   size: number;
 };
 
+type RawUserFill = {
+  cloid?: string | null;
+  hash: string;
+  oid: number;
+  px: number | string;
+  sz: number | string;
+  tid: number;
+  time: number;
+};
+
 function getWeekStartIso(value: Date) {
   const weekStart = new Date(value);
   const dayOffset = (weekStart.getUTCDay() + 6) % 7;
@@ -80,11 +88,27 @@ function normalizeReferralStartParam(startParam: string | null | undefined) {
 }
 
 async function getFillSummaries(config: RewardsConfig, walletAddress: string, seasonStart: string) {
-  const client = await createRewardsHyperliquidClient({
-    testnet: config.hyperliquidTestnet,
-    walletAddress,
-  });
-  const fills = await client.getFills().catch(() => []);
+  const response = await fetch(
+    config.hyperliquidTestnet
+      ? "https://api.hyperliquid-testnet.xyz/info"
+      : "https://api.hyperliquid.xyz/info",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        type: "userFills",
+        user: walletAddress,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Hyperliquid fills request failed with status ${response.status}`);
+  }
+
+  const fills = (await response.json()) as RawUserFill[];
   return fills
     .filter((fill) => new Date(fill.time).toISOString() >= seasonStart)
     .map(
@@ -92,10 +116,27 @@ async function getFillSummaries(config: RewardsConfig, walletAddress: string, se
         cloid: fill.cloid ?? null,
         fillKey: `${fill.tid}:${fill.hash}:${fill.oid}`,
         occurredAt: new Date(fill.time).toISOString(),
-        price: fill.px,
-        size: fill.sz,
+        price: Number(fill.px),
+        size: Number(fill.sz),
       }),
     );
+}
+
+async function loadPayoutModule() {
+  return import("./payout");
+}
+
+async function canSendRewards(config: RewardsConfig) {
+  const { hasRewardsTreasury } = await loadPayoutModule();
+  return hasRewardsTreasury(config);
+}
+
+async function sendPendingRewardUsdc(
+  config: RewardsConfig,
+  input: { amount: number; destination: string },
+) {
+  const { sendRewardUsdc } = await loadPayoutModule();
+  return sendRewardUsdc(config, input);
 }
 
 function sumAmounts(entries: RewardLedgerEntry[], predicate: (entry: RewardLedgerEntry) => boolean) {
@@ -209,7 +250,7 @@ async function settlePendingUsdcEntries(
     return entries;
   }
 
-  if (!hasRewardsTreasury(config)) {
+  if (!(await canSendRewards(config))) {
     return entries;
   }
 
@@ -221,7 +262,7 @@ async function settlePendingUsdcEntries(
     }
 
     try {
-      const transfer = await sendRewardUsdc(config, {
+      const transfer = await sendPendingRewardUsdc(config, {
         amount: Number(entry.amount),
         destination: user.wallet_address,
       });
@@ -609,7 +650,7 @@ export async function runWeeklyRaffle(
     });
   }
 
-  if (hasRewardsTreasury(config)) {
+  if (await canSendRewards(config)) {
     for (const entry of upserted) {
       const winner = usersById.get(entry.userId);
       if (!winner?.wallet_address) {
@@ -617,7 +658,7 @@ export async function runWeeklyRaffle(
       }
 
       try {
-        const transfer = await sendRewardUsdc(config, {
+        const transfer = await sendPendingRewardUsdc(config, {
           amount: Number(entry.amount),
           destination: winner.wallet_address,
         });

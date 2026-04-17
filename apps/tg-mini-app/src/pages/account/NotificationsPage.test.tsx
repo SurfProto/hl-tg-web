@@ -2,12 +2,13 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { NotificationsPage } from "./NotificationsPage";
 
-const mockUsePrivy = vi.fn();
-const mockGetCurrentUserRecord = vi.fn();
-const mockFrom = vi.fn();
+const mockGetAccessToken = vi.fn();
+const mockFetchProfile = vi.fn();
 
 vi.mock("@privy-io/react-auth", () => ({
-  usePrivy: () => mockUsePrivy(),
+  useToken: () => ({
+    getAccessToken: mockGetAccessToken,
+  }),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -16,56 +17,30 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("../../lib/supabase", () => ({
-  getCurrentUserRecord: (...args: unknown[]) => mockGetCurrentUserRecord(...args),
-  supabase: {
-    from: (...args: unknown[]) => mockFrom(...args),
-  },
+vi.mock("../../lib/profile", () => ({
+  fetchProfile: (...args: unknown[]) => mockFetchProfile(...args),
+  updateNotificationPreferences: vi.fn(),
 }));
-
-function createQueryResult(data: unknown) {
-  return {
-    eq: () => ({
-      eq: () => ({
-        maybeSingle: vi.fn().mockResolvedValue({ data }),
-      }),
-      maybeSingle: vi.fn().mockResolvedValue({ data }),
-    }),
-  };
-}
 
 describe("NotificationsPage", () => {
   beforeEach(() => {
-    mockUsePrivy.mockReturnValue({
-      user: { wallet: { address: "0xabc" } },
-    });
-    mockGetCurrentUserRecord.mockResolvedValue({
-      id: "user-1",
-      telegram_id: "123",
-    });
-    mockFrom.mockImplementation((table: string) => {
-      if (table === "notification_preferences") {
-        return {
-          select: () =>
-            createQueryResult({
-              liquidation_alerts: true,
-              order_fills: true,
-              usdc_deposits: true,
-            }),
-          upsert: vi.fn().mockResolvedValue({}),
-        };
-      }
-
-      if (table === "notification_channels") {
-        return {
-          select: () =>
-            createQueryResult({
-              status: "blocked",
-            }),
-        };
-      }
-
-      throw new Error(`Unexpected table ${table}`);
+    mockGetAccessToken.mockResolvedValue("access-token");
+    mockFetchProfile.mockResolvedValue({
+      profile: {
+        id: "user-1",
+        telegramId: "123",
+        walletAddress: "0xabc",
+        privyUserId: "did:privy:user:123",
+        username: "alice",
+        email: "alice@example.com",
+        language: "en",
+      },
+      notificationPreferences: {
+        liquidationAlerts: true,
+        orderFills: true,
+        usdcDeposits: true,
+      },
+      telegramDeliveryStatus: "blocked",
     });
   });
 

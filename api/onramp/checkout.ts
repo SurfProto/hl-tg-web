@@ -15,7 +15,7 @@ export default async function handler(request: any, response: any) {
     ensureMethod(request, "POST");
 
     const config = getOnrampConfig();
-    const session = requirePrivySession(request, config.privyAppId);
+    const session = await requirePrivySession(request, config.privyAppId);
     const user = await getUserByPrivyUserId(config, session.privyUserId);
     if (!user?.email) {
       throw new HttpError(400, "EMAIL_REQUIRED", "A linked email is required before starting onramp");

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { usePrivy } from '@privy-io/react-auth';
+import { useToken } from '@privy-io/react-auth';
 import { useTranslation } from 'react-i18next';
-import { getCurrentUserRecord, supabase } from '../../lib/supabase';
+import { fetchProfile, updateNotificationPreferences } from '../../lib/profile';
 
 type NotificationPrefs = {
   liquidation_alerts: boolean;
@@ -28,50 +28,44 @@ function getDeliveryState(
 }
 
 export function NotificationsPage() {
-  const { user } = usePrivy();
+  const { getAccessToken } = useToken();
   const { t } = useTranslation();
-  const walletAddress = user?.wallet?.address;
   const [prefs, setPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
-  const [userId, setUserId] = useState<string | null>(null);
   const [deliveryState, setDeliveryState] = useState<DeliveryState>('unavailable');
 
   useEffect(() => {
     void (async () => {
-      const record = await getCurrentUserRecord(walletAddress);
-      if (!record) return;
-      setUserId(record.id);
+      const accessToken = await getAccessToken();
+      if (!accessToken) return;
 
-      if (!supabase) return;
-      const { data } = await supabase
-        .from('notification_preferences')
-        .select('liquidation_alerts, order_fills, usdc_deposits')
-        .eq('user_id', record.id)
-        .maybeSingle();
-
-      const { data: channel } = await supabase
-        .from('notification_channels')
-        .select('status')
-        .eq('user_id', record.id)
-        .eq('channel', 'telegram')
-        .maybeSingle();
-
-      if (data) {
+      try {
+        const { profile, notificationPreferences, telegramDeliveryStatus } =
+          await fetchProfile(accessToken);
         setPrefs({
-          liquidation_alerts: data.liquidation_alerts,
-          order_fills: data.order_fills,
-          usdc_deposits: data.usdc_deposits,
+          liquidation_alerts: notificationPreferences.liquidationAlerts,
+          order_fills: notificationPreferences.orderFills,
+          usdc_deposits: notificationPreferences.usdcDeposits,
         });
+        setDeliveryState(
+          getDeliveryState(profile.telegramId, telegramDeliveryStatus),
+        );
+      } catch {
+        setPrefs(DEFAULT_PREFS);
+        setDeliveryState('unavailable');
       }
-
-      setDeliveryState(getDeliveryState(record.telegram_id, channel?.status));
     })();
-  }, [walletAddress]);
+  }, [getAccessToken]);
 
   const updatePref = async (key: keyof NotificationPrefs) => {
     const next = { ...prefs, [key]: !prefs[key] };
     setPrefs(next);
-    if (!supabase || !userId) return;
-    await supabase.from('notification_preferences').upsert({ user_id: userId, ...next }, { onConflict: 'user_id' });
+    const accessToken = await getAccessToken();
+    if (!accessToken) return;
+    await updateNotificationPreferences(accessToken, {
+      liquidationAlerts: next.liquidation_alerts,
+      orderFills: next.order_fills,
+      usdcDeposits: next.usdc_deposits,
+    });
   };
 
   return (

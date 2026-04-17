@@ -1,13 +1,18 @@
 import React, { Suspense, lazy, useEffect, useState } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { PrivyProvider, usePrivy, type User } from "@privy-io/react-auth";
+import {
+  PrivyProvider,
+  usePrivy,
+  useToken,
+  type User,
+} from "@privy-io/react-auth";
 import { useTranslation } from "react-i18next";
 import { arbitrum } from "viem/chains";
 import { useMarketData, useSetupTrading } from "@repo/hyperliquid-sdk";
 import { Layout } from "./components/Layout";
 import { HomePage } from "./pages/HomePage";
-import { ensureUser, getTelegramProfile } from "./lib/supabase";
+import { bootstrapProfile, getTelegramProfile } from "./lib/profile";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ToastProvider } from "./components/Toast";
 import { PortfolioRangeProvider } from "./hooks/usePortfolioRange";
@@ -221,6 +226,7 @@ export function TelegramAuthGate({
   children: React.ReactNode;
 }) {
   const privy = usePrivy() as unknown as PrivyWithTelegram;
+  const { getAccessToken } = useToken();
   const { t } = useTranslation();
   const { ready, authenticated, user, loginWithTelegram } = privy;
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -244,19 +250,33 @@ export function TelegramAuthGate({
     if (!ready || !authenticated) return;
 
     const telegramProfile = getTelegramProfile();
-    void ensureUser({
-      telegramId:
-        telegramProfile?.id != null ? String(telegramProfile.id) : undefined,
-      privyUserId: user?.id,
-      username:
-        telegramProfile?.username ??
-        user?.telegram?.username ??
-        user?.email?.address ??
-        undefined,
-      walletAddress: user?.wallet?.address,
-      email: user?.email?.address,
-    });
-  }, [authenticated, ready, user]);
+    void (async () => {
+      try {
+        const accessToken = await getAccessToken();
+        if (!accessToken) {
+          return;
+        }
+
+        await bootstrapProfile(accessToken, {
+          telegramId:
+            telegramProfile?.id != null ? String(telegramProfile.id) : undefined,
+          privyUserId: user?.id,
+          username:
+            telegramProfile?.username ??
+            user?.telegram?.username ??
+            user?.email?.address ??
+            undefined,
+          walletAddress: user?.wallet?.address,
+          email: user?.email?.address,
+        });
+      } catch (error) {
+        log.warn("[auth] Profile bootstrap failed", {
+          error,
+          privyUserId: user?.id,
+        });
+      }
+    })();
+  }, [authenticated, getAccessToken, ready, user]);
 
   if (!ready) {
     return (

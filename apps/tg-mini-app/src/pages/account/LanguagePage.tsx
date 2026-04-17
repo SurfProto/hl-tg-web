@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { usePrivy } from '@privy-io/react-auth';
+import { useToken } from '@privy-io/react-auth';
 import { useTranslation } from 'react-i18next';
 import i18n, { LANGUAGE_KEY, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../lib/i18n';
-import { getCurrentUserRecord, supabase } from '../../lib/supabase';
+import { updateProfile } from '../../lib/profile';
 
 const LANGUAGES: { key: SupportedLanguage; labelKey: string }[] = [
   { key: 'en', labelKey: 'language.english' },
@@ -10,7 +10,7 @@ const LANGUAGES: { key: SupportedLanguage; labelKey: string }[] = [
 ];
 
 export function LanguagePage() {
-  const { user } = usePrivy();
+  const { getAccessToken } = useToken();
   const { t } = useTranslation();
   const [language, setLanguage] = useState<SupportedLanguage>(
     () => {
@@ -26,11 +26,11 @@ export function LanguagePage() {
     void i18n.changeLanguage(language);
 
     void (async () => {
-      const record = await getCurrentUserRecord(user?.wallet?.address);
-      if (!record || !supabase) return;
-      await supabase.from('users').update({ language }).eq('id', record.id);
+      const accessToken = await getAccessToken();
+      if (!accessToken) return;
+      await updateProfile(accessToken, { language });
     })();
-  }, [language, user?.wallet?.address]);
+  }, [getAccessToken, language]);
 
   return (
     <div className="min-h-full bg-background px-4 py-5 space-y-4">

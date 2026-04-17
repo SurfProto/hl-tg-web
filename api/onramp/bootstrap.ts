@@ -14,7 +14,7 @@ export default async function handler(request: any, response: any) {
     ensureMethod(request, "POST");
 
     const config = getOnrampConfig();
-    const session = requirePrivySession(request, config.privyAppId);
+    const session = await requirePrivySession(request, config.privyAppId);
     const body = parseJsonBody<BootstrapBody>(request);
     const email = body.email?.trim().toLowerCase() ?? null;
     const walletAddress = body.walletAddress?.trim() ?? null;

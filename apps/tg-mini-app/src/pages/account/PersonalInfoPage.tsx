@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
-import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { usePrivy, useToken, useWallets } from '@privy-io/react-auth';
 import { useTranslation } from 'react-i18next';
 import { useHaptics } from '../../hooks/useHaptics';
-import { getCurrentUserRecord, supabase } from '../../lib/supabase';
+import { fetchProfile, updateProfile } from '../../lib/profile';
 
 export function PersonalInfoPage() {
   const haptics = useHaptics();
   const { t } = useTranslation();
   const privy = usePrivy() as any;
+  const { getAccessToken } = useToken();
   const { user } = privy;
   const { wallets } = useWallets();
   const walletAddress = user?.wallet?.address ?? wallets[0]?.address;
@@ -16,17 +17,33 @@ export function PersonalInfoPage() {
 
   useEffect(() => {
     void (async () => {
-      const record = await getCurrentUserRecord(walletAddress);
-      setUsername(record?.username ?? user?.telegram?.username ?? '');
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        setUsername(user?.telegram?.username ?? '');
+        return;
+      }
+
+      try {
+        const { profile } = await fetchProfile(accessToken);
+        setUsername(profile.username ?? user?.telegram?.username ?? '');
+      } catch {
+        setUsername(user?.telegram?.username ?? '');
+      }
     })();
-  }, [user?.telegram?.username, walletAddress]);
+  }, [getAccessToken, user?.telegram?.username, walletAddress]);
 
   const saveUsername = async () => {
-    if (!supabase || !walletAddress) return;
+    const accessToken = await getAccessToken();
+    if (!accessToken) return;
     setSaving(true);
-    const { error } = await supabase.from('users').update({ username }).eq('wallet_address', walletAddress);
-    setSaving(false);
-    if (!error) haptics.success();
+    let saved = false;
+    try {
+      await updateProfile(accessToken, { username });
+      saved = true;
+    } finally {
+      setSaving(false);
+    }
+    if (saved) haptics.success();
   };
 
   return (
@@ -66,7 +83,7 @@ export function PersonalInfoPage() {
               placeholder={t('personalInfo.usernamePlaceholder')}
               className="flex-1 rounded-2xl border border-separator bg-surface px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
             />
-            <button type="button" onClick={saveUsername} disabled={saving || !walletAddress} className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
+            <button type="button" onClick={saveUsername} disabled={saving} className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
               {saving ? t('common.saving') : t('common.save')}
             </button>
           </div>

@@ -10,7 +10,7 @@ export default async function handler(request: any, response: any) {
     ensureMethod(request, "GET");
 
     const config = getOnrampConfig();
-    const session = requirePrivySession(request, config.privyAppId);
+    const session = await requirePrivySession(request, config.privyAppId);
     const user = await getUserByPrivyUserId(config, session.privyUserId);
     if (!user?.email || !user.wallet_address) {
       throw new HttpError(400, "ONRAMP_NOT_READY", "Onramp identity is not initialized");

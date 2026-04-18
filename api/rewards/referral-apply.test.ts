@@ -43,7 +43,7 @@ describe("/api/rewards/referral/apply", () => {
     vi.resetModules();
     vi.clearAllMocks();
     getRewardsConfig.mockReturnValue({ privyAppId: "privy-app-id" });
-    requirePrivySession.mockReturnValue({ privyUserId: "privy-user-1" });
+    requirePrivySession.mockResolvedValue({ privyUserId: "privy-user-1" });
   });
 
   it("applies a valid referral code for an authenticated user", async () => {

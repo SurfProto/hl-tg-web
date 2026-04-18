@@ -12,7 +12,7 @@ export default async function handler(request: any, response: any) {
     ensureMethod(request, "POST");
 
     const config = getRewardsConfig();
-    const session = requirePrivySession(request, config.privyAppId);
+    const session = await requirePrivySession(request, config.privyAppId);
     const body = parseJsonBody<ApplyReferralBody>(request);
     const referral = await applyReferralCode(
       session.privyUserId,

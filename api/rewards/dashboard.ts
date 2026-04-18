@@ -14,7 +14,7 @@ export default async function handler(request: any, response: any) {
     ensureMethod(request, "POST");
 
     const config = getRewardsConfig();
-    const session = requirePrivySession(request, config.privyAppId);
+    const session = await requirePrivySession(request, config.privyAppId);
     const body = parseJsonBody<DashboardBody>(request);
     const dashboard = await syncRewardsDashboard(
       {

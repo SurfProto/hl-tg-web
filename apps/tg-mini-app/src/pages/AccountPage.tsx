@@ -1,15 +1,10 @@
-import { type ReactNode, useMemo } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { usePortfolioPeriod, useUserState } from "@repo/hyperliquid-sdk";
-import type { PortfolioRange } from "@repo/types";
 import { useTranslation } from "react-i18next";
 import { useHaptics } from "../hooks/useHaptics";
 import { usePortfolioRange } from "../hooks/usePortfolioRange";
-import {
-  getPortfolioMaxDrawdownPct,
-  getPortfolioRangePnl,
-} from "../lib/portfolio";
 import { StableBalanceList } from "../components/StableBalanceList";
 import { UnifiedAccountBanner } from "../components/UnifiedAccountBanner";
 
@@ -24,36 +19,10 @@ function formatAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
-function formatSignedUsd(value: number) {
-  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
-  return `${sign}${formatUsd(Math.abs(value))}`;
-}
-
-function formatDrawdownPercent(value: number) {
-  return value > 0 ? `-${value.toFixed(2)}%` : "0.00%";
-}
-
-function SettingsIcon() {
+function ChevronRightIcon() {
   return (
-    <svg
-      className="h-5 w-5"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.8}
-        d="M10.5 3.75c.692-1.2 2.424-1.2 3.116 0l.24.415a1.8 1.8 0 001.944.852l.47-.102c1.358-.295 2.583.93 2.288 2.288l-.102.47a1.8 1.8 0 00.852 1.944l.415.24c1.2.692 1.2 2.424 0 3.116l-.415.24a1.8 1.8 0 00-.852 1.944l.102.47c.295 1.358-.93 2.583-2.288 2.288l-.47-.102a1.8 1.8 0 00-1.944.852l-.24.415c-.692 1.2-2.424 1.2-3.116 0l-.24-.415a1.8 1.8 0 00-1.944-.852l-.47.102c-1.358.295-2.583-.93-2.288-2.288l.102-.47a1.8 1.8 0 00-.852-1.944l-.415-.24c-1.2-.692-1.2-2.424 0-3.116l.415-.24a1.8 1.8 0 00.852-1.944l-.102-.47c-.295-1.358.93-2.583 2.288-2.288l.47.102a1.8 1.8 0 001.944-.852l.24-.415z"
-      />
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.8}
-        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-      />
+    <svg className="w-5 h-5 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
     </svg>
   );
 }
@@ -62,52 +31,29 @@ function SkeletonBar({ className }: { className: string }) {
   return <div className={`animate-pulse rounded bg-gray-200 ${className}`} />;
 }
 
-function Surface({
-  children,
-  className = "",
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <section
-      className={`rounded-2xl border border-separator bg-white p-4 shadow-sm ${className}`}
-    >
-      {children}
-    </section>
-  );
-}
-
-function MetricCard({
+function MenuLink({
+  to,
+  icon,
   label,
-  value,
-  helper,
-  valueClassName = "text-foreground",
-  loading = false,
+  onClick,
 }: {
+  to: string;
+  icon: React.ReactNode;
   label: string;
-  value: string;
-  helper?: string;
-  valueClassName?: string;
-  loading?: boolean;
+  onClick?: () => void;
 }) {
   return (
-    <div className="min-h-[92px] rounded-2xl border border-separator bg-white p-4 shadow-sm">
-      <p className="text-[11px] uppercase tracking-wide text-muted">{label}</p>
-      {loading ? (
-        <>
-          <SkeletonBar className="mt-3 h-6 w-20" />
-          <SkeletonBar className="mt-2 h-3 w-14 bg-gray-100" />
-        </>
-      ) : (
-        <>
-          <p className={`mt-3 text-lg font-semibold ${valueClassName}`}>
-            {value}
-          </p>
-          <p className="mt-1 text-xs text-muted">{helper}</p>
-        </>
-      )}
-    </div>
+    <Link
+      to={to}
+      onClick={onClick}
+      className="flex items-center justify-between py-4 border-b border-separator last:border-b-0 transition-colors active:bg-gray-50"
+    >
+      <div className="flex items-center gap-3">
+        <span className="text-muted">{icon}</span>
+        <span className="text-base text-foreground">{label}</span>
+      </div>
+      <ChevronRightIcon />
+    </Link>
   );
 }
 
@@ -116,214 +62,182 @@ export function AccountPage() {
   const { t } = useTranslation();
   const privy = usePrivy() as any;
   const { user } = privy;
-  const { period, setPeriod } = usePortfolioRange();
   const { wallets } = useWallets();
   const { data: userState, isLoading: userStateLoading } = useUserState();
-  const { data: portfolioPeriod, isLoading: portfolioLoading } =
-    usePortfolioPeriod(period);
 
   const walletAddress =
     user?.wallet?.address ??
     wallets.find((wallet) => wallet.walletClientType === "privy")?.address;
   const telegramUsername = user?.telegram?.username ?? null;
-  const displayName =
-    telegramUsername ??
-    user?.email?.address ??
-    user?.wallet?.address ??
-    t("account.traderFallback");
 
   const totalEquity = userState?.marginSummary?.accountValue ?? 0;
-  const availableBalance = userState?.availableBalance ?? 0;
+  const marginLocked = userState?.marginSummary?.totalMarginUsed ?? 0;
+  const volume30d = userState?.volume30d ?? 0;
+  const pnl30d = userState?.pnl30d ?? 0;
   const visibleStableBalances = userState?.visibleStableBalances ?? [];
-
-  const rangePnl = useMemo(
-    () => getPortfolioRangePnl(portfolioPeriod?.pnlHistory ?? []),
-    [portfolioPeriod?.pnlHistory],
-  );
-  const maxDrawdown = useMemo(
-    () =>
-      getPortfolioMaxDrawdownPct(portfolioPeriod?.accountValueHistory ?? []),
-    [portfolioPeriod?.accountValueHistory],
-  );
-
-  const metricRangeLabel =
-    period === "1d" ? "1D" : period === "7d" ? "1W" : "1M";
-  const pnlColorClass =
-    rangePnl > 0
-      ? "text-positive"
-      : rangePnl < 0
-        ? "text-negative"
-        : "text-foreground";
-  const drawdownColorClass =
-    maxDrawdown > 0 ? "text-negative" : "text-foreground";
-  const hasRangeHistory =
-    (portfolioPeriod?.accountValueHistory?.length ?? 0) > 1 &&
-    (portfolioPeriod?.pnlHistory?.length ?? 0) > 0;
-  const portfolioMetricsLoading =
-    portfolioLoading || !portfolioPeriod || !hasRangeHistory;
   const shellLoading = userStateLoading;
-  const portfolioRanges: Array<{ key: PortfolioRange; label: string }> = [
-    { key: "1d", label: "1D" },
-    { key: "7d", label: "1W" },
-    { key: "30d", label: "1M" },
-  ];
-  const actionLinks = [
-    { label: t("account.deposit"), path: "/account/deposit" },
-    { label: t("account.withdraw"), path: "/account/withdraw" },
-    { label: t("account.swap"), path: "/account/swap" },
-  ];
 
   return (
-    <div className="min-h-full bg-background px-4 py-5 space-y-4">
-      <Surface className="rounded-[28px] p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm text-muted">{t("account.sectionLabel")}</p>
+    <div className="min-h-full bg-background">
+      {/* Profile Header */}
+      <div className="px-4 pt-5 pb-4 bg-white border-b border-separator">
+        <div className="flex items-center gap-4">
+          {/* Avatar */}
+          <div className="w-14 h-14 rounded-full bg-surface flex items-center justify-center">
+            <svg className="w-7 h-7 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
             {shellLoading ? (
               <>
-                <SkeletonBar className="mt-2 h-8 w-36" />
-                <SkeletonBar className="mt-2 h-4 w-44 bg-gray-100" />
+                <SkeletonBar className="h-6 w-32" />
+                <SkeletonBar className="mt-1.5 h-4 w-40 bg-gray-100" />
               </>
             ) : (
               <>
-                <h1 className="mt-1 truncate text-[2rem] font-bold leading-none text-foreground">
-                  {telegramUsername ? `@${displayName}` : displayName}
+                <h1 className="text-xl font-bold text-foreground truncate">
+                  {telegramUsername ? `@${telegramUsername}` : t("account.traderFallback")}
                 </h1>
-                <p className="mt-2 truncate text-sm text-muted">
-                  {user?.email?.address ??
-                    t("account.connectedInfo")}
+                <p className="text-sm text-muted font-mono truncate mt-0.5">
+                  {walletAddress ? formatAddress(walletAddress) : ""} · VIP {user?.vipTier ?? 0}
                 </p>
               </>
             )}
           </div>
-
-          <Link
-            to="/account/settings"
-            onClick={() => haptics.light()}
-            aria-label={t("account.openSettings")}
-            className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-surface text-foreground transition-colors active:bg-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-          >
-            <SettingsIcon />
-          </Link>
         </div>
         {userState?.shouldPromptRestoreUnified ? <UnifiedAccountBanner /> : null}
-      </Surface>
+      </div>
 
-      <Surface>
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground">
-              {t("account.embeddedWallet")}
-            </p>
+      {/* Balance Stats */}
+      <div className="px-4 py-4 bg-white border-b border-separator">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <div className="text-xs text-muted">{t("account.available")}</div>
             {shellLoading ? (
-              <SkeletonBar className="mt-2 h-4 w-28" />
+              <SkeletonBar className="mt-1.5 h-6 w-24" />
             ) : (
-              <p className="mt-1 font-mono text-sm text-muted">
-                {walletAddress ? formatAddress(walletAddress) : t("personalInfo.noWallet")}
-              </p>
+              <div className="text-lg font-bold text-foreground font-mono mt-1">
+                {formatUsd(totalEquity)}
+              </div>
             )}
           </div>
-          <button
-            type="button"
-            onClick={async () => {
-              if (!walletAddress) return;
-              await navigator.clipboard.writeText(walletAddress);
-              haptics.success();
-            }}
-            className="rounded-full bg-surface px-4 py-2 text-sm font-semibold text-foreground transition-colors active:bg-gray-100"
-          >
-            {t("common.copy")}
-          </button>
-        </div>
-      </Surface>
-
-      <Surface>
-        <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-foreground">
-              {t("account.portfolioMetrics")}
-            </p>
-            <p className="mt-1 text-xs text-muted">
-              {t("account.syncedWithHome")}
-            </p>
+            <div className="text-xs text-muted">{t("account.marginLocked")}</div>
+            {shellLoading ? (
+              <SkeletonBar className="mt-1.5 h-6 w-24" />
+            ) : (
+              <div className="text-lg font-bold text-foreground font-mono mt-1">
+                {formatUsd(marginLocked)}
+              </div>
+            )}
           </div>
-          <div className="chart-range-pill inline-flex items-center gap-1 rounded-full px-1.5 py-1">
-            {portfolioRanges.map((range) => {
-              const active = period === range.key;
-
-              return (
-                <button
-                  key={range.key}
-                  type="button"
-                  onClick={() => setPeriod(range.key)}
-                  aria-pressed={active}
-                  className={`min-w-[42px] rounded-full px-3 py-1.5 text-sm font-semibold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 ${
-                    active
-                      ? "bg-white text-foreground shadow-sm"
-                      : "text-gray-400"
-                  }`}
-                >
-                  {range.label}
-                </button>
-              );
-            })}
+          <div>
+            <div className="text-xs text-muted">{t("account.volume30d")}</div>
+            {shellLoading ? (
+              <SkeletonBar className="mt-1.5 h-6 w-24" />
+            ) : (
+              <div className="text-lg font-bold text-foreground font-mono mt-1">
+                {formatUsd(volume30d)}
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="text-xs text-muted">{t("account.pnl30d")}</div>
+            {shellLoading ? (
+              <SkeletonBar className="mt-1.5 h-6 w-24" />
+            ) : (
+              <div className={`text-lg font-bold font-mono mt-1 ${pnl30d >= 0 ? "text-positive" : "text-negative"}`}>
+                {pnl30d >= 0 ? "+" : ""}{formatUsd(pnl30d)}
+              </div>
+            )}
           </div>
         </div>
-      </Surface>
+      </div>
 
-      <StableBalanceList balances={visibleStableBalances} />
+      {/* Stable Balances */}
+      {visibleStableBalances.length > 0 && (
+        <div className="px-4 py-3 bg-white border-b border-separator">
+          <StableBalanceList balances={visibleStableBalances} />
+        </div>
+      )}
 
-      <div className="grid grid-cols-2 gap-3">
-        <MetricCard
-          label={t("account.totalEquity")}
-          value={formatUsd(totalEquity)}
-          helper={t("account.accountValue")}
-          loading={shellLoading}
+      {/* Funds Section */}
+      <div className="px-4 pt-6 pb-2">
+        <div className="text-xs font-semibold text-muted uppercase tracking-wide">
+          {t("account.funds")}
+        </div>
+      </div>
+      <div className="mx-4 bg-white rounded-2xl border border-separator px-4">
+        <MenuLink
+          to="/account/deposit"
+          onClick={() => haptics.light()}
+          icon={
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m0-15l-3 3m3-3l3 3" />
+            </svg>
+          }
+          label={t("account.deposit")}
         />
-        <MetricCard
-          label={t("account.availableBalance")}
-          value={formatUsd(availableBalance)}
-          helper={t("account.readyToTrade")}
-          loading={shellLoading}
+        <MenuLink
+          to="/account/withdraw"
+          onClick={() => haptics.light()}
+          icon={
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 19.5v-15m0 15l-3-3m3 3l3-3" />
+            </svg>
+          }
+          label={t("account.withdraw")}
+        />
+        <MenuLink
+          to="/account/swap"
+          onClick={() => haptics.light()}
+          icon={
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+            </svg>
+          }
+          label={t("account.swap")}
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <MetricCard
-          label={t("account.profitLoss")}
-          value={portfolioMetricsLoading ? "\u2014" : formatSignedUsd(rangePnl)}
-          helper={`${metricRangeLabel} ${t("account.range")}`}
-          valueClassName={
-            portfolioMetricsLoading ? "text-foreground" : pnlColorClass
-          }
-          loading={portfolioMetricsLoading}
-        />
-        <MetricCard
-          label={t("account.maxDrawdown")}
-          value={
-            portfolioMetricsLoading
-              ? "\u2014"
-              : formatDrawdownPercent(maxDrawdown)
-          }
-          helper={`${metricRangeLabel} ${t("account.range")}`}
-          valueClassName={
-            portfolioMetricsLoading ? "text-foreground" : drawdownColorClass
-          }
-          loading={portfolioMetricsLoading}
-        />
+      {/* Settings Section */}
+      <div className="px-4 pt-6 pb-2">
+        <div className="text-xs font-semibold text-muted uppercase tracking-wide">
+          {t("account.settings")}
+        </div>
       </div>
-
-      <div className="grid grid-cols-3 gap-3">
-        {actionLinks.map((action) => (
-          <Link
-            key={action.path}
-            to={action.path}
-            onClick={() => haptics.light()}
-            className="rounded-2xl border border-separator bg-white px-3 py-3 text-center text-sm font-semibold text-foreground shadow-sm transition-colors active:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-          >
-            {action.label}
-          </Link>
-        ))}
+      <div className="mx-4 bg-white rounded-2xl border border-separator px-4 mb-6">
+        <MenuLink
+          to="/account/notifications"
+          onClick={() => haptics.light()}
+          icon={
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+            </svg>
+          }
+          label={t("account.notifications")}
+        />
+        <MenuLink
+          to="/account/approvals"
+          onClick={() => haptics.light()}
+          icon={
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+            </svg>
+          }
+          label={t("account.approvals")}
+        />
+        <MenuLink
+          to="/account/personal"
+          onClick={() => haptics.light()}
+          icon={
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+            </svg>
+          }
+          label={t("account.personalInfo")}
+        />
       </div>
     </div>
   );

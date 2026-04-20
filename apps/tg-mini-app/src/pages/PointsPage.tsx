@@ -3,6 +3,7 @@ import { usePrivy, useToken } from "@privy-io/react-auth";
 import type { QuestProgress, ReferralSummary, RewardLedgerEntry, RewardsDashboard } from "@repo/types";
 import { useTranslation } from "react-i18next";
 import { ReferralCard } from "../components/ReferralCard";
+import { useHaptics } from "../hooks/useHaptics";
 import { getTelegramStartParam } from "../lib/referrals";
 import { fetchRewardsDashboard } from "../lib/rewards";
 import { getTelegramProfile } from "../lib/supabase";
@@ -22,43 +23,9 @@ function formatUsd(value: number) {
   }).format(value);
 }
 
-function formatDate(value: string | null) {
-  if (!value) {
-    return "Pending";
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    day: "numeric",
-    month: "short",
-  }).format(new Date(value));
-}
-
-function getQuestBadgeClass(status: QuestProgress["status"]) {
-  if (status === "completed") {
-    return "bg-emerald-100 text-emerald-700";
-  }
-
-  if (status === "locked") {
-    return "bg-slate-200 text-slate-500";
-  }
-
-  return "bg-blue-100 text-blue-700";
-}
-
-function getRewardValue(entry: RewardLedgerEntry) {
-  if (entry.rewardKind === "usdc" || entry.rewardKind === "raffle") {
-    return formatUsd(entry.amount);
-  }
-
-  if (entry.rewardKind === "tickets") {
-    return `${formatCompactNumber(entry.amount)} tickets`;
-  }
-
-  return `${formatCompactNumber(entry.amount)} XP`;
-}
-
 export function PointsPage() {
   const { t } = useTranslation();
+  const haptics = useHaptics();
   const { user } = usePrivy();
   const { getAccessToken } = useToken();
   const queryClient = useQueryClient();
@@ -113,17 +80,22 @@ export function PointsPage() {
     await dashboardQuery.refetch();
   };
 
+  const handleCopyReferralLink = async (link: string) => {
+    await navigator.clipboard.writeText(link);
+    haptics.success();
+  };
+
   if (dashboardQuery.isLoading) {
     return (
       <div className="min-h-full bg-background px-4 py-5">
         <div className="animate-pulse space-y-4">
-          <div className="h-40 rounded-3xl bg-slate-200" />
-          <div className="grid grid-cols-2 gap-3">
-            {Array.from({ length: 4 }, (_, index) => (
-              <div key={index} className="h-24 rounded-2xl bg-slate-200" />
+          <div className="h-48 rounded-3xl bg-gray-200" />
+          <div className="h-32 rounded-2xl bg-gray-200" />
+          <div className="space-y-3">
+            {Array.from({ length: 3 }, (_, index) => (
+              <div key={index} className="h-16 rounded-2xl bg-gray-200" />
             ))}
           </div>
-          <div className="h-64 rounded-3xl bg-slate-200" />
         </div>
       </div>
     );
@@ -132,7 +104,7 @@ export function PointsPage() {
   if (dashboardQuery.isError || !dashboard) {
     return (
       <div className="min-h-full bg-background px-4 py-5">
-        <div className="rounded-3xl border border-red-200 bg-red-50 p-5 text-sm text-red-700 shadow-sm">
+        <div className="rounded-2xl border border-negative/20 bg-negative/5 p-5 text-sm text-negative">
           {dashboardQuery.error instanceof Error
             ? dashboardQuery.error.message
             : t("errors.generic")}
@@ -141,250 +113,202 @@ export function PointsPage() {
     );
   }
 
+  const referralLink = `t.me/hyperliq?ref=${username || walletAddress?.slice(0, 8)}`;
+
   return (
-    <div className="min-h-full bg-background px-4 py-5 space-y-4">
-      <div className="rounded-3xl bg-[linear-gradient(135deg,#0f172a_0%,#1d4ed8_100%)] px-5 py-6 text-white shadow-sm">
-        <p className="text-xs uppercase tracking-[0.24em] text-blue-100">
-          {dashboard.season.name}
-        </p>
-        <div className="mt-3 flex items-end justify-between gap-3">
-          <div>
-            <p className="text-4xl font-bold">
-              {formatCompactNumber(dashboard.season.xpTotal)} XP
-            </p>
-            <p className="mt-2 text-sm text-blue-100">
-              {formatUsd(dashboard.season.eligibleVolume)} app volume this season
-            </p>
-          </div>
-          <div className="rounded-2xl bg-white/10 px-4 py-3 text-right backdrop-blur">
-            <p className="text-xs uppercase tracking-[0.18em] text-blue-100">
-              Rank
-            </p>
-            <p className="mt-1 text-2xl font-semibold">
-              {dashboard.season.leaderboardRank ? `#${dashboard.season.leaderboardRank}` : "—"}
-            </p>
-          </div>
-        </div>
-        <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
-          <div className="rounded-2xl bg-white/10 px-3 py-3 backdrop-blur">
-            <p className="text-blue-100">Quest XP</p>
-            <p className="mt-1 font-semibold">{formatCompactNumber(dashboard.season.questXpTotal)}</p>
-          </div>
-          <div className="rounded-2xl bg-white/10 px-3 py-3 backdrop-blur">
-            <p className="text-blue-100">Trade XP</p>
-            <p className="mt-1 font-semibold">{formatCompactNumber(dashboard.season.volumeXpTotal)}</p>
-          </div>
-          <div className="rounded-2xl bg-white/10 px-3 py-3 backdrop-blur">
-            <p className="text-blue-100">Weekly cutoff</p>
-            <p className="mt-1 font-semibold">{formatUsd(dashboard.weeklyRaffle.cutoffVolume)}</p>
-          </div>
-        </div>
+    <div className="min-h-full bg-background">
+      {/* Header */}
+      <div className="px-4 pt-5 pb-4 bg-white">
+        <h1 className="text-2xl font-bold text-foreground">{t("nav.rewards")}</h1>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        {[
-          ["Volume XP", `${formatCompactNumber(dashboard.season.volumeXpTotal)} XP`],
-          ["Funded referrals", String(dashboard.referral.fundedReferralCount)],
-          [
-            "Weekly rank",
-            dashboard.weeklyRaffle.userRank ? `#${dashboard.weeklyRaffle.userRank}` : "—",
-          ],
-          [
-            "Raffle status",
-            dashboard.weeklyRaffle.userIsEligible ? "Eligible" : formatUsd(dashboard.weeklyRaffle.userDistanceToCutoff),
-          ],
-        ].map(([label, value]) => (
-          <div key={label} className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
-            <p className="text-xs text-muted">{label}</p>
-            <p className="mt-2 text-lg font-semibold text-foreground">{value}</p>
+      {/* Points Hero Card */}
+      <div className="px-4 py-4">
+        <div className="rounded-3xl bg-secondary p-5 text-white">
+          <div className="text-xs uppercase tracking-[0.2em] text-white/60">
+            {dashboard.season.name} · YOUR POINTS
           </div>
-        ))}
-      </div>
-
-      <div className="rounded-3xl border border-separator bg-white p-4 shadow-sm">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-foreground">Funding quests</p>
-            <p className="mt-1 text-sm text-muted">
-              Four launch quests that push funding, trading, and high-quality referrals.
-            </p>
+          <div className="mt-3 text-5xl font-bold font-mono tracking-tight">
+            {formatCompactNumber(dashboard.season.xpTotal)}
           </div>
-          <button
-            className="rounded-full border border-separator px-4 py-2 text-sm font-semibold text-foreground"
-            onClick={() => void dashboardQuery.refetch()}
-            type="button"
-          >
-            Refresh
-          </button>
-        </div>
-
-        <div className="mt-4 space-y-3">
-          {dashboard.quests.map((quest) => (
-            <div key={quest.id} className="rounded-2xl bg-surface p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{quest.title}</p>
-                  <p className="mt-1 text-sm text-muted">{quest.description}</p>
-                </div>
-                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getQuestBadgeClass(quest.status)}`}>
-                  {quest.status.replace("_", " ")}
-                </span>
-              </div>
-
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
-                <div
-                  className="h-full rounded-full bg-primary transition-[width]"
-                  style={{
-                    width: `${Math.min(
-                      100,
-                      (quest.progressCurrent / Math.max(quest.progressTarget, 1)) * 100,
-                    )}%`,
-                  }}
-                />
-              </div>
-
-              <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted">
-                <p>
-                  {quest.progressCurrent}/{quest.progressTarget} complete
-                </p>
-                <p>{quest.completedAt ? `Done ${formatDate(quest.completedAt)}` : "Pending"}</p>
-              </div>
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                {quest.rewards.map((reward) => (
-                  <span
-                    key={`${quest.id}-${reward.kind}`}
-                    className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-foreground"
-                  >
-                    {reward.label}
-                  </span>
-                ))}
-              </div>
+          <div className="mt-2 text-sm text-white/70">
+            +{formatCompactNumber(dashboard.season.volumeXpTotal)} this week · rank #{dashboard.season.leaderboardRank ?? "—"}
+          </div>
+          
+          {/* Progress Bar */}
+          <div className="mt-4">
+            <div className="flex items-center justify-between text-xs mb-1.5">
+              <span className="text-white/60">TIER {Math.floor(dashboard.season.xpTotal / 5000)} - WAVE RIDER</span>
+              <span className="text-white/60">{5000 - (dashboard.season.xpTotal % 5000)} TO NEXT</span>
             </div>
-          ))}
+            <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-primary rounded-full transition-all"
+                style={{ width: `${(dashboard.season.xpTotal % 5000) / 50}%` }}
+              />
+            </div>
+          </div>
         </div>
       </div>
 
-      {user?.id && accessTokenQuery.data ? (
-        <ReferralCard
-          accessToken={accessTokenQuery.data}
-          onApplied={handleReferralApplied}
-          referral={dashboard.referral}
-        />
-      ) : null}
+      {/* Referral Section */}
+      <div className="px-4 py-2">
+        <div className="rounded-2xl border border-separator bg-white p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-base font-semibold text-foreground">{t("points.referEarn")}</div>
+              <div className="text-sm text-muted mt-0.5">20% of friends&apos; fees forever</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleCopyReferralLink(referralLink)}
+              className="px-4 py-2 rounded-full bg-primary text-white text-sm font-semibold transition-opacity active:opacity-80"
+            >
+              {t("common.share")}
+            </button>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <div className="flex-1 px-3 py-2.5 rounded-lg bg-surface text-sm text-muted font-mono truncate">
+              {referralLink}
+            </div>
+            <button
+              type="button"
+              onClick={() => handleCopyReferralLink(referralLink)}
+              className="px-3 py-2.5 rounded-lg bg-surface text-sm font-semibold text-foreground transition-colors active:bg-gray-200"
+            >
+              {t("common.copy")}
+            </button>
+          </div>
+        </div>
+      </div>
 
-      <div className="rounded-3xl border border-separator bg-white p-4 shadow-sm">
-        <div className="flex items-center justify-between gap-3">
+      {/* This Week Stats */}
+      <div className="px-4 pt-4 pb-2">
+        <div className="text-xs font-semibold text-muted uppercase tracking-wide">
+          {t("points.thisWeek")}
+        </div>
+      </div>
+      <div className="px-4 space-y-2">
+        <div className="flex items-center justify-between py-3 px-4 rounded-2xl border border-separator bg-white">
           <div>
-            <p className="text-sm font-semibold text-foreground">Top traders</p>
-            <p className="mt-1 text-sm text-muted">
-              Ranked by eligible app-attributed volume, not PnL.
-            </p>
+            <div className="text-base text-foreground">{t("points.tradingVolume")}</div>
+            <div className="text-sm text-muted">{formatUsd(dashboard.season.eligibleVolume)}</div>
           </div>
-          <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-            Weekly raffle top {dashboard.weeklyRaffle.cohortSize}
+          <div className="text-positive font-semibold font-mono">
+            +{formatCompactNumber(dashboard.season.volumeXpTotal)}
           </div>
         </div>
-
-        <div className="mt-4 space-y-2">
-          {dashboard.leaderboard.entries.map((entry) => (
-            <div key={entry.userId} className="flex items-center justify-between rounded-2xl bg-surface px-4 py-3">
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-sm font-semibold text-foreground">
-                  #{entry.rank}
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{entry.displayName}</p>
-                  <p className="text-xs text-muted">{formatCompactNumber(entry.xp)} XP</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="text-sm font-semibold text-foreground">{formatUsd(entry.eligibleVolume)}</p>
-                <p className="text-xs text-muted">
-                  {entry.raffleEligible ? "Raffle eligible" : "Season volume"}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="rounded-3xl border border-separator bg-white p-4 shadow-sm">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between py-3 px-4 rounded-2xl border border-separator bg-white">
           <div>
-            <p className="text-sm font-semibold text-foreground">Weekly raffle</p>
-            <p className="mt-1 text-sm text-muted">
-              Top-volume traders enter the weekly draw. Winners are picked from the current top cohort.
-            </p>
+            <div className="text-base text-foreground">{t("points.daysActive")}</div>
+            <div className="text-sm text-muted">{dashboard.weeklyRaffle.userRank ? `${dashboard.weeklyRaffle.userRank} of 7` : "—"}</div>
           </div>
-          <div className="text-right text-sm">
-            <p className="font-semibold text-foreground">
-              {dashboard.weeklyRaffle.userIsEligible ? "You are in" : "Chasing cutoff"}
-            </p>
-            <p className="text-muted">
-              {dashboard.weeklyRaffle.userIsEligible
-                ? `Rank #${dashboard.weeklyRaffle.userRank ?? "—"}`
-                : `${formatUsd(dashboard.weeklyRaffle.userDistanceToCutoff)} to qualify`}
-            </p>
+          <div className="text-positive font-semibold font-mono">
+            +{formatCompactNumber(dashboard.season.questXpTotal)}
           </div>
         </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <div className="rounded-2xl bg-surface p-4">
-            <p className="text-xs text-muted">Window</p>
-            <p className="mt-2 text-sm font-semibold text-foreground">
-              {formatDate(dashboard.weeklyRaffle.weekStart)} → {formatDate(dashboard.weeklyRaffle.weekEnd)}
-            </p>
+        <div className="flex items-center justify-between py-3 px-4 rounded-2xl border border-separator bg-white">
+          <div>
+            <div className="text-base text-foreground">{t("points.friendsJoined")}</div>
+            <div className="text-sm text-muted">{dashboard.referral.fundedReferralCount}</div>
           </div>
-          <div className="rounded-2xl bg-surface p-4">
-            <p className="text-xs text-muted">Cutoff volume</p>
-            <p className="mt-2 text-sm font-semibold text-foreground">
-              {formatUsd(dashboard.weeklyRaffle.cutoffVolume)}
-            </p>
+          <div className="text-positive font-semibold font-mono">
+            +{formatCompactNumber(dashboard.referral.fundedReferralCount * 100)}
           </div>
-        </div>
-
-        <div className="mt-4 space-y-2">
-          {dashboard.weeklyRaffle.winners.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-separator p-4 text-sm text-muted">
-              Winners will appear here after the raffle draw runs.
-            </div>
-          ) : (
-            dashboard.weeklyRaffle.winners.map((winner) => (
-              <div key={winner.userId} className="flex items-center justify-between rounded-2xl bg-surface px-4 py-3">
-                <p className="text-sm font-semibold text-foreground">{winner.displayName}</p>
-                <p className="text-sm font-semibold text-foreground">{formatUsd(winner.prizeUsdc)}</p>
-              </div>
-            ))
-          )}
         </div>
       </div>
 
-      <div className="rounded-3xl border border-separator bg-white p-4 shadow-sm">
-        <p className="text-sm font-semibold text-foreground">Reward history</p>
-        <div className="mt-4 space-y-2">
-          {dashboard.rewardHistory.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-separator p-4 text-sm text-muted">
-              Your rewards will appear after the first funded event or app-attributed trade.
+      {/* Quests Section */}
+      {dashboard.quests.length > 0 && (
+        <>
+          <div className="px-4 pt-6 pb-2">
+            <div className="text-xs font-semibold text-muted uppercase tracking-wide">
+              {t("points.quests")}
             </div>
-          ) : (
-            dashboard.rewardHistory.slice(0, 12).map((entry) => (
-              <div key={entry.id} className="flex items-center justify-between rounded-2xl bg-surface px-4 py-3">
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{entry.description}</p>
-                  <p className="mt-1 text-xs text-muted">
-                    {entry.source.replace(/_/g, " ")} · {formatDate(entry.createdAt)}
-                  </p>
+          </div>
+          <div className="px-4 space-y-2 pb-6">
+            {dashboard.quests.map((quest) => (
+              <div key={quest.id} className="rounded-2xl border border-separator bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base font-semibold text-foreground">{quest.title}</span>
+                      {quest.status === "completed" && (
+                        <span className="px-2 py-0.5 rounded-full bg-positive/10 text-positive text-xs font-semibold">
+                          {t("common.done")}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted mt-1">{quest.description}</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-semibold text-foreground">
+                      {quest.rewards[0]?.label ?? "—"}
+                    </div>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold text-foreground">{getRewardValue(entry)}</p>
-                  <p className="mt-1 text-xs text-muted">{entry.status}</p>
+                
+                {/* Progress */}
+                <div className="mt-3">
+                  <div className="h-1.5 bg-surface rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary rounded-full transition-all"
+                      style={{
+                        width: `${Math.min(100, (quest.progressCurrent / Math.max(quest.progressTarget, 1)) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between mt-1.5 text-xs text-muted">
+                    <span>{quest.progressCurrent}/{quest.progressTarget}</span>
+                  </div>
                 </div>
               </div>
-            ))
-          )}
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Leaderboard Preview */}
+      {dashboard.leaderboard.entries.length > 0 && (
+        <>
+          <div className="px-4 pt-2 pb-2">
+            <div className="text-xs font-semibold text-muted uppercase tracking-wide">
+              {t("points.topTraders")}
+            </div>
+          </div>
+          <div className="px-4 pb-6">
+            <div className="rounded-2xl border border-separator bg-white divide-y divide-separator">
+              {dashboard.leaderboard.entries.slice(0, 5).map((entry) => (
+                <div key={entry.userId} className="flex items-center justify-between px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-surface flex items-center justify-center text-sm font-bold text-foreground">
+                      #{entry.rank}
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-foreground">{entry.displayName}</div>
+                      <div className="text-xs text-muted font-mono">{formatCompactNumber(entry.xp)} XP</div>
+                    </div>
+                  </div>
+                  <div className="text-sm font-semibold text-foreground font-mono">
+                    {formatUsd(entry.eligibleVolume)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Referral Card (existing component) */}
+      {user?.id && accessTokenQuery.data && (
+        <div className="px-4 pb-6">
+          <ReferralCard
+            accessToken={accessTokenQuery.data}
+            onApplied={handleReferralApplied}
+            referral={dashboard.referral}
+          />
         </div>
-      </div>
+      )}
     </div>
   );
 }

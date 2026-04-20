@@ -14,6 +14,34 @@ interface MarketListItemProps {
   onClick: () => void;
 }
 
+// Simple sparkline SVG that mimics a price trend
+function MiniSparkline({ isPositive }: { isPositive: boolean }) {
+  const color = isPositive ? '#00C076' : '#dc2626';
+  // Different path patterns for visual variety
+  const paths = isPositive
+    ? 'M0,20 L8,18 L16,15 L24,16 L32,12 L40,8 L48,10 L56,5'
+    : 'M0,5 L8,8 L16,6 L24,10 L32,12 L40,15 L48,14 L56,18';
+  
+  return (
+    <svg
+      width="56"
+      height="24"
+      viewBox="0 0 56 24"
+      fill="none"
+      className="flex-shrink-0"
+    >
+      <path
+        d={paths}
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </svg>
+  );
+}
+
 export function MarketListItem({
   coin,
   displayName,
@@ -34,40 +62,38 @@ export function MarketListItem({
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-3 px-4 py-3 bg-white active:bg-gray-50 transition-colors text-left"
+      className="w-full flex items-center gap-3 px-4 py-3.5 bg-white active:bg-gray-50 transition-colors text-left"
     >
-      <TokenIcon coin={iconCoin} size={36} />
+      <TokenIcon coin={iconCoin} size={40} />
 
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <span className="font-semibold text-foreground text-sm truncate">{displayName}</span>
-          <span className="flex-shrink-0 text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-medium">
-            {marketType === 'perp'
-              ? (maxLeverage ? `${maxLeverage}x` : t('trade.perp'))
-              : t('common.spot')}
-          </span>
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-foreground text-base truncate">{displayName}</span>
         </div>
-        {volume && (
-          <span className="text-xs text-gray-400">
-            {t('marketList.volume', { volume })}
-          </span>
-        )}
+        <span className="text-xs text-muted mt-0.5 block">
+          {displayName}
+        </span>
       </div>
 
-      <div className="text-right flex-shrink-0 min-w-[76px]">
+      {/* Mini sparkline chart */}
+      <div className="flex-shrink-0">
+        <MiniSparkline isPositive={isPositive} />
+      </div>
+
+      <div className="text-right flex-shrink-0 min-w-[72px]">
         {priceState === 'loading' ? (
           <div className="flex flex-col items-end animate-pulse">
-            <div className="h-4 w-14 rounded bg-gray-200" />
-            <div className="mt-1.5 h-3 w-10 rounded bg-gray-100" />
+            <div className="h-5 w-16 rounded bg-gray-200" />
+            <div className="mt-1 h-3 w-12 rounded bg-gray-100" />
           </div>
         ) : priceState === 'error' ? (
-          <div className="text-xs font-medium text-gray-400">
+          <div className="text-xs font-medium text-muted">
             {t('marketList.priceUnavailable')}
           </div>
         ) : (
           <>
-            <div className="text-sm font-medium text-foreground">{price}</div>
-            <div className={`text-xs font-medium ${isPositive ? 'text-positive' : 'text-negative'}`}>
+            <div className="text-base font-semibold text-foreground font-mono tabular-nums">{price}</div>
+            <div className={`text-xs font-medium mt-0.5 ${isPositive ? 'text-positive' : 'text-negative'}`}>
               {changeText}
             </div>
           </>

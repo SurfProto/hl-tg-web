@@ -3,40 +3,44 @@
 @tailwind utilities;
 
 :root {
-  /* Light-first design system — forced regardless of Telegram theme */
+  /* Hyperliquid Light Theme — Hybrid Design System */
   --color-background: #ffffff;
-  --color-surface: #f8f9fa;
+  --color-surface: #f5f5f5;
   --color-card: #ffffff;
-  --color-primary: #3b82f6;
-  --color-primary-dark: #2563eb;
+  --color-primary: #00C076;
+  --color-primary-dark: #00a065;
   --color-secondary: #111827;
-  --color-destructive: #ef4444;
+  --color-destructive: #dc2626;
   --color-text-primary: #111827;
   --color-text-secondary: #6b7280;
   --color-text-muted: #9ca3af;
-  --color-separator: #f3f4f6;
+  --color-separator: #f0f0f0;
   --color-border: #e5e7eb;
-  --color-positive: #16a34a;
+  --color-positive: #00C076;
   --color-negative: #dc2626;
-  --color-nav-active: #3b82f6;
+  --color-nav-active: #111827;
   --color-nav-inactive: #9ca3af;
-  --chart-lite-positive-bg: #e9f9ef;
+  --chart-lite-positive-bg: #e6f9f1;
   --chart-lite-negative-bg: #fceaea;
-  --chart-lite-neutral-bg: #eaf4ff;
-  --chart-lite-area-shadow: 0 18px 36px rgba(37, 99, 235, 0.14);
-  --chart-lite-area-overlay-bottom: rgba(37, 99, 235, 0.18);
+  --chart-lite-neutral-bg: #f0fdf4;
+  --chart-lite-area-shadow: 0 18px 36px rgba(0, 192, 118, 0.14);
+  --chart-lite-area-overlay-bottom: rgba(0, 192, 118, 0.18);
   --chart-lite-candle-bg: #fbfcff;
   --chart-lite-pill-bg: rgba(245, 247, 250, 0.96);
   --chart-lite-pill-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+
+  /* Font families */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
 
   /* Override Telegram theme vars to force light */
   --tg-bg-color: #ffffff;
   --tg-text-color: #111827;
   --tg-hint-color: #6b7280;
-  --tg-link-color: #3b82f6;
-  --tg-button-color: #3b82f6;
+  --tg-link-color: #00C076;
+  --tg-button-color: #00C076;
   --tg-button-text-color: #ffffff;
-  --tg-secondary-bg-color: #f8f9fa;
+  --tg-secondary-bg-color: #f5f5f5;
   --tg-viewport-height: 100dvh;
 }
 
@@ -53,9 +57,7 @@ body {
 }
 
 body {
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
-    Cantarell, sans-serif;
+  font-family: var(--font-sans);
   background-color: var(--color-background);
   color: var(--color-text-primary);
   -webkit-font-smoothing: antialiased;
@@ -66,6 +68,12 @@ body {
   min-height: 100%;
   display: flex;
   flex-direction: column;
+}
+
+/* Utility class for monospace numbers */
+.font-mono-numbers {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Telegram Mini App specific styles */
@@ -128,6 +136,16 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
+}
+
+/* Hide scrollbar */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }
 
 /* Animations */
@@ -193,7 +211,7 @@ body {
     ),
     linear-gradient(
       180deg,
-      rgba(37, 99, 235, 0) 0%,
+      rgba(0, 192, 118, 0) 0%,
       var(--chart-lite-area-overlay-bottom) 100%
     );
 }
@@ -211,15 +229,15 @@ body {
 .chart-surface--lite-candles::before {
   background: radial-gradient(
     circle at top right,
-    rgba(59, 130, 246, 0.08),
+    rgba(0, 192, 118, 0.08),
     transparent 35%
   );
 }
 
 .chart-tone-positive {
   background: var(--chart-lite-positive-bg);
-  --chart-lite-area-shadow: 0 18px 36px rgba(22, 163, 74, 0.18);
-  --chart-lite-area-overlay-bottom: rgba(34, 197, 94, 0.18);
+  --chart-lite-area-shadow: 0 18px 36px rgba(0, 192, 118, 0.18);
+  --chart-lite-area-overlay-bottom: rgba(0, 192, 118, 0.18);
 }
 
 .chart-tone-negative {
@@ -230,8 +248,8 @@ body {
 
 .chart-tone-neutral {
   background: var(--chart-lite-neutral-bg);
-  --chart-lite-area-shadow: 0 18px 36px rgba(37, 99, 235, 0.14);
-  --chart-lite-area-overlay-bottom: rgba(37, 99, 235, 0.18);
+  --chart-lite-area-shadow: 0 18px 36px rgba(0, 192, 118, 0.14);
+  --chart-lite-area-overlay-bottom: rgba(0, 192, 118, 0.18);
 }
 
 .chart-range-pill {

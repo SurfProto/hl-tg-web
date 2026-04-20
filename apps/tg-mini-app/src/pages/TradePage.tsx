@@ -40,7 +40,19 @@ function formatUsdInput(value: number): string {
     .replace(/(\.\d)0$/u, "$1");
 }
 
-const LEVERAGE_OPTIONS = [1, 2, 3, 5, 10, 20, 25, 50];
+function formatUsdParts(value: number): { integer: string; decimal: string } {
+  const formatted = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+  const parts = formatted.split(".");
+  return {
+    integer: parts[0] || "0",
+    decimal: parts[1] || "00",
+  };
+}
+
+const LEVERAGE_OPTIONS = [1, 2, 5, 10, 20, 25, 50];
 
 export function TradePage() {
   const { symbol: rawSymbol = "BTC" } = useParams<{ symbol: string }>();
@@ -56,7 +68,7 @@ export function TradePage() {
   const [limitPrice, setLimitPrice] = useState("");
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
   const [step, setStep] = useState<"amount" | "price">("amount");
-  const [leverage, setLeverage] = useState(1);
+  const [leverage, setLeverage] = useState(10);
   const [tif, setTif] = useState<"Gtc" | "Alo" | "Ioc">("Gtc");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [protectionOpen, setProtectionOpen] = useState(false);
@@ -72,12 +84,13 @@ export function TradePage() {
     return requestedSide === "long" || requestedSide === "buy" ? "buy" : "sell";
   }, [searchParams]);
 
+  const [activeSide, setActiveSide] = useState<"buy" | "sell">(side);
+
   const { data: markets } = useMarketData();
   const {
     data: currentPrice,
     isError: marketPriceError,
     isLoading: marketPriceLoading,
-    refetch: refetchMarketPrice,
   } = useMarketPrice(symbol);
   const {
     data: userState,
@@ -100,7 +113,6 @@ export function TradePage() {
     setup: tradingSetup,
   } = useSetupTrading({ isHip3: Boolean(selectedPerpMarket?.isHip3) });
 
-  // Spot disabled — all markets are perp
   const isPerp = true;
   const selectedMarket = selectedPerpMarket;
   const selectedMarketForDisplay = useMemo<AnyMarket | null>(
@@ -123,10 +135,6 @@ export function TradePage() {
         : getMarketBaseAsset(symbol),
     [selectedMarketForDisplay, symbol],
   );
-  const collateralAsset = useMemo(() => {
-    const match = symbol.toUpperCase().match(/-(USDC|USDH|USDT|USDE)\b/);
-    return match?.[1] ?? "USDC";
-  }, [symbol]);
 
   const maxLeverage = useMemo(
     () => selectedPerpMarket?.maxLeverage ?? 50,
@@ -141,7 +149,7 @@ export function TradePage() {
   const amountNum = parseFloat(amount) || 0;
   const limitPriceNum = parseFloat(limitPrice) || 0;
   const positionDirection: PositionDirection =
-    side === "buy" ? "long" : "short";
+    activeSide === "buy" ? "long" : "short";
   const priceState = getAsyncValueState({
     hasValue: currentPrice != null,
     isLoading: marketPriceLoading,
@@ -201,7 +209,7 @@ export function TradePage() {
         positionLeverage: nextPositionLeverage,
       };
       setLeverage(
-        Math.min(Math.max(nextPositionLeverage ?? 1, 1), maxLeverage),
+        Math.min(Math.max(nextPositionLeverage ?? 10, 1), maxLeverage),
       );
       return;
     }
@@ -268,7 +276,7 @@ export function TradePage() {
     return validateOrderInput(
       {
         coin: symbol,
-        side,
+        side: activeSide,
         sizeUsd: amountNum,
         limitPx:
           orderType === "limit" && limitPriceNum > 0
@@ -297,7 +305,7 @@ export function TradePage() {
     limitPriceNum,
     orderType,
     selectedMarket,
-    side,
+    activeSide,
     symbol,
     balanceState,
     validationAvailableBalance,
@@ -308,10 +316,10 @@ export function TradePage() {
   const liquidationPx = useMemo(() => {
     if (!isPerp || amountNum === 0 || !currentPrice || leverage <= 1)
       return null;
-    return side === "buy"
+    return activeSide === "buy"
       ? currentPrice * (1 - 1 / leverage)
       : currentPrice * (1 + 1 / leverage);
-  }, [amountNum, currentPrice, isPerp, leverage, side]);
+  }, [amountNum, currentPrice, isPerp, leverage, activeSide]);
 
   const estimatedProtectionSize = useMemo(() => {
     if (!isPerp || amountNum <= 0 || !currentPrice) return 0;
@@ -339,12 +347,6 @@ export function TradePage() {
     }
   }, [authenticated, tradingSetup]);
 
-  const ctaLabel =
-    side === "buy"
-      ? t("trade.longCta", { name: displayName })
-      : t("trade.shortCta", { name: displayName });
-  const sideLabel = side === "buy" ? t("common.long") : t("common.short");
-
   const isPending =
     placeOrder.isPending ||
     upsertPositionProtection.isPending;
@@ -360,10 +362,10 @@ export function TradePage() {
     setLimitPrice(value);
   };
 
-  const handleQuickFill = (pct: number) => {
+  const handleQuickFill = (usdValue: number) => {
     haptics.light();
     setSubmitError(null);
-    setAmount(formatUsdInput(maxPositionUsd * pct));
+    setAmount(formatUsdInput(usdValue));
   };
 
   const handleLeveragePill = (value: number) => {
@@ -372,16 +374,16 @@ export function TradePage() {
     setLeverage(value);
   };
 
-  const handleOrderTypeToggle = (value: "market" | "limit") => {
-    haptics.light();
-    setSubmitError(null);
-    setOrderType(value);
-    setStep("amount");
-  };
-
   const handleProtectionSubmit = () => {
     haptics.light();
     setProtectionOpen(false);
+  };
+
+  const handleSideToggle = (newSide: "buy" | "sell") => {
+    if (newSide !== activeSide) {
+      haptics.light();
+      setActiveSide(newSide);
+    }
   };
 
   const handlePrimaryAction = async () => {
@@ -431,7 +433,7 @@ export function TradePage() {
 
     const order: Order = {
       coin: symbol,
-      side,
+      side: activeSide,
       sizeUsd: amountNum,
       orderType,
       reduceOnly: false,
@@ -439,6 +441,8 @@ export function TradePage() {
       marketType: "perp" as const,
       ...(orderType === "limit" && { limitPx: limitPriceNum, tif }),
     };
+
+    const sideLabel = activeSide === "buy" ? t("common.long") : t("common.short");
 
     try {
       await placeOrder.mutateAsync(order);
@@ -451,8 +455,7 @@ export function TradePage() {
             takeProfitPx: protectionDraft.takeProfitEnabled
               ? takeProfitPx
               : null,
-            // Skip position polling — we just placed the order and know the approximate size.
-            sizeHint: estimatedProtectionSize * (side === "buy" ? 1 : -1),
+            sizeHint: estimatedProtectionSize * (activeSide === "buy" ? 1 : -1),
             skipCancelExisting: true,
           });
           haptics.success();
@@ -489,263 +492,187 @@ export function TradePage() {
     }
   };
 
+  const amountParts = formatUsdParts(amountNum);
+  const btcEquivalent = currentPrice ? (amountNum / currentPrice).toFixed(4) : "0.0000";
+
   return (
     <div className="h-full flex flex-col bg-background">
-      <header className="flex-none px-4 py-3 flex items-center justify-between border-b border-separator bg-white">
-        <div className="flex items-center gap-2.5">
-          <TokenIcon coin={baseToken} size={32} />
-          <div className="min-w-0">
-            <span className="truncate font-bold text-foreground">{displayName}</span>
-            <span className="text-xs text-gray-400 ml-1">
-              {t("trade.perp")}
-            </span>
-          </div>
-          {priceState === "ready" ? (
-            <span className="text-sm font-medium text-gray-600 tabular-nums ml-1">
-              {formatPrice(currentPrice!)}
-            </span>
-          ) : priceState === "loading" ? (
-            <span className="ml-1 flex items-center gap-2 text-xs font-medium text-gray-400">
-              <span className="h-3 w-3 animate-spin rounded-full border-2 border-gray-200 border-t-primary" />
-              {t("trade.loadingMarketPrice")}
-            </span>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void refetchMarketPrice()}
-              className="ml-1 rounded-full bg-surface px-3 py-1 text-xs font-semibold text-primary transition-colors active:bg-gray-100"
-            >
-              {t("common.retry")}
-            </button>
-          )}
-        </div>
-
-        <div className="flex-shrink-0 flex bg-surface rounded-lg p-0.5 gap-0.5">
-          {(["market", "limit"] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => handleOrderTypeToggle(value)}
-              aria-pressed={orderType === value}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors capitalize ${
-                orderType === value
-                  ? "bg-white shadow text-foreground"
-                  : "text-gray-500"
-              }`}
-            >
-              {value === "market"
-                ? t("trade.orderTypeMarket")
-                : t("trade.orderTypeLimit")}
-            </button>
-          ))}
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setSettingsOpen(true)}
-          className="p-2 rounded-lg text-gray-500 active:bg-gray-100 transition-colors"
-          aria-label={t("trade.ariaOrderSettings")}
-        >
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+      {/* Header */}
+      <header className="flex-none px-4 py-3 flex items-center justify-between bg-white border-b border-separator">
+        <div className="flex items-center gap-2">
+          <span className="text-lg font-bold text-foreground">{t("trade.newOrder")}</span>
+          <button
+            type="button"
+            className="flex items-center gap-1 px-2 py-1 rounded-full bg-surface"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-            />
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-            />
-          </svg>
-        </button>
+            <TokenIcon coin={baseToken} size={20} />
+            <span className="text-sm font-semibold text-foreground">{baseToken}</span>
+            <svg className="w-4 h-4 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        </div>
       </header>
 
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-6 flex flex-col items-center gap-5">
-        <div className="flex flex-col items-center">
-          <div className="text-6xl font-bold text-foreground tabular-nums tracking-tight">
-            {step === "amount"
-              ? `$${amountNum === 0 ? "0" : amount}`
-              : limitPriceNum === 0
-                ? "$0"
-                : `$${limitPrice}`}
-          </div>
-          {step === "amount" ? (
-            <div className="mt-2 text-center text-sm text-gray-400">
-              {balanceState === "ready" ? (
-                <>
-                  <div>
-                    {t("trade.availableMargin")}
-                    {availableMarginUsd.toLocaleString("en-US", {
-                      maximumFractionDigits: 2,
-                    })}
-                  </div>
-                  <div>
-                    {t("trade.maxSize")}
-                    {maxPositionUsd.toLocaleString("en-US", {
-                      maximumFractionDigits: 2,
-                    })}
-                    {t("trade.at")}
-                    {leverage}x
-                  </div>
-                </>
-              ) : balanceState === "loading" ? (
-                <div>{t("trade.loadingBalance")}</div>
-              ) : (
-                <div className="flex items-center justify-center gap-2">
-                  <span>{t("trade.balanceUnavailable")}</span>
-                  <button
-                    type="button"
-                    onClick={() => void refetchUserState()}
-                    className="rounded-full bg-surface px-3 py-1 text-xs font-semibold text-primary transition-colors active:bg-gray-100"
-                  >
-                    {t("common.retry")}
-                  </button>
-                </div>
-              )}
-              {selectedPerpMarket?.isHip3 ? (
-                <div>
-                  {t("trade.collateralAsset")}
-                  {collateralAsset}
-                </div>
-              ) : null}
+      {/* Buy/Sell Toggle */}
+      <div className="px-4 py-4 bg-white">
+        <div className="flex rounded-xl bg-surface p-1">
+          <button
+            type="button"
+            onClick={() => handleSideToggle("buy")}
+            className={`flex-1 py-3 rounded-lg text-center font-semibold transition-all ${
+              activeSide === "buy"
+                ? "bg-primary text-white shadow-sm"
+                : "text-muted"
+            }`}
+          >
+            <div className="text-xs uppercase tracking-wide mb-0.5 opacity-80">
+              {t("trade.goingLong")}
             </div>
-          ) : (
-            <div className="text-sm text-gray-400 mt-2">{t("trade.limitPrice")}</div>
-          )}
-          {step === "price" && (
-            <button
-              type="button"
-              onClick={() => {
-                setSubmitError(null);
-                setStep("amount");
-              }}
-              className="text-sm text-primary mt-2 active:opacity-60"
-            >
-              {t("trade.editAmount")}
-            </button>
-          )}
+            <div className="flex items-center justify-center gap-1">
+              {t("trade.buy")} <span className="text-lg">↑</span>
+            </div>
+            {activeSide === "buy" && (
+              <div className="text-[10px] mt-0.5 opacity-80">
+                {t("trade.profitWhenPriceRises")}
+              </div>
+            )}
+          </button>
+          <div className="w-px bg-separator mx-0.5" />
+          <button
+            type="button"
+            onClick={() => handleSideToggle("sell")}
+            className={`flex-1 py-3 rounded-lg text-center font-semibold transition-all ${
+              activeSide === "sell"
+                ? "bg-secondary text-white shadow-sm"
+                : "text-muted"
+            }`}
+          >
+            <div className="text-xs uppercase tracking-wide mb-0.5 opacity-80">
+              {t("trade.or")}
+            </div>
+            <div>{t("trade.sell")}</div>
+          </button>
         </div>
+      </div>
 
-        {step === "amount" && (
-          <div className="flex gap-2">
+      {/* Main Content */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
+        {/* Size Input */}
+        <div className="py-4 border-b border-separator">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-muted uppercase tracking-wide">
+              {t("trade.size")} · USD
+            </span>
+            <span className="text-xs text-muted font-mono">
+              {t("trade.availShort")} {availableMarginUsd.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="flex items-baseline gap-0.5">
+            <span className="text-[3rem] font-bold tracking-tight text-foreground font-mono">
+              ${amountParts.integer}
+            </span>
+            <span className="text-2xl font-bold tracking-tight text-foreground font-mono">
+              .{amountParts.decimal}
+            </span>
+          </div>
+          <div className="text-sm text-muted mt-1 font-mono">
+            ≈ {btcEquivalent} {baseToken}
+          </div>
+
+          {/* Quick Amount Buttons */}
+          <div className="flex gap-2 mt-4">
             {[
-              { label: t("trade.qf10"), pct: 0.1 },
-              { label: t("trade.qf25"), pct: 0.25 },
-              { label: t("trade.qf50"), pct: 0.5 },
-              { label: t("trade.qfMax"), pct: 1 },
-            ].map(({ label, pct }) => (
+              { label: "$100", value: 100 },
+              { label: "$500", value: 500 },
+              { label: "$1k", value: 1000 },
+              { label: "$5k", value: 5000 },
+            ].map(({ label, value }) => (
               <button
                 key={label}
                 type="button"
-                onClick={() => handleQuickFill(pct)}
-                className="px-3.5 py-1.5 rounded-full bg-surface text-sm font-medium text-gray-600 active:bg-gray-200 transition-colors"
+                onClick={() => handleQuickFill(value)}
+                className="flex-1 py-2.5 rounded-lg bg-surface text-sm font-semibold text-foreground transition-colors active:bg-gray-200"
               >
                 {label}
               </button>
             ))}
           </div>
-        )}
+        </div>
 
-        {isPerp && step === "amount" && (
-          <div className="w-full">
-            <div className="text-xs text-gray-400 mb-2 font-medium">
-              {t("trade.leverage")}
+        {/* Leverage Section */}
+        {isPerp && (
+          <div className="py-4 border-b border-separator">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-medium text-muted uppercase tracking-wide">
+                {t("trade.leverage")}
+              </span>
+              <span className="text-2xl font-bold text-foreground font-mono">
+                {leverage}×
+              </span>
             </div>
-            <div className="flex flex-wrap gap-2">
+            
+            {/* Leverage Slider */}
+            <div className="relative mb-3">
+              <input
+                type="range"
+                min={1}
+                max={maxLeverage}
+                value={leverage}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value, 10);
+                  haptics.selection();
+                  setLeverage(value);
+                }}
+                className="w-full h-2 bg-surface rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-md"
+              />
+            </div>
+
+            {/* Leverage Pills */}
+            <div className="flex gap-2">
               {leverageOptions.map((value) => (
                 <button
                   key={value}
                   type="button"
                   onClick={() => handleLeveragePill(value)}
-                  aria-pressed={leverage === value}
-                  className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
+                  className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
                     leverage === value
-                      ? "bg-primary text-white"
-                      : "bg-surface text-gray-600 active:bg-gray-200"
+                      ? "bg-secondary text-white"
+                      : "bg-surface text-muted"
                   }`}
                 >
-                  {value}x
+                  {value}×
                 </button>
               ))}
             </div>
           </div>
         )}
 
-        {isPerp && (
-          <button
-            type="button"
-            onClick={() => {
-              haptics.light();
-              setProtectionOpen(true);
-            }}
-            className="w-full rounded-[24px] border border-separator bg-white px-4 py-4 text-left shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 active:bg-surface"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-surface text-foreground"
-                    aria-hidden="true"
-                  >
-                    <svg
-                      className="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 3l7 4v5c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V7l7-4z"
-                      />
-                    </svg>
-                  </span>
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">
-                      {t("trade.protection")}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted">
-                      {orderType === "limit"
-                        ? t("trade.availableAfterFills")
-                        : protectionSummary.length > 0
-                          ? t("trade.reduceOnlySlTp")
-                          : t("trade.optionalSlTp")}
-                    </p>
-                  </div>
-                </div>
-
-                {protectionSummary.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {protectionSummary.map((label) => (
-                      <span
-                        key={label}
-                        className="rounded-full bg-surface px-3 py-1.5 text-xs font-semibold text-foreground tabular-nums"
-                      >
-                        {label}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <span className="text-sm font-semibold text-primary">
-                {protectionSummary.length > 0 ? t("common.edit") : t("common.add")}
-              </span>
-            </div>
-          </button>
-        )}
+        {/* Trade Stats */}
+        <div className="py-4 space-y-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted">{t("trade.liq")}</span>
+            <span className="font-semibold text-foreground font-mono">
+              {liquidationPx != null ? formatPrice(liquidationPx) : "—"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted">{t("trade.fee")}</span>
+            <span className="font-semibold text-foreground font-mono">
+              ${(amountNum * 0.0005).toFixed(2)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted">{t("trade.margin")}</span>
+            <span className="font-semibold text-foreground font-mono">
+              ${(amountNum / leverage).toFixed(2)}
+            </span>
+          </div>
+        </div>
       </div>
 
-      <div className="flex-none pb-1">
+      {/* NumPad */}
+      <div className="flex-none pb-1 bg-white">
         <NumPad
           value={step === "amount" ? amount : limitPrice}
           onChange={
@@ -755,127 +682,34 @@ export function TradePage() {
         />
       </div>
 
+      {/* Submit Button */}
       <div className="flex-none px-4 pt-2 pb-4 bottom-dock-safe bg-white border-t border-separator">
-        {orderType === "limit" && step === "amount" ? (
-          <button
-            type="button"
-            onClick={handlePrimaryAction}
-            disabled={isSubmitDisabled}
-            className="w-full py-4 rounded-xl font-semibold text-sm bg-primary text-white disabled:opacity-40 active:opacity-80 transition-opacity"
-          >
-            {t("trade.setPrice")}
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={handlePrimaryAction}
-            disabled={isSubmitDisabled}
-            className={`w-full py-4 rounded-xl font-semibold text-sm text-white disabled:opacity-40 active:opacity-80 transition-opacity ${
-              side === "buy" ? "bg-primary" : "bg-secondary"
-            }`}
-          >
-            {isPending
-              ? t("trade.placingOrder")
-              : ctaLabel}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={handlePrimaryAction}
+          disabled={isSubmitDisabled}
+          className={`w-full py-4 rounded-full font-semibold text-base text-white disabled:opacity-40 active:opacity-80 transition-opacity shadow-lg ${
+            activeSide === "buy"
+              ? "bg-primary shadow-primary/25"
+              : "bg-secondary shadow-secondary/25"
+          }`}
+        >
+          {isPending
+            ? t("trade.placingOrder")
+            : `${activeSide === "buy" ? t("common.long") : t("common.short")} ${baseToken} · ${leverage}× · $${amountNum.toLocaleString()}`}
+        </button>
 
-        {liquidationPx != null && (
-          <p className="text-xs text-center text-gray-400 mt-1.5">
-            {t("trade.liquidationAt")}{formatPrice(liquidationPx)}
-          </p>
-        )}
-        {isPerp && protectionEnabled && orderType === "limit" && (
-          <p className="mt-1.5 text-center text-xs text-amber-600">
-            {t("trade.addProtectionAfterFills")}
-          </p>
-        )}
         {validation.reason && !submitError && (
-          <p className="text-xs text-center text-amber-600 mt-1.5">
+          <p className="text-xs text-center text-amber-600 mt-2">
             {validation.reason}
           </p>
         )}
         {submitError && (
-          <p className="text-xs text-center text-negative mt-1.5">
+          <p className="text-xs text-center text-negative mt-2">
             {submitError}
           </p>
         )}
       </div>
-
-      {settingsOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col">
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setSettingsOpen(false)}
-            aria-label={t("trade.ariaCloseOrderSettings")}
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="order-settings-title"
-            className="relative mt-auto bg-white rounded-t-2xl px-4 pt-4 pb-8 animate-slide-up"
-          >
-            <div className="flex justify-center mb-5">
-              <div className="w-10 h-1 rounded-full bg-gray-300" />
-            </div>
-
-            <h3
-              id="order-settings-title"
-              className="text-base font-bold text-foreground mb-5"
-            >
-              {t("trade.orderSettings")}
-            </h3>
-
-            <div className="mb-3 text-sm font-medium text-gray-500">
-              {t("trade.timeInForce")}
-            </div>
-            <div className="flex gap-2 mb-6">
-              {(
-                [
-                  { key: "Gtc", label: t("trade.gtc"), desc: t("trade.goodTillCancelled") },
-                  { key: "Alo", label: t("trade.alo"), desc: t("trade.addLiquidityOnly") },
-                  { key: "Ioc", label: t("trade.ioc"), desc: t("trade.immediateOrCancel") },
-                ] as const
-              ).map(({ key, label, desc }) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => {
-                    setSubmitError(null);
-                    setTif(key);
-                    haptics.selection();
-                  }}
-                  aria-pressed={tif === key}
-                  className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
-                    tif === key
-                      ? "bg-primary text-white border-primary"
-                      : "bg-white text-gray-600 border-gray-200"
-                  }`}
-                >
-                  <div>{label}</div>
-                  <div
-                    className={`text-xs font-normal mt-0.5 ${tif === key ? "text-blue-100" : "text-gray-400"}`}
-                  >
-                    {desc}
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setSettingsOpen(false);
-                haptics.light();
-              }}
-              className="w-full py-3.5 rounded-xl bg-primary text-white font-semibold text-sm active:opacity-80 transition-opacity"
-            >
-              {t("trade.applyToTrade")}
-            </button>
-          </div>
-        </div>
-      )}
 
       <ProtectionSheet
         isOpen={protectionOpen}

@@ -22,12 +22,25 @@ const BalanceHeroChart = lazyNamedModule(
 const HERO_CHART_SLOT_CLASS = "min-h-[286px]";
 
 function formatUsd(value: number): string {
-  return new Intl.NumberFormat("en-US", {
+  const formatted = new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
+  return formatted;
+}
+
+function formatUsdParts(value: number): { integer: string; decimal: string } {
+  const formatted = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+  const parts = formatted.split(".");
+  return {
+    integer: parts[0] || "0",
+    decimal: parts[1] || "00",
+  };
 }
 
 function BalanceHeroChartFallback() {
@@ -41,15 +54,12 @@ function BalanceHeroChartFallback() {
 
 export function BalanceHeroSkeleton() {
   return (
-    <section className="border-b border-separator bg-white">
+    <section className="bg-white">
       <div className="px-4 pb-5 pt-5">
-        <div className="flex items-start justify-between gap-4 animate-pulse">
-          <div className="min-w-0 flex-1">
-            <div className="h-3 w-20 rounded bg-gray-200" />
-            <div className="mt-3 h-10 w-40 rounded bg-gray-200" />
-            <div className="mt-3 h-4 w-36 rounded bg-gray-100" />
-          </div>
-          <div className="h-11 w-[108px] rounded-full bg-gray-200" />
+        <div className="animate-pulse">
+          <div className="h-3 w-20 rounded bg-gray-200" />
+          <div className="mt-3 h-12 w-48 rounded bg-gray-200" />
+          <div className="mt-3 h-4 w-36 rounded bg-gray-100" />
         </div>
 
         <div className={`mt-5 ${HERO_CHART_SLOT_CLASS}`}>
@@ -91,51 +101,54 @@ export function BalanceHero() {
     isError: userStateError,
   });
 
+  const totalValueParts = formatUsdParts(valueState.state === "ready" ? (valueState.totalValue ?? 0) : 0);
+  const dailyChange = valueState.state === "ready" ? (valueState.dailyChange ?? 0) : 0;
+  const dailyChangePercent = valueState.state === "ready" ? (valueState.dailyChangePercent ?? 0) : 0;
+  const isPositive = dailyChange >= 0;
+
   return (
-    <section className="border-b border-separator bg-white">
+    <section className="bg-white">
       <div className="px-4 pb-5 pt-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-gray-400">
-              {t("balanceHero.totalEquity")}
+        <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted">
+          {t("balanceHero.totalEquity")}
+        </p>
+        
+        {valueState.state === "ready" ? (
+          <>
+            <p className="mt-2 flex items-baseline gap-0.5">
+              <span className="text-[2.75rem] font-bold tracking-tight text-foreground font-mono">
+                ${totalValueParts.integer}
+              </span>
+              <span className="text-2xl font-bold tracking-tight text-foreground font-mono">
+                .{totalValueParts.decimal}
+              </span>
             </p>
-            {valueState.state === "ready" ? (
-              <>
-                <p className="mt-2 text-4xl font-bold tracking-tight text-foreground">
-                  {formatUsd(valueState.totalValue ?? 0)}
-                </p>
-                <p className="mt-3 text-sm text-gray-400">
-                  {t("balanceHero.availableForTrading", {
-                    amount: formatUsd(valueState.availableValue ?? 0),
-                  })}
-                </p>
-              </>
-            ) : valueState.state === "loading" ? (
-              <>
-                <div className="mt-2 h-10 w-40 animate-pulse rounded bg-gray-200" />
-                <div className="mt-3 h-4 w-40 animate-pulse rounded bg-gray-100" />
-              </>
-            ) : (
-              <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-gray-400">
-                <span>{t("balanceHero.balanceUnavailable")}</span>
-                <button
-                  type="button"
-                  onClick={() => void refetchUserState()}
-                  className="font-semibold text-primary transition-colors active:text-primary-dark"
-                >
-                  {t("common.retry")}
-                </button>
-              </div>
-            )}
+            <p className={`mt-2 text-sm font-medium ${isPositive ? 'text-positive' : 'text-negative'}`}>
+              <span className="font-mono">
+                {isPositive ? '+' : ''}{formatUsd(dailyChange)}
+              </span>
+              <span className="ml-1">
+                {isPositive ? '+' : ''}{dailyChangePercent.toFixed(2)}% {t("balanceHero.today")}
+              </span>
+            </p>
+          </>
+        ) : valueState.state === "loading" ? (
+          <>
+            <div className="mt-2 h-12 w-48 animate-pulse rounded bg-gray-200" />
+            <div className="mt-3 h-4 w-40 animate-pulse rounded bg-gray-100" />
+          </>
+        ) : (
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-muted">
+            <span>{t("balanceHero.balanceUnavailable")}</span>
+            <button
+              type="button"
+              onClick={() => void refetchUserState()}
+              className="font-semibold text-primary transition-colors active:text-primary-dark"
+            >
+              {t("common.retry")}
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => navigate("/account/deposit")}
-            className="flex-shrink-0 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-white transition-colors active:bg-primary-dark"
-          >
-            {t("balanceHero.deposit")}
-          </button>
-        </div>
+        )}
 
         <div className={`mt-5 ${HERO_CHART_SLOT_CLASS}`}>
           {showDeferredChart ? (
@@ -146,6 +159,25 @@ export function BalanceHero() {
             <BalanceHeroChartFallback />
           )}
         </div>
+
+        {/* Action buttons */}
+        <div className="mt-5 flex gap-3">
+          <button
+            type="button"
+            onClick={() => navigate("/account/deposit")}
+            className="flex-1 rounded-full bg-secondary py-3.5 text-sm font-semibold text-white transition-opacity active:opacity-80"
+          >
+            {t("account.deposit")}
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate("/account/withdraw")}
+            className="flex-1 rounded-full border border-separator bg-white py-3.5 text-sm font-semibold text-foreground transition-colors active:bg-gray-50"
+          >
+            {t("account.withdraw")}
+          </button>
+        </div>
+
         {userState?.shouldPromptRestoreUnified ? <UnifiedAccountBanner /> : null}
       </div>
     </section>

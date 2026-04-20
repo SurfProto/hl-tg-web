@@ -184,7 +184,19 @@ export function HomePage() {
     <div className="min-h-full bg-background">
       <BalanceHero />
 
-      <div className="px-4 pt-5 mb-2">
+      {/* Markets Section Header */}
+      <div className="px-4 pt-6 pb-3 flex items-center justify-between">
+        <h2 className="text-lg font-bold text-foreground">{t("nav.markets")}</h2>
+        <button
+          type="button"
+          onClick={() => setAllMarketsOpen(true)}
+          className="text-sm font-semibold text-muted uppercase tracking-wide"
+        >
+          {t("home.seeAll")}
+        </button>
+      </div>
+
+      <div className="px-4 mb-3">
         <CategoryPills
           categories={visibleCategories}
           labels={CATEGORY_LABELS}
@@ -194,14 +206,14 @@ export function HomePage() {
       </div>
 
       {subFilters && (
-        <div className="px-4 mb-3 flex gap-2 overflow-x-auto no-scrollbar">
+        <div className="px-4 mb-3 flex gap-2 overflow-x-auto scrollbar-hide">
           <button
             type="button"
             onClick={() => setSelectedSubCategory(null)}
-            className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
               selectedSubCategory === null
-                ? "bg-foreground text-white"
-                : "bg-surface text-gray-500"
+                ? "bg-secondary text-white"
+                : "bg-surface text-muted"
             }`}
           >
             {t("common.all")}
@@ -211,10 +223,10 @@ export function HomePage() {
               key={key}
               type="button"
               onClick={() => setSelectedSubCategory(key)}
-              className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                 selectedSubCategory === key
-                  ? "bg-foreground text-white"
-                  : "bg-surface text-gray-500"
+                  ? "bg-secondary text-white"
+                  : "bg-surface text-muted"
               }`}
             >
               {label}
@@ -232,19 +244,19 @@ export function HomePage() {
           </div>
         ) : homeMarketViewState === "error" ? (
           <div className="px-4 py-16 text-center">
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-muted">
               {t("home.marketDataUnavailable")}
             </p>
             <button
               type="button"
               onClick={() => void refetchMarkets()}
-              className="mt-4 rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white transition-colors active:bg-primary-dark"
+              className="mt-4 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white transition-colors active:bg-primary-dark"
             >
               {t("common.retry")}
             </button>
           </div>
         ) : homeMarketViewState === "empty" || sortedFiltered.length === 0 ? (
-          <div className="py-16 text-center text-gray-400 text-sm">
+          <div className="py-16 text-center text-muted text-sm">
             {t("home.noMarkets")}
           </div>
         ) : (
@@ -281,31 +293,6 @@ export function HomePage() {
                 />
               );
             })}
-            {sortedFiltered.length > HOME_ROW_COUNT && (
-              <button
-                type="button"
-                onClick={() => setAllMarketsOpen(true)}
-                className="w-full flex items-center justify-between px-4 py-3.5 bg-white active:bg-gray-50 transition-colors"
-              >
-                <span className="text-sm font-medium text-primary">
-                  {t("home.seeAllMarkets", { count: sortedFiltered.length })}
-                </span>
-                <svg
-                  className="w-4 h-4 text-primary"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-              </button>
-            )}
           </div>
         )}
       </div>

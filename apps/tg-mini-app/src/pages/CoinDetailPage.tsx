@@ -26,6 +26,22 @@ function formatPrice(price: number): string {
   return `$${price.toFixed(6)}`;
 }
 
+function formatPriceParts(price: number): { integer: string; decimal: string } {
+  if (price >= 1000) {
+    const formatted = price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const parts = formatted.split('.');
+    return { integer: parts[0] || '0', decimal: parts[1] || '00' };
+  }
+  if (price >= 1) {
+    const formatted = price.toFixed(4);
+    const parts = formatted.split('.');
+    return { integer: parts[0] || '0', decimal: parts[1] || '0000' };
+  }
+  const formatted = price.toFixed(6);
+  const parts = formatted.split('.');
+  return { integer: parts[0] || '0', decimal: parts[1] || '000000' };
+}
+
 function formatVolume(vol: number): string {
   if (vol >= 1_000_000_000) return `$${(vol / 1_000_000_000).toFixed(2)}B`;
   if (vol >= 1_000_000) return `$${(vol / 1_000_000).toFixed(2)}M`;
@@ -34,7 +50,7 @@ function formatVolume(vol: number): string {
 }
 
 function formatFunding(rate: number): string {
-  return `${(rate * 100).toFixed(4)}%`;
+  return `${rate >= 0 ? '+' : ''}${(rate * 100).toFixed(4)}%`;
 }
 
 function formatTooltipTimestamp(candle: Candle, interval: string): string {
@@ -145,37 +161,66 @@ export function CoinDetailPage() {
     };
   }, [activeInspection]);
 
+  const priceParts = price != null ? formatPriceParts(price) : { integer: '0', decimal: '00' };
+  const maxLeverage = selectedMarket?.type === 'perp' ? selectedMarket.maxLeverage : null;
+
   return (
     <div className="min-h-full bg-background page-above-bottom-dock">
+      {/* Header with token info */}
       <div className="px-4 pt-5 pb-3 flex items-center gap-3">
-        <div className="rounded-2xl bg-white p-1.5 shadow-sm ring-1 ring-black/[0.04]">
-          <TokenIcon coin={baseToken} size={36} />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-lg font-bold tracking-tight text-foreground">
-            {displayName}
-          </span>
-          <span className="rounded-full bg-gray-100 px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-gray-500">
-            {isPerp ? t('coinDetail.perp') : t('coinDetail.spot')}
-          </span>
+        <TokenIcon coin={baseToken} size={40} />
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-xl font-bold tracking-tight text-foreground">
+              {displayName}
+            </span>
+            <button
+              type="button"
+              className="p-1 text-muted"
+              aria-label="Favorite"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-xs text-muted uppercase tracking-wide">
+              {isPerp ? t('coinDetail.perpLabel') : t('coinDetail.spot')}
+            </span>
+            {maxLeverage && (
+              <>
+                <span className="text-muted">·</span>
+                <span className="text-xs text-muted">{maxLeverage}x MAX</span>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="px-4 pb-5">
+      {/* Price display */}
+      <div className="px-4 pb-4">
         {priceState === 'ready' ? (
           <>
-            <div className="text-[2.35rem] font-bold tracking-tight text-foreground tabular-nums">
-              {formatPrice(price!)}
+            <div className="flex items-baseline gap-0.5">
+              <span className="text-[2.75rem] font-bold tracking-tight text-foreground font-mono">
+                ${priceParts.integer}
+              </span>
+              <span className="text-2xl font-bold tracking-tight text-foreground font-mono">
+                .{priceParts.decimal}
+              </span>
             </div>
-            <div className={`mt-2 text-sm font-semibold ${isPositive ? 'text-positive' : 'text-negative'}`}>
-              {isPositive ? '+' : ''}
-              {change24h.toFixed(2)}%
-              <span className="ml-1 font-medium text-gray-400">{t('coinDetail.pastDay')}</span>
+            <div className={`mt-1 flex items-center gap-2 text-sm font-medium ${isPositive ? 'text-positive' : 'text-negative'}`}>
+              <svg className={`w-4 h-4 ${isPositive ? '' : 'rotate-180'}`} fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+              </svg>
+              <span className="font-mono">{isPositive ? '+' : ''}{change24h.toFixed(2)}%</span>
+              <span className="text-muted font-normal">24h</span>
             </div>
           </>
         ) : priceState === 'loading' ? (
-          <div className="flex items-center gap-2 text-sm font-medium text-gray-400">
-            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-gray-200 border-t-primary" />
+          <div className="flex items-center gap-2 text-sm font-medium text-muted">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-primary" />
             {t('coinDetail.loadingMarketPrice')}
           </div>
         ) : (
@@ -194,6 +239,7 @@ export function CoinDetailPage() {
         )}
       </div>
 
+      {/* Chart */}
       <div className="px-4 pb-5">
         <div className="relative">
           <Chart
@@ -214,10 +260,11 @@ export function CoinDetailPage() {
               });
             }}
             ranges={[
-              { key: '15m', label: '15M' },
+              { key: '15m', label: '15m' },
               { key: '1h', label: '1H' },
               { key: '4h', label: '4H' },
-              { key: '1d', label: '24H' },
+              { key: '1d', label: '1D' },
+              { key: '1w', label: '1W' },
             ]}
             showFooterStats={false}
             heightClassName="h-[248px]"
@@ -225,34 +272,34 @@ export function CoinDetailPage() {
 
           {inspectionTooltip && (
             <div
-              className="pointer-events-none absolute z-20 w-[184px] -translate-x-1/2 -translate-y-full rounded-[22px] border border-white/75 bg-white/95 px-3.5 py-3 shadow-[0_16px_40px_rgba(15,23,42,0.16)] backdrop-blur-sm"
+              className="pointer-events-none absolute z-20 w-[184px] -translate-x-1/2 -translate-y-full rounded-2xl border border-separator bg-white px-3.5 py-3 shadow-lg"
               style={{
                 left: `${inspectionTooltip.left}px`,
                 top: `${inspectionTooltip.top}px`,
               }}
             >
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
                 {formatTooltipTimestamp(inspectionTooltip.candle, interval)}
               </div>
-              <div className="mt-1 text-lg font-bold tracking-tight text-foreground tabular-nums">
+              <div className="mt-1 text-lg font-bold tracking-tight text-foreground font-mono tabular-nums">
                 {formatPrice(inspectionTooltip.candle.c)}
               </div>
               <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] font-medium tabular-nums">
-                <div className="flex items-center justify-between gap-2 text-gray-500">
+                <div className="flex items-center justify-between gap-2 text-muted">
                   <span>{t('coinDetail.open')}</span>
-                  <span className="text-foreground">{formatPrice(inspectionTooltip.candle.o)}</span>
+                  <span className="text-foreground font-mono">{formatPrice(inspectionTooltip.candle.o)}</span>
                 </div>
-                <div className="flex items-center justify-between gap-2 text-gray-500">
+                <div className="flex items-center justify-between gap-2 text-muted">
                   <span>{t('coinDetail.high')}</span>
-                  <span className="text-positive">{formatPrice(inspectionTooltip.candle.h)}</span>
+                  <span className="text-positive font-mono">{formatPrice(inspectionTooltip.candle.h)}</span>
                 </div>
-                <div className="flex items-center justify-between gap-2 text-gray-500">
+                <div className="flex items-center justify-between gap-2 text-muted">
                   <span>{t('coinDetail.low')}</span>
-                  <span className="text-negative">{formatPrice(inspectionTooltip.candle.l)}</span>
+                  <span className="text-negative font-mono">{formatPrice(inspectionTooltip.candle.l)}</span>
                 </div>
-                <div className="flex items-center justify-between gap-2 text-gray-500">
+                <div className="flex items-center justify-between gap-2 text-muted">
                   <span>{t('coinDetail.vol')}</span>
-                  <span className="text-foreground">{formatVolume(inspectionTooltip.candle.v)}</span>
+                  <span className="text-foreground font-mono">{formatVolume(inspectionTooltip.candle.v)}</span>
                 </div>
               </div>
             </div>
@@ -260,21 +307,11 @@ export function CoinDetailPage() {
         </div>
       </div>
 
+      {/* Stats Card */}
       <div className="px-4 pb-4">
-        <div className="overflow-hidden rounded-[24px] border border-black/[0.05] bg-white/90 px-5 py-2 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
+        <div className="overflow-hidden rounded-2xl border border-separator bg-white px-4 py-1">
           {isPerp ? (
             <>
-              <StatRow
-                label={t('coinDetail.change24h')}
-                value={
-                  statsState === 'ready'
-                    ? `${isPositive ? '+' : ''}${change24h.toFixed(2)}%`
-                    : statsState === 'loading'
-                      ? t('common.loading')
-                      : t('coinDetail.marketStatsUnavailable')
-                }
-                valueColor={isPositive ? 'positive' : 'negative'}
-              />
               <StatRow
                 label={t('coinDetail.volume24h')}
                 value={
@@ -284,6 +321,7 @@ export function CoinDetailPage() {
                       ? t('common.loading')
                       : t('coinDetail.marketStatsUnavailable')
                 }
+                mono
               />
               <StatRow
                 label={t('coinDetail.openInterest')}
@@ -294,6 +332,7 @@ export function CoinDetailPage() {
                       ? t('common.loading')
                       : t('coinDetail.marketStatsUnavailable')
                 }
+                mono
               />
               <StatRow
                 label={t('coinDetail.fundingRate')}
@@ -304,6 +343,14 @@ export function CoinDetailPage() {
                       ? t('common.loading')
                       : t('coinDetail.marketStatsUnavailable')
                 }
+                valueColor={assetCtx?.funding && assetCtx.funding >= 0 ? 'positive' : 'negative'}
+                mono
+              />
+              <StatRow
+                label={t('coinDetail.markPrice')}
+                value={priceState === 'ready' ? formatPrice(price!) : t('common.loading')}
+                mono
+                noBorder
               />
             </>
           ) : (
@@ -311,12 +358,14 @@ export function CoinDetailPage() {
               <StatRow
                 label={t('coinDetail.holdings')}
                 value={holdings != null ? `${holdings.toFixed(4)} ${baseToken}` : '\u2014'}
+                mono
               />
               <StatRow
                 label={t('coinDetail.holdingsValue')}
                 value={holdings != null && priceState === 'ready' ? formatVolume(holdings * price!) : '\u2014'}
+                mono
               />
-              <StatRow label={t('coinDetail.marketCap')} value="$0" />
+              <StatRow label={t('coinDetail.marketCap')} value="$0" mono />
               <StatRow
                 label={t('coinDetail.volume24h')}
                 value={
@@ -326,28 +375,31 @@ export function CoinDetailPage() {
                       ? t('common.loading')
                       : t('coinDetail.marketStatsUnavailable')
                 }
+                mono
+                noBorder
               />
             </>
           )}
         </div>
       </div>
 
+      {/* Bottom Action Buttons */}
       <div className="fixed bottom-0 left-0 right-0 flex gap-3 border-t border-separator bg-white px-4 py-3 bottom-dock-safe">
         {isPerp ? (
           <>
             <button
               type="button"
               onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=short`)}
-              className="flex-1 rounded-full bg-[#111827] py-3.5 font-semibold text-white shadow-[0_12px_24px_rgba(17,24,39,0.18)] transition-opacity active:opacity-80"
+              className="flex-1 rounded-full border-2 border-negative py-3.5 font-semibold text-negative transition-colors active:bg-red-50"
             >
-              {t('coinDetail.shortButton')}
+              {t('coinDetail.shortButton')} ↓
             </button>
             <button
               type="button"
               onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=long`)}
-              className="flex-1 rounded-full bg-primary py-3.5 font-semibold text-white shadow-[0_12px_24px_rgba(59,130,246,0.2)] transition-opacity active:opacity-80"
+              className="flex-1 rounded-full bg-primary py-3.5 font-semibold text-white shadow-[0_8px_20px_rgba(0,192,118,0.25)] transition-opacity active:opacity-80"
             >
-              {t('coinDetail.longButton')}
+              {t('coinDetail.longButton')} ↑
             </button>
           </>
         ) : (
@@ -355,14 +407,14 @@ export function CoinDetailPage() {
             <button
               type="button"
               onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=sell`)}
-              className="flex-1 rounded-full bg-[#111827] py-3.5 font-semibold text-white shadow-[0_12px_24px_rgba(17,24,39,0.18)] transition-opacity active:opacity-80"
+              className="flex-1 rounded-full border-2 border-secondary py-3.5 font-semibold text-secondary transition-colors active:bg-gray-50"
             >
               {t('coinDetail.sellButton')}
             </button>
             <button
               type="button"
               onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=buy`)}
-              className="flex-1 rounded-full bg-primary py-3.5 font-semibold text-white shadow-[0_12px_24px_rgba(59,130,246,0.2)] transition-opacity active:opacity-80"
+              className="flex-1 rounded-full bg-primary py-3.5 font-semibold text-white shadow-[0_8px_20px_rgba(0,192,118,0.25)] transition-opacity active:opacity-80"
             >
               {t('coinDetail.buyButton')}
             </button>

@@ -1,5 +1,11 @@
 import type { AccountState } from "@repo/types";
 
+export interface BalanceHeroValueState {
+  state: "loading" | "error" | "ready";
+  totalValue: number | null;
+  availableValue: number | null;
+}
+
 export function getBalanceHeroValueState({
   userState,
   isLoading,
@@ -8,11 +14,7 @@ export function getBalanceHeroValueState({
   userState: AccountState | undefined;
   isLoading: boolean;
   isError: boolean;
-}): {
-  state: "loading" | "error" | "ready";
-  totalValue: number | null;
-  availableValue: number | null;
-} {
+}): BalanceHeroValueState {
   if (isLoading) {
     return {
       state: "loading",
@@ -33,5 +35,12 @@ export function getBalanceHeroValueState({
     state: "ready",
     totalValue: userState?.marginSummary?.accountValue ?? 0,
     availableValue: userState?.availableBalance ?? 0,
+  };
+}
+
+export function getBalanceHeroDisplayState(valueState: BalanceHeroValueState) {
+  return {
+    highlightValue: valueState.totalValue ?? 0,
+    availableValue: valueState.availableValue ?? 0,
   };
 }

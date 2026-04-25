@@ -18,8 +18,8 @@ export function StatRow({ label, value, valueColor = 'neutral', mono = false, no
   const borderClass = noBorder ? '' : 'border-b border-separator';
 
   return (
-    <div className={`flex items-center justify-between py-3.5 ${borderClass}`}>
-      <span className="min-w-0 truncate mr-2 text-sm text-muted">{label}</span>
+    <div className={`flex items-center justify-between py-4 ${borderClass}`}>
+      <span className="editorial-stat-label min-w-0 truncate pr-3">{label}</span>
       <span className={`flex-shrink-0 text-right text-sm font-semibold ${valueClass} ${fontClass}`}>{value}</span>
     </div>
   );

@@ -5,21 +5,23 @@
 :root {
   /* Hyperliquid Light Theme — Hybrid Design System */
   --color-background: #ffffff;
-  --color-surface: #f5f5f5;
+  --color-surface: #f6f7fb;
   --color-card: #ffffff;
-  --color-primary: #00C076;
-  --color-primary-dark: #00a065;
+  --color-primary: #4e7bff;
+  --color-primary-dark: #365fe0;
+  --color-primary-soft: #eef3ff;
+  --color-primary-soft-strong: #dde7ff;
   --color-secondary: #111827;
   --color-destructive: #dc2626;
   --color-text-primary: #111827;
-  --color-text-secondary: #6b7280;
-  --color-text-muted: #9ca3af;
-  --color-separator: #f0f0f0;
-  --color-border: #e5e7eb;
+  --color-text-secondary: #677286;
+  --color-text-muted: #9aa3b2;
+  --color-separator: #ece8e1;
+  --color-border: #e7e4dd;
   --color-positive: #00C076;
   --color-negative: #dc2626;
-  --color-nav-active: #111827;
-  --color-nav-inactive: #9ca3af;
+  --color-nav-active: #4e7bff;
+  --color-nav-inactive: #a0a8b6;
   --chart-lite-positive-bg: #e6f9f1;
   --chart-lite-negative-bg: #fceaea;
   --chart-lite-neutral-bg: #f0fdf4;
@@ -31,16 +33,17 @@
 
   /* Font families */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Cormorant Garamond', Georgia, serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
 
   /* Override Telegram theme vars to force light */
   --tg-bg-color: #ffffff;
   --tg-text-color: #111827;
-  --tg-hint-color: #6b7280;
-  --tg-link-color: #00C076;
-  --tg-button-color: #00C076;
+  --tg-hint-color: #677286;
+  --tg-link-color: #4e7bff;
+  --tg-button-color: #4e7bff;
   --tg-button-text-color: #ffffff;
-  --tg-secondary-bg-color: #f5f5f5;
+  --tg-secondary-bg-color: #f6f7fb;
   --tg-viewport-height: 100dvh;
 }
 
@@ -58,6 +61,9 @@ body {
 
 body {
   font-family: var(--font-sans);
+  background:
+    radial-gradient(circle at top center, rgba(78, 123, 255, 0.1), transparent 28%),
+    linear-gradient(180deg, #fffdf9 0%, #fafbff 48%, #f7f8fc 100%);
   background-color: var(--color-background);
   color: var(--color-text-primary);
   -webkit-font-smoothing: antialiased;
@@ -74,6 +80,10 @@ body {
 .font-mono-numbers {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+}
+
+.font-display {
+  font-family: var(--font-display);
 }
 
 /* Telegram Mini App specific styles */
@@ -256,4 +266,111 @@ body {
   background: var(--chart-lite-pill-bg);
   box-shadow: var(--chart-lite-pill-shadow);
   backdrop-filter: blur(14px);
+}
+
+@layer components {
+  .editorial-page {
+    @apply min-h-full text-foreground;
+  }
+
+  .editorial-shell {
+    @apply px-4 pb-6 pt-5;
+  }
+
+  .editorial-title {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 5.8vw, 2.65rem);
+    line-height: 0.95;
+    letter-spacing: -0.04em;
+  }
+
+  .editorial-heading {
+    font-family: var(--font-display);
+    font-size: 2rem;
+    line-height: 1;
+    letter-spacing: -0.035em;
+  }
+
+  .editorial-section-title {
+    font-family: var(--font-display);
+    font-size: 1.75rem;
+    line-height: 1;
+    letter-spacing: -0.035em;
+  }
+
+  .editorial-kicker {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  .editorial-mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .editorial-card {
+    @apply rounded-[28px] border bg-white;
+    border-color: var(--color-border);
+    box-shadow: 0 20px 48px rgba(15, 23, 42, 0.06);
+  }
+
+  .editorial-card-soft {
+    @apply rounded-[24px] border bg-white/90 backdrop-blur-sm;
+    border-color: rgba(231, 228, 221, 0.9);
+    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.04);
+  }
+
+  .editorial-chip {
+    @apply rounded-full border px-3 py-2 text-[11px] font-medium transition-colors;
+    border-color: transparent;
+    background: rgba(17, 24, 39, 0.04);
+    color: var(--color-text-secondary);
+  }
+
+  .editorial-chip-active {
+    background: var(--color-primary);
+    color: white;
+    box-shadow: 0 10px 24px rgba(78, 123, 255, 0.22);
+  }
+
+  .editorial-button-primary {
+    @apply rounded-full px-5 py-3.5 text-sm font-semibold text-white transition-colors;
+    background: var(--color-primary);
+    box-shadow: 0 16px 32px rgba(78, 123, 255, 0.22);
+  }
+
+  .editorial-button-primary:active {
+    background: var(--color-primary-dark);
+  }
+
+  .editorial-button-secondary {
+    @apply rounded-full border px-5 py-3.5 text-sm font-semibold transition-colors;
+    border-color: var(--color-border);
+    background: rgba(255, 255, 255, 0.94);
+    color: var(--color-text-primary);
+  }
+
+  .editorial-button-secondary:active {
+    background: var(--color-surface);
+  }
+
+  .editorial-button-ghost {
+    @apply rounded-full px-3 py-1.5 text-sm font-semibold transition-colors;
+    background: var(--color-primary-soft);
+    color: var(--color-primary);
+  }
+
+  .editorial-stat-label {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
 }

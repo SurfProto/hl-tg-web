@@ -295,6 +295,7 @@
     "accountSettings": "Account settings",
     "availableEquity": "Available Equity",
     "availableBalance": "Available Balance",
+    "withdrawableBalance": "Withdrawable",
     "accountValue": "Account value",
     "readyToTrade": "Ready to trade",
     "openSettings": "Open account settings",

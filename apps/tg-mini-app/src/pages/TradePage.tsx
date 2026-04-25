@@ -496,17 +496,20 @@ export function TradePage() {
   const btcEquivalent = currentPrice ? (amountNum / currentPrice).toFixed(4) : "0.0000";
 
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div className="editorial-page flex h-full flex-col">
       {/* Header */}
-      <header className="flex-none px-4 py-3 flex items-center justify-between bg-white border-b border-separator">
-        <div className="flex items-center gap-2">
-          <span className="text-lg font-bold text-foreground">{t("trade.newOrder")}</span>
+      <header className="flex-none px-4 pb-3 pt-5">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <p className="editorial-kicker">{t("trade.newOrder")}</p>
+            <span className="editorial-section-title text-foreground">{t("trade.newOrder")}</span>
+          </div>
           <button
             type="button"
-            className="flex items-center gap-1 px-2 py-1 rounded-full bg-surface"
+            className="flex items-center gap-1 rounded-full border border-border bg-white px-3 py-2"
           >
             <TokenIcon coin={baseToken} size={20} />
-            <span className="text-sm font-semibold text-foreground">{baseToken}</span>
+            <span className="editorial-mono text-sm font-semibold text-foreground">{baseToken}</span>
             <svg className="w-4 h-4 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
@@ -515,43 +518,42 @@ export function TradePage() {
       </header>
 
       {/* Buy/Sell Toggle */}
-      <div className="px-4 py-4 bg-white">
-        <div className="flex rounded-xl bg-surface p-1">
+      <div className="px-4 pb-4">
+        <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
             onClick={() => handleSideToggle("buy")}
-            className={`flex-1 py-3 rounded-lg text-center font-semibold transition-all ${
+            className={`rounded-[24px] border p-4 text-left transition-all ${
               activeSide === "buy"
-                ? "bg-primary text-white shadow-sm"
-                : "text-muted"
+                ? "border-primary bg-primary text-white shadow-[0_18px_36px_rgba(78,123,255,0.24)]"
+                : "border-border bg-white text-muted"
             }`}
           >
-            <div className="text-xs uppercase tracking-wide mb-0.5 opacity-80">
+            <div className="editorial-kicker mb-2 opacity-80">
               {t("trade.goingLong")}
             </div>
-            <div className="flex items-center justify-center gap-1">
+            <div className="editorial-mono flex items-center gap-1 text-[2rem] font-semibold leading-none">
               {t("trade.buy")} <span className="text-lg">↑</span>
             </div>
             {activeSide === "buy" && (
-              <div className="text-[10px] mt-0.5 opacity-80">
+              <div className="mt-2 text-[10px] opacity-80">
                 {t("trade.profitWhenPriceRises")}
               </div>
             )}
           </button>
-          <div className="w-px bg-separator mx-0.5" />
           <button
             type="button"
             onClick={() => handleSideToggle("sell")}
-            className={`flex-1 py-3 rounded-lg text-center font-semibold transition-all ${
+            className={`rounded-[24px] border p-4 text-left transition-all ${
               activeSide === "sell"
-                ? "bg-secondary text-white shadow-sm"
-                : "text-muted"
+                ? "border-[#10161f] bg-[#10161f] text-white shadow-[0_18px_36px_rgba(15,23,42,0.2)]"
+                : "border-border bg-white text-muted"
             }`}
           >
-            <div className="text-xs uppercase tracking-wide mb-0.5 opacity-80">
+            <div className="editorial-kicker mb-2 opacity-80">
               {t("trade.or")}
             </div>
-            <div>{t("trade.sell")}</div>
+            <div className="editorial-mono text-[2rem] font-semibold leading-none">{t("trade.sell")}</div>
           </button>
         </div>
       </div>
@@ -559,24 +561,24 @@ export function TradePage() {
       {/* Main Content */}
       <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
         {/* Size Input */}
-        <div className="py-4 border-b border-separator">
+        <div className="editorial-card p-5">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-muted uppercase tracking-wide">
+            <span className="editorial-stat-label">
               {t("trade.size")} · USD
             </span>
-            <span className="text-xs text-muted font-mono">
+            <span className="editorial-mono text-xs text-muted">
               {t("trade.availShort")} {availableMarginUsd.toLocaleString("en-US", { maximumFractionDigits: 2 })}
             </span>
           </div>
           <div className="flex items-baseline gap-0.5">
-            <span className="text-[3rem] font-bold tracking-tight text-foreground font-mono">
+            <span className="editorial-mono text-[3rem] font-semibold tracking-[-0.06em] text-foreground">
               ${amountParts.integer}
             </span>
-            <span className="text-2xl font-bold tracking-tight text-foreground font-mono">
+            <span className="editorial-mono text-2xl font-semibold tracking-[-0.05em] text-foreground">
               .{amountParts.decimal}
             </span>
           </div>
-          <div className="text-sm text-muted mt-1 font-mono">
+          <div className="editorial-mono mt-1 text-sm text-muted">
             ≈ {btcEquivalent} {baseToken}
           </div>
 
@@ -592,7 +594,7 @@ export function TradePage() {
                 key={label}
                 type="button"
                 onClick={() => handleQuickFill(value)}
-                className="flex-1 py-2.5 rounded-lg bg-surface text-sm font-semibold text-foreground transition-colors active:bg-gray-200"
+                className="flex-1 rounded-[18px] border border-border bg-[var(--color-primary-soft)] py-2.5 text-sm font-semibold text-foreground transition-colors active:bg-[var(--color-primary-soft-strong)]"
               >
                 {label}
               </button>
@@ -602,12 +604,12 @@ export function TradePage() {
 
         {/* Leverage Section */}
         {isPerp && (
-          <div className="py-4 border-b border-separator">
+          <div className="editorial-card mt-4 p-5">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-medium text-muted uppercase tracking-wide">
+              <span className="editorial-stat-label">
                 {t("trade.leverage")}
               </span>
-              <span className="text-2xl font-bold text-foreground font-mono">
+              <span className="editorial-mono text-[2rem] font-semibold text-foreground">
                 {leverage}×
               </span>
             </div>
@@ -635,10 +637,10 @@ export function TradePage() {
                   key={value}
                   type="button"
                   onClick={() => handleLeveragePill(value)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+                  className={`editorial-chip rounded-[14px] px-3 py-1.5 ${
                     leverage === value
-                      ? "bg-secondary text-white"
-                      : "bg-surface text-muted"
+                      ? "editorial-chip-active"
+                      : ""
                   }`}
                 >
                   {value}×
@@ -649,22 +651,22 @@ export function TradePage() {
         )}
 
         {/* Trade Stats */}
-        <div className="py-4 space-y-3">
+        <div className="editorial-card mt-4 space-y-3 p-5">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted">{t("trade.liq")}</span>
-            <span className="font-semibold text-foreground font-mono">
+            <span className="editorial-stat-label">{t("trade.liq")}</span>
+            <span className="editorial-mono font-semibold text-foreground">
               {liquidationPx != null ? formatPrice(liquidationPx) : "—"}
             </span>
           </div>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted">{t("trade.fee")}</span>
-            <span className="font-semibold text-foreground font-mono">
+            <span className="editorial-stat-label">{t("trade.fee")}</span>
+            <span className="editorial-mono font-semibold text-foreground">
               ${(amountNum * 0.0005).toFixed(2)}
             </span>
           </div>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted">{t("trade.margin")}</span>
-            <span className="font-semibold text-foreground font-mono">
+            <span className="editorial-stat-label">{t("trade.margin")}</span>
+            <span className="editorial-mono font-semibold text-foreground">
               ${(amountNum / leverage).toFixed(2)}
             </span>
           </div>
@@ -672,7 +674,7 @@ export function TradePage() {
       </div>
 
       {/* NumPad */}
-      <div className="flex-none pb-1 bg-white">
+      <div className="flex-none bg-white/92 pb-1 backdrop-blur-md">
         <NumPad
           value={step === "amount" ? amount : limitPrice}
           onChange={
@@ -683,15 +685,15 @@ export function TradePage() {
       </div>
 
       {/* Submit Button */}
-      <div className="flex-none px-4 pt-2 pb-4 bottom-dock-safe bg-white border-t border-separator">
+      <div className="flex-none border-t border-separator bg-white/92 px-4 pt-2 pb-4 backdrop-blur-md bottom-dock-safe">
         <button
           type="button"
           onClick={handlePrimaryAction}
           disabled={isSubmitDisabled}
-          className={`w-full py-4 rounded-full font-semibold text-base text-white disabled:opacity-40 active:opacity-80 transition-opacity shadow-lg ${
+          className={`w-full rounded-full py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40 ${
             activeSide === "buy"
-              ? "bg-primary shadow-primary/25"
-              : "bg-secondary shadow-secondary/25"
+              ? "bg-primary shadow-[0_18px_36px_rgba(78,123,255,0.28)]"
+              : "bg-[#10161f] shadow-[0_18px_36px_rgba(15,23,42,0.22)]"
           }`}
         >
           {isPending

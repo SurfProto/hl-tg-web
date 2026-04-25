@@ -99,7 +99,7 @@ function PositionCard({
   return (
     <div
       onClick={() => navigate(`/coin/${encodeURIComponent(position.coin)}`)}
-      className="rounded-2xl border border-separator bg-white p-4"
+      className="editorial-card p-4"
     >
       {/* Header Row */}
       <div className="flex items-center justify-between gap-3 mb-3">
@@ -109,7 +109,7 @@ function PositionCard({
             <div className="flex items-center gap-2">
               <span className="font-bold text-foreground">{displayName}</span>
               <span
-                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${
+                className={`editorial-stat-label rounded-full px-2 py-1 ${
                   isLong
                     ? "bg-primary/10 text-primary"
                     : "bg-secondary/10 text-secondary"
@@ -118,7 +118,7 @@ function PositionCard({
                 {isLong ? t("common.long") : t("common.short")} · {position.leverage?.value ?? 1}×
               </span>
             </div>
-            <div className="text-xs text-muted mt-0.5 font-mono">
+            <div className="editorial-mono mt-1 text-xs text-muted">
               {Math.abs(position.szi)} @ {formatPrice(position.entryPx)}
             </div>
           </div>
@@ -126,7 +126,7 @@ function PositionCard({
         
         {/* PnL */}
         <div className="text-right">
-          <div className={`text-lg font-bold font-mono ${isPositive ? "text-positive" : "text-negative"}`}>
+          <div className={`editorial-mono text-lg font-bold ${isPositive ? "text-positive" : "text-negative"}`}>
             {formatPnl(pnl)}
           </div>
           <div className={`text-xs font-medium ${isPositive ? "text-positive" : "text-negative"}`}>
@@ -136,14 +136,16 @@ function PositionCard({
       </div>
 
       {/* Stats Row */}
-      <div className="flex items-center justify-between text-xs text-muted mb-4">
+      <div className="mb-4 flex items-center justify-between text-xs text-muted">
         <div className="flex gap-4">
           <span>
-            {t("positions.margin")}: <span className="text-foreground font-medium font-mono">{formatUsd(position.marginUsed ?? 0)}</span>
+            <span className="editorial-stat-label">{t("positions.margin")}</span>{" "}
+            <span className="editorial-mono text-foreground font-medium">{formatUsd(position.marginUsed ?? 0)}</span>
           </span>
         </div>
         <span>
-          {t("positions.markPrice")}: <span className="text-foreground font-medium font-mono">
+          <span className="editorial-stat-label">{t("positions.markPrice")}</span>{" "}
+          <span className="editorial-mono text-foreground font-medium">
             {priceState === "ready" ? formatPrice(currentPrice!) : "..."}
           </span>
         </span>
@@ -169,7 +171,7 @@ function PositionCard({
               ),
             });
           }}
-          className="flex-shrink-0 px-3 py-2 rounded-lg bg-surface text-xs font-semibold text-foreground transition-colors active:bg-gray-200"
+          className="flex-shrink-0 rounded-full border border-border bg-[var(--color-primary-soft)] px-3 py-2 text-xs font-semibold text-foreground transition-colors active:bg-[var(--color-primary-soft-strong)]"
         >
           TP/SL
         </button>
@@ -180,7 +182,7 @@ function PositionCard({
             haptics.light();
             onTradeMore(position.coin, isLong ? "long" : "short");
           }}
-          className="flex-shrink-0 px-3 py-2 rounded-lg bg-surface text-xs font-semibold text-foreground transition-colors active:bg-gray-200"
+          className="flex-shrink-0 rounded-full border border-border bg-[var(--color-primary-soft)] px-3 py-2 text-xs font-semibold text-foreground transition-colors active:bg-[var(--color-primary-soft-strong)]"
         >
           {t("positions.addMargin")}
         </button>
@@ -191,7 +193,7 @@ function PositionCard({
             onClosePosition(position.coin, displayName);
           }}
           disabled={pendingCloseCoin === position.coin}
-          className="flex-1 rounded-lg bg-secondary px-4 py-2 text-xs font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
+          className="flex-1 rounded-full bg-[#10161f] px-4 py-2 text-xs font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
         >
           {pendingCloseCoin === position.coin
             ? t("common.closing")
@@ -404,21 +406,21 @@ export function PositionsPage() {
   };
 
   return (
-    <div className="min-h-full bg-background px-4 py-5">
-      {/* Header with Summary */}
+    <div className="editorial-page px-4 py-5">
       <div className="mb-5">
-        <h1 className="text-2xl font-bold text-foreground">{t("nav.positions")}</h1>
+        <p className="editorial-kicker">{t("nav.positions")}</p>
+        <h1 className="editorial-heading text-foreground">{t("nav.positions")}</h1>
         {positions.length > 0 && (
-          <div className="mt-3 flex gap-6">
-            <div>
-              <div className="text-xs text-muted uppercase tracking-wide">{t("positions.unrealizedPnl")}</div>
-              <div className={`text-xl font-bold font-mono ${totalUnrealizedPnl >= 0 ? "text-positive" : "text-negative"}`}>
+          <div className="editorial-card mt-4 flex gap-6 px-4 py-4">
+            <div className="flex-1">
+              <div className="editorial-stat-label">{t("positions.unrealizedPnl")}</div>
+              <div className={`editorial-mono mt-2 text-[2rem] font-semibold ${totalUnrealizedPnl >= 0 ? "text-positive" : "text-negative"}`}>
                 {formatPnl(totalUnrealizedPnl)}
               </div>
             </div>
-            <div>
-              <div className="text-xs text-muted uppercase tracking-wide">{t("positions.margin")}</div>
-              <div className="text-xl font-bold font-mono text-foreground">
+            <div className="flex-1 text-right">
+              <div className="editorial-stat-label">{t("positions.margin")}</div>
+              <div className="editorial-mono mt-2 text-[2rem] font-semibold text-foreground">
                 {formatUsd(totalMargin)}
               </div>
             </div>
@@ -427,7 +429,7 @@ export function PositionsPage() {
       </div>
 
       {/* Tab Bar */}
-      <div className="mb-5 flex gap-1 rounded-xl bg-surface p-1">
+      <div className="mb-5 flex gap-2 overflow-x-auto scrollbar-hide">
         {(
           [
             { key: "positions", label: `${t("positions.tabOpen")} · ${positions.length}` },
@@ -441,10 +443,10 @@ export function PositionsPage() {
               haptics.selection();
               setActiveTab(key);
             }}
-            className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
+            className={`editorial-chip flex-shrink-0 px-4 py-2.5 ${
               activeTab === key
-                ? "bg-white text-foreground shadow-sm"
-                : "text-muted"
+                ? "editorial-chip-active"
+                : ""
             }`}
           >
             {label}

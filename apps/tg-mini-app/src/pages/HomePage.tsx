@@ -181,16 +181,19 @@ export function HomePage() {
   const visibleMarkets = sortedFiltered.slice(0, HOME_ROW_COUNT);
 
   return (
-    <div className="min-h-full bg-background">
+    <div className="editorial-page pb-6">
       <BalanceHero />
 
-      {/* Markets Section Header */}
-      <div className="px-4 pt-6 pb-3 flex items-center justify-between">
-        <h2 className="text-lg font-bold text-foreground">{t("nav.markets")}</h2>
+      <div className="px-4 pb-2 pt-7">
+        <p className="editorial-kicker">{t("nav.markets")}</p>
+      </div>
+
+      <div className="px-4 pb-3 flex items-end justify-between gap-3">
+        <h2 className="editorial-section-title">{t("nav.markets")}</h2>
         <button
           type="button"
           onClick={() => setAllMarketsOpen(true)}
-          className="text-sm font-semibold text-muted uppercase tracking-wide"
+          className="editorial-button-ghost"
         >
           {t("home.seeAll")}
         </button>
@@ -210,10 +213,10 @@ export function HomePage() {
           <button
             type="button"
             onClick={() => setSelectedSubCategory(null)}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+            className={`editorial-chip flex-shrink-0 ${
               selectedSubCategory === null
-                ? "bg-secondary text-white"
-                : "bg-surface text-muted"
+                ? "editorial-chip-active"
+                : ""
             }`}
           >
             {t("common.all")}
@@ -223,10 +226,10 @@ export function HomePage() {
               key={key}
               type="button"
               onClick={() => setSelectedSubCategory(key)}
-              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              className={`editorial-chip flex-shrink-0 ${
                 selectedSubCategory === key
-                  ? "bg-secondary text-white"
-                  : "bg-surface text-muted"
+                  ? "editorial-chip-active"
+                  : ""
               }`}
             >
               {label}
@@ -235,9 +238,10 @@ export function HomePage() {
         </div>
       )}
 
-      <div className="bg-white border-t border-separator">
+      <div className="px-4">
+        <div className="editorial-card overflow-hidden px-2 py-2">
         {homeMarketViewState === "loading" ? (
-          <div className="divide-y divide-separator">
+          <div className="space-y-2">
             {Array.from({ length: HOME_ROW_COUNT }, (_, index) => (
               <MarketListItemSkeleton key={index} />
             ))}
@@ -250,7 +254,7 @@ export function HomePage() {
             <button
               type="button"
               onClick={() => void refetchMarkets()}
-              className="mt-4 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white transition-colors active:bg-primary-dark"
+              className="editorial-button-primary mt-4"
             >
               {t("common.retry")}
             </button>
@@ -260,7 +264,7 @@ export function HomePage() {
             {t("home.noMarkets")}
           </div>
         ) : (
-          <div className="divide-y divide-separator">
+          <div className="space-y-2">
             {visibleMarkets.map(({ market }) => {
               const coin = market.name;
               const displayName = getMarketDisplayName(market);
@@ -295,12 +299,13 @@ export function HomePage() {
             })}
           </div>
         )}
+        </div>
       </div>
 
       <button
         type="button"
         onClick={() => setSearchOpen(true)}
-        className="fixed floating-above-bottom-nav right-4 w-12 h-12 bg-primary text-white rounded-full shadow-lg flex items-center justify-center z-40 active:bg-primary-dark transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+        className="fixed floating-above-bottom-nav right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-[0_18px_36px_rgba(78,123,255,0.32)] transition-colors active:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
         aria-label={t("home.ariaSearch")}
       >
         <svg

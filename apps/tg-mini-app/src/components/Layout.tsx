@@ -82,11 +82,11 @@ export function Layout({ children }: LayoutProps) {
     const root = document.documentElement;
     root.style.setProperty('--tg-bg-color', '#ffffff');
     root.style.setProperty('--tg-text-color', '#111827');
-    root.style.setProperty('--tg-hint-color', '#6b7280');
-    root.style.setProperty('--tg-link-color', '#00C076');
-    root.style.setProperty('--tg-button-color', '#00C076');
+    root.style.setProperty('--tg-hint-color', '#677286');
+    root.style.setProperty('--tg-link-color', '#4e7bff');
+    root.style.setProperty('--tg-button-color', '#4e7bff');
     root.style.setProperty('--tg-button-text-color', '#ffffff');
-    root.style.setProperty('--tg-secondary-bg-color', '#f5f5f5');
+    root.style.setProperty('--tg-secondary-bg-color', '#f6f7fb');
   }, []);
 
   useEffect(() => {
@@ -126,22 +126,22 @@ export function Layout({ children }: LayoutProps) {
       </main>
 
       {!hideNav && (
-        <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-separator px-2 py-2 z-50 bottom-nav-safe">
-          <div className="flex justify-around max-w-lg mx-auto">
+        <nav className="fixed bottom-0 left-0 right-0 z-50 px-3 pb-2 pt-2 bottom-nav-safe">
+          <div className="mx-auto flex max-w-lg justify-around rounded-[28px] border border-white/70 bg-white/88 px-1.5 py-1.5 shadow-[0_18px_48px_rgba(15,23,42,0.12)] backdrop-blur-xl">
             {navItems.map(({ path, label, Icon, end }) => (
               <NavLink
                 key={path}
                 to={path}
                 end={end}
                 onClick={() => handleTabChange(path)}
-                className={({ isActive }) => `flex flex-col items-center gap-1 px-4 py-1.5 rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
-                  isActive ? 'text-foreground' : 'text-muted'
+                className={({ isActive }) => `flex min-w-[72px] flex-col items-center gap-1 rounded-[22px] px-4 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
+                  isActive ? 'bg-[var(--color-primary-soft)] text-primary' : 'text-[var(--color-nav-inactive)]'
                 }`}
               >
                 {({ isActive }) => (
                   <>
                     <Icon active={isActive} />
-                    <span className="text-[11px] font-medium">{label}</span>
+                    <span className={`text-[11px] ${isActive ? 'font-semibold' : 'font-medium'}`}>{label}</span>
                   </>
                 )}
               </NavLink>

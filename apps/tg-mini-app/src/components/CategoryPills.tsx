@@ -14,10 +14,10 @@ export function CategoryPills({ categories, labels, selected, onChange }: Catego
           <button
             key={cat}
             onClick={() => onChange(cat)}
-            className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+            className={`editorial-chip flex-shrink-0 ${
               isSelected
-                ? 'bg-secondary text-white'
-                : 'bg-surface text-muted'
+                ? 'editorial-chip-active'
+                : ''
             }`}
           >
             {labels[cat] ?? cat}

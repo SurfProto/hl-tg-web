@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getBalanceHeroValueState } from "./balance-hero-state";
+import {
+  getBalanceHeroDisplayState,
+  getBalanceHeroValueState,
+} from "./balance-hero-state";
 
 describe("getBalanceHeroValueState", () => {
   it("stays in loading state while user state is pending", () => {
@@ -45,6 +48,19 @@ describe("getBalanceHeroValueState", () => {
     ).toEqual({
       state: "ready",
       totalValue: 410,
+      availableValue: 275,
+    });
+  });
+
+  it("builds ready display details from supported balance fields", () => {
+    expect(
+      getBalanceHeroDisplayState({
+        state: "ready",
+        totalValue: 410,
+        availableValue: 275,
+      }),
+    ).toEqual({
+      highlightValue: 410,
       availableValue: 275,
     });
   });

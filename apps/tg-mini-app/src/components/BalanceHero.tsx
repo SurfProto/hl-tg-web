@@ -3,7 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { useUserState } from "@repo/hyperliquid-sdk";
 import { useTranslation } from "react-i18next";
 import { UnifiedAccountBanner } from "./UnifiedAccountBanner";
-import { getBalanceHeroValueState } from "./balance-hero-state";
+import {
+  getBalanceHeroDisplayState,
+  getBalanceHeroValueState,
+} from "./balance-hero-state";
 
 function lazyNamedModule<T extends Record<string, ComponentType<any>>>(
   loader: () => Promise<T>,
@@ -54,8 +57,8 @@ function BalanceHeroChartFallback() {
 
 export function BalanceHeroSkeleton() {
   return (
-    <section className="bg-white">
-      <div className="px-4 pb-5 pt-5">
+    <section className="px-4 pt-5">
+      <div className="editorial-card overflow-hidden px-5 pb-5 pt-5">
         <div className="animate-pulse">
           <div className="h-3 w-20 rounded bg-gray-200" />
           <div className="mt-3 h-12 w-48 rounded bg-gray-200" />
@@ -100,36 +103,33 @@ export function BalanceHero() {
     isLoading: userStateLoading,
     isError: userStateError,
   });
+  const displayState = getBalanceHeroDisplayState(valueState);
 
-  const totalValueParts = formatUsdParts(valueState.state === "ready" ? (valueState.totalValue ?? 0) : 0);
-  const dailyChange = valueState.state === "ready" ? (valueState.dailyChange ?? 0) : 0;
-  const dailyChangePercent = valueState.state === "ready" ? (valueState.dailyChangePercent ?? 0) : 0;
-  const isPositive = dailyChange >= 0;
+  const totalValueParts = formatUsdParts(
+    valueState.state === "ready" ? displayState.highlightValue : 0,
+  );
 
   return (
-    <section className="bg-white">
-      <div className="px-4 pb-5 pt-5">
-        <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted">
+    <section className="px-4 pt-5">
+      <div className="editorial-card overflow-hidden px-5 pb-5 pt-5">
+        <p className="editorial-kicker">
           {t("balanceHero.totalEquity")}
         </p>
         
         {valueState.state === "ready" ? (
           <>
             <p className="mt-2 flex items-baseline gap-0.5">
-              <span className="text-[2.75rem] font-bold tracking-tight text-foreground font-mono">
+              <span className="editorial-mono text-[2.95rem] font-semibold tracking-[-0.06em] text-foreground">
                 ${totalValueParts.integer}
               </span>
-              <span className="text-2xl font-bold tracking-tight text-foreground font-mono">
+              <span className="editorial-mono text-[2rem] font-semibold tracking-[-0.05em] text-foreground">
                 .{totalValueParts.decimal}
               </span>
             </p>
-            <p className={`mt-2 text-sm font-medium ${isPositive ? 'text-positive' : 'text-negative'}`}>
-              <span className="font-mono">
-                {isPositive ? '+' : ''}{formatUsd(dailyChange)}
-              </span>
-              <span className="ml-1">
-                {isPositive ? '+' : ''}{dailyChangePercent.toFixed(2)}% {t("balanceHero.today")}
-              </span>
+            <p className="mt-2 max-w-[14rem] text-sm text-[var(--color-text-secondary)]">
+              {t("balanceHero.availableForTrading", {
+                amount: formatUsd(displayState.availableValue),
+              })}
             </p>
           </>
         ) : valueState.state === "loading" ? (
@@ -165,14 +165,14 @@ export function BalanceHero() {
           <button
             type="button"
             onClick={() => navigate("/account/deposit")}
-            className="flex-1 rounded-full bg-secondary py-3.5 text-sm font-semibold text-white transition-opacity active:opacity-80"
+            className="editorial-button-primary flex-1"
           >
             {t("account.deposit")}
           </button>
           <button
             type="button"
             onClick={() => navigate("/account/withdraw")}
-            className="flex-1 rounded-full border border-separator bg-white py-3.5 text-sm font-semibold text-foreground transition-colors active:bg-gray-50"
+            className="editorial-button-secondary flex-1"
           >
             {t("account.withdraw")}
           </button>

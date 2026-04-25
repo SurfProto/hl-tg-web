@@ -62,16 +62,16 @@ export function MarketListItem({
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-3 px-4 py-3.5 bg-white active:bg-gray-50 transition-colors text-left"
+      className="w-full rounded-[24px] border border-transparent bg-white px-4 py-3.5 text-left transition-colors active:bg-slate-50"
     >
       <TokenIcon coin={iconCoin} size={40} />
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-foreground text-base truncate">{displayName}</span>
+          <span className="text-base font-semibold text-foreground truncate">{displayName}</span>
         </div>
-        <span className="text-xs text-muted mt-0.5 block">
-          {displayName}
+        <span className="editorial-kicker mt-1 block">
+          {marketType}
         </span>
       </div>
 
@@ -92,7 +92,7 @@ export function MarketListItem({
           </div>
         ) : (
           <>
-            <div className="text-base font-semibold text-foreground font-mono tabular-nums">{price}</div>
+            <div className="editorial-mono text-base font-semibold text-foreground">{price}</div>
             <div className={`text-xs font-medium mt-0.5 ${isPositive ? 'text-positive' : 'text-negative'}`}>
               {changeText}
             </div>

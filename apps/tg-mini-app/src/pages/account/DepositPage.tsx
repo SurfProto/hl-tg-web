@@ -111,9 +111,7 @@ export function DepositPage() {
   const [bridgeAmount, setBridgeAmount] = useState("");
   const [copied, setCopied] = useState(false);
   const [fiatAmount, setFiatAmount] = useState("1000");
-  const [fiatState, setFiatState] = useState<OnrampAppState>(
-    user?.email?.address ? "ready" : "email_required",
-  );
+  const [fiatState, setFiatState] = useState<OnrampAppState>("email_required");
   const [bootstrapData, setBootstrapData] =
     useState<OnrampBootstrapData | null>(null);
   const [quote, setQuote] = useState<OnrampQuote | null>(null);
@@ -129,7 +127,7 @@ export function DepositPage() {
   const [isRefreshingStatus, setIsRefreshingStatus] = useState(false);
 
   const address = user?.wallet?.address;
-  const email = user?.email?.address ?? null;
+  const profileEmail = bootstrapData?.email ?? null;
   const { data: arbUsdcBalance, isLoading } = useArbitrumUsdcBalance(address);
   const fundWallet = useFundArbitrumUsdc();
   const bridge = useBridgeToHyperliquid();
@@ -160,19 +158,6 @@ export function DepositPage() {
     let cancelled = false;
 
     const runBootstrap = async () => {
-      if (!email) {
-        if (!cancelled) {
-          setBootstrapData(null);
-          setQuote(null);
-          setQuoteRequest(null);
-          setOrder(null);
-          setRecentOrders([]);
-          setFiatState("email_required");
-          setFiatError(null);
-        }
-        return;
-      }
-
       setIsBootstrapping(true);
       try {
         const accessToken = await getAccessToken();
@@ -180,10 +165,7 @@ export function DepositPage() {
           throw new Error(t("deposit.authRequired"));
         }
 
-        const nextBootstrap = await bootstrapOnramp(accessToken, {
-          email,
-          walletAddress: address ?? null,
-        });
+        const nextBootstrap = await bootstrapOnramp(accessToken);
 
         if (cancelled) return;
 
@@ -225,7 +207,7 @@ export function DepositPage() {
       } catch (error) {
         if (cancelled) return;
         setFiatFailure(error instanceof Error ? error.message : t("deposit.genericFiatError"));
-        setFiatState(email ? "ready" : "email_required");
+        setFiatState("email_required");
       } finally {
         if (!cancelled) {
           setIsBootstrapping(false);
@@ -238,7 +220,7 @@ export function DepositPage() {
     return () => {
       cancelled = true;
     };
-  }, [address, email, getAccessToken, returnExternalOrderId, t, view]);
+  }, [getAccessToken, returnExternalOrderId, t, view]);
 
   useEffect(() => {
     if (view !== "fiat" || !order || isTerminalOnrampState(order.appState)) {
@@ -316,7 +298,7 @@ export function DepositPage() {
   }, [resolvedPayoutAddress]);
 
   const requestQuote = async () => {
-    if (!email) {
+    if (!bootstrapData?.email) {
       setFiatState("email_required");
       return;
     }
@@ -342,14 +324,6 @@ export function DepositPage() {
         throw new Error(t("deposit.authRequired"));
       }
 
-      if (resolvedPayoutAddress !== bootstrapData?.walletAddress) {
-        const updated = await bootstrapOnramp(accessToken, { email, walletAddress: resolvedPayoutAddress });
-        const updatedActiveOrder = getActiveOnrampOrder(updated.activeOrder);
-        setBootstrapData({ ...updated, activeOrder: updatedActiveOrder });
-        setOrder(updatedActiveOrder);
-        setRecentOrders(updated.recentOrders ?? []);
-      }
-
       const response = await fetchOnrampQuote(accessToken, amount);
       setQuote(response.quote);
       setQuoteRequest({ amount, walletAddress: resolvedPayoutAddress });
@@ -363,7 +337,7 @@ export function DepositPage() {
   };
 
   const startCheckout = async () => {
-    if (!email) {
+    if (!bootstrapData?.email) {
       setFiatState("email_required");
       return;
     }
@@ -389,15 +363,7 @@ export function DepositPage() {
         throw new Error(t("deposit.authRequired"));
       }
 
-      if (resolvedPayoutAddress !== bootstrapData?.walletAddress) {
-        const updated = await bootstrapOnramp(accessToken, { email, walletAddress: resolvedPayoutAddress });
-        const updatedActiveOrder = getActiveOnrampOrder(updated.activeOrder);
-        setBootstrapData({ ...updated, activeOrder: updatedActiveOrder });
-        setOrder(updatedActiveOrder);
-        setRecentOrders(updated.recentOrders ?? []);
-      }
-
-      const response = await checkoutOnramp(accessToken, amount);
+      const response = await checkoutOnramp(accessToken, amount, resolvedPayoutAddress!);
       const nextActiveOrder = getActiveOnrampOrder(response.order);
       setOrder(nextActiveOrder);
       setFiatState(nextActiveOrder ? response.state : "ready");
@@ -478,7 +444,7 @@ export function DepositPage() {
     setQuote(null);
     setQuoteRequest(null);
     if (!order || isTerminalOnrampState(order.appState)) {
-      setFiatState(email ? "ready" : "email_required");
+      setFiatState(profileEmail ? "ready" : "email_required");
     }
   };
 
@@ -489,7 +455,7 @@ export function DepositPage() {
       : bootstrapData?.kycStatus === "verified_kyc"
         ? t("deposit.verifiedKyc")
         : t("deposit.pendingVerification");
-  const isEmailRequired = !email || fiatState === "email_required";
+  const isEmailRequired = !bootstrapData?.email || fiatState === "email_required";
   const isTrc20AddressValid =
     !isTrc20 || addressMode === "privy" || isValidTrc20Address(tronAddress);
   const showOrderCard = Boolean(order && !isTerminalOnrampState(order.appState));
@@ -658,7 +624,7 @@ export function DepositPage() {
                 <p className="text-xs text-muted">{t("deposit.linkedEmail")}</p>
                 <div className="mt-1 flex items-center gap-2">
                   <p className="text-sm text-foreground">
-                    {email ?? t("common.notLinked")}
+                    {profileEmail ?? t("common.notLinked")}
                   </p>
                   {isVerifiedUser && (
                     <span
@@ -679,11 +645,11 @@ export function DepositPage() {
                     </span>
                   )}
                 </div>
-                {email && (
+                {profileEmail && (
                   <p className="mt-1 text-xs text-muted">{verificationLabel}</p>
                 )}
               </div>
-              {!email && (
+              {!profileEmail && (
                 <button
                   type="button"
                   onClick={() => privy.linkEmail?.()}

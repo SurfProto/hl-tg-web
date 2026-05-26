@@ -29,6 +29,8 @@ cp .env.example .env
 # Privy
 VITE_PRIVY_APP_ID=your_privy_app_id
 VITE_TELEGRAM_BOT_USERNAME=your_bot_username
+PROFILE_PRIVY_APP_ID=
+PRIVY_APP_SECRET=your_server_only_privy_app_secret
 
 # Hyperliquid
 VITE_HYPERLIQUID_TESTNET=false
@@ -79,6 +81,8 @@ vercel env add VITE_PRIVY_APP_ID
 vercel env add VITE_HYPERLIQUID_TESTNET
 vercel env add VITE_BUILDER_ADDRESS
 vercel env add VITE_BUILDER_FEE
+vercel env add PROFILE_PRIVY_APP_ID
+vercel env add PRIVY_APP_SECRET
 ```
 
 6. Redeploy with environment variables:
@@ -101,7 +105,50 @@ vercel --prod
    - `VITE_HYPERLIQUID_TESTNET`
    - `VITE_BUILDER_ADDRESS`
    - `VITE_BUILDER_FEE`
+   - `PROFILE_PRIVY_APP_ID` (falls back to `VITE_PRIVY_APP_ID`)
+   - `PRIVY_APP_SECRET` (server-only; never expose as a `VITE_` variable)
 6. Click "Deploy"
+
+### Profile Identity Boundary
+
+Profile bootstrap fetches the Privy user on the server. The only canonical
+trading/rewards wallet stored in `users.wallet_address` is the Privy-managed
+embedded Ethereum wallet. A TRC20 destination chosen during an on-ramp flow is
+stored only on that on-ramp order.
+
+### Apply And Verify Profile Policies
+
+Apply all Supabase migrations, including
+`supabase/migrations/005_profile_data_boundary_hardening.sql`, then run:
+
+```sql
+select tablename, policyname, cmd, qual, with_check
+from pg_policies
+where schemaname = 'public'
+  and tablename in ('users', 'notification_preferences', 'notification_channels')
+order by tablename, policyname;
+```
+
+The result must contain only `users_service_role_access`,
+`notif_prefs_service_role_access`, and
+`notification_channels_service_role_access`; each policy must require
+`service_role` in both `qual` and `with_check`.
+
+### Audit Existing Profile Identity
+
+Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `PRIVY_APP_SECRET`, and either
+`PROFILE_PRIVY_APP_ID` or `VITE_PRIVY_APP_ID`, then run the repair flow in this
+order:
+
+```bash
+pnpm security:audit-identities
+pnpm security:audit-identities -- --apply
+```
+
+First review the JSON report. Apply mode corrects only deterministic Privy
+wallet and email mismatches; it intentionally exits nonzero while Telegram
+bindings still require manual confirmation. Re-verify those Telegram
+associations separately before treating the identity audit as closed.
 
 ## Step 4: Set Up Telegram Bot
 

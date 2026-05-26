@@ -1,4 +1,5 @@
 import { type ProfileConfig } from "./config";
+import { HttpError } from "../../onramp/_lib/http";
 
 interface ProfileRow {
   id: string;
@@ -23,14 +24,13 @@ interface NotificationChannelRow {
 interface BootstrapProfileInput {
   privyUserId: string;
   telegramId: string | null;
-  walletAddress: string | null;
+  walletAddress: string;
   username: string | null;
   email: string | null;
   language: string | null;
 }
 
 interface UpdateProfileInput {
-  username?: string | null;
   language?: string | null;
 }
 
@@ -114,57 +114,79 @@ export async function getProfileByPrivyUserId(
   return rows[0] ?? null;
 }
 
+export async function getProfileByTelegramId(
+  config: ProfileConfig,
+  telegramId: string,
+): Promise<ProfileRow | null> {
+  const rows = await supabaseRequest<ProfileRow[]>(
+    config,
+    `users?telegram_id=eq.${encodeURIComponent(telegramId)}&select=id,telegram_id,wallet_address,privy_user_id,username,email,language&limit=1`,
+    { headers: buildHeaders(config) },
+  );
+
+  return rows[0] ?? null;
+}
+
 export async function bootstrapProfileUser(
   config: ProfileConfig,
   input: BootstrapProfileInput,
 ): Promise<ProfileRow> {
-  const payload = {
-    telegram_id: input.telegramId,
+  const existing = await getProfileByPrivyUserId(config, input.privyUserId);
+  if (input.telegramId) {
+    const telegramOwner = await getProfileByTelegramId(config, input.telegramId);
+    if (telegramOwner && telegramOwner.privy_user_id !== input.privyUserId) {
+      throw new HttpError(
+        409,
+        "IDENTITY_CONFLICT",
+        "This Telegram account is already linked to another profile",
+      );
+    }
+  }
+
+  const authoritativePayload = {
     wallet_address: input.walletAddress,
     privy_user_id: input.privyUserId,
-    username: input.username,
     email: normalizeEmail(input.email),
-    language: input.language ?? "en",
   };
 
-  if (input.telegramId) {
-    const rows = await supabaseRequest<ProfileRow[]>(
-      config,
-      "users?on_conflict=telegram_id&select=id,telegram_id,wallet_address,privy_user_id,username,email,language",
-      {
-        method: "POST",
-        headers: buildHeaders(config, {
-          Prefer: "resolution=merge-duplicates,return=representation",
-        }),
-        body: JSON.stringify(payload),
-      },
-    );
-
-    return rows[0];
-  }
-
-  if (input.walletAddress) {
-    const rows = await supabaseRequest<ProfileRow[]>(
-      config,
-      "users?on_conflict=wallet_address&select=id,telegram_id,wallet_address,privy_user_id,username,email,language",
-      {
-        method: "POST",
-        headers: buildHeaders(config, {
-          Prefer: "resolution=merge-duplicates,return=representation",
-        }),
-        body: JSON.stringify(payload),
-      },
-    );
-
-    return rows[0];
-  }
-
-  const existing = await getProfileByPrivyUserId(config, input.privyUserId);
   if (!existing) {
-    throw new Error("PROFILE_NOT_FOUND");
+    const rows = await supabaseRequest<ProfileRow[]>(
+      config,
+      "users?select=id,telegram_id,wallet_address,privy_user_id,username,email,language",
+      {
+        method: "POST",
+        headers: buildHeaders(config, {
+          Prefer: "return=representation",
+        }),
+        body: JSON.stringify({
+          ...authoritativePayload,
+          telegram_id: input.telegramId,
+          username: input.username,
+          language: input.language ?? "en",
+        }),
+      },
+    );
+
+    return rows[0];
   }
 
-  return existing;
+  const rows = await supabaseRequest<ProfileRow[]>(
+    config,
+    `users?id=eq.${existing.id}&privy_user_id=eq.${encodeURIComponent(input.privyUserId)}&select=id,telegram_id,wallet_address,privy_user_id,username,email,language`,
+    {
+      method: "PATCH",
+      headers: buildHeaders(config, { Prefer: "return=representation" }),
+      body: JSON.stringify({
+        ...authoritativePayload,
+        ...(input.telegramId
+          ? { telegram_id: input.telegramId, username: input.username }
+          : {}),
+        ...(input.language ? { language: input.language } : {}),
+      }),
+    },
+  );
+
+  return rows[0];
 }
 
 export async function updateProfileUser(
@@ -178,9 +200,6 @@ export async function updateProfileUser(
   }
 
   const payload = {
-    ...(Object.prototype.hasOwnProperty.call(updates, "username")
-      ? { username: updates.username }
-      : {}),
     ...(Object.prototype.hasOwnProperty.call(updates, "language")
       ? { language: updates.language }
       : {}),

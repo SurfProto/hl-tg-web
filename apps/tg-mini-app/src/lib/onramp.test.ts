@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  bootstrapOnramp,
+  checkoutOnramp,
   fetchOnrampQuote,
   getActiveOnrampOrder,
   isOnrampUserVerified,
@@ -26,6 +28,31 @@ describe("onramp client", () => {
     await expect(fetchOnrampQuote("token_123", 1000)).rejects.toThrow(
       "returned HTML instead of JSON",
     );
+  });
+
+  it("bootstraps without transmitting profile identity or payout selection", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({ success: true, data: {} }),
+    );
+
+    await bootstrapOnramp("token_123");
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(init.body).toBeUndefined();
+  });
+
+  it("sends the selected payout address only during checkout", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({ success: true, data: {} }),
+    );
+
+    await checkoutOnramp("token_123", 1000, "TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE");
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual({
+      amount: 1000,
+      payoutAddress: "TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE",
+    });
   });
 
   it("does not treat terminal orders as active", () => {

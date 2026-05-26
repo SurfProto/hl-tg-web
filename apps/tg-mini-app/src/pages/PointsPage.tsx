@@ -4,9 +4,9 @@ import type { ReferralSummary, RewardsDashboard } from "@repo/types";
 import { useTranslation } from "react-i18next";
 import { ReferralCard } from "../components/ReferralCard";
 import { useHaptics } from "../hooks/useHaptics";
+import { getTelegramProfile } from "../lib/profile";
 import { getTelegramStartParam } from "../lib/referrals";
 import { fetchRewardsDashboard } from "../lib/rewards";
-import { getTelegramProfile } from "../lib/supabase";
 
 function formatCompactNumber(value: number) {
   return new Intl.NumberFormat("en-US", {
@@ -62,8 +62,6 @@ export function PointsPage() {
 
       return fetchRewardsDashboard(accessToken, {
         startParam,
-        username,
-        walletAddress,
       });
     },
     enabled: Boolean(user?.id),

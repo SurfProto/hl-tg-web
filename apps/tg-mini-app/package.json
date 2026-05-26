@@ -18,7 +18,6 @@
     "@repo/hyperliquid-sdk": "workspace:*",
     "@repo/types": "workspace:*",
     "@repo/ui": "workspace:*",
-    "@supabase/supabase-js": "^2.49.8",
     "@tanstack/react-query": "^5.40.0",
     "@telegram-apps/sdk-react": "^2.0.0",
     "i18next": "^26.0.3",

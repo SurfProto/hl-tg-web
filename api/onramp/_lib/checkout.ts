@@ -14,15 +14,15 @@ export async function createAndPersistOrder(input: {
   config: OnrampConfig;
   user: {
     id: string;
-    walletAddress: string;
     email: string;
     kycId: string | null;
   };
   amount: number;
+  payoutAddress: string;
 }): Promise<OnrampOrderStatus> {
   const externalOrderId = `onramp_${randomUUID()}`;
   const preorder = await createOnrampPreorder(input.config, {
-    address: input.user.walletAddress,
+    address: input.payoutAddress,
     amount: input.amount,
     externalOrderId,
     userEmail: input.user.email,
@@ -46,7 +46,7 @@ export async function createAndPersistOrder(input: {
 
   return persistOrder(input.config, {
     userId: input.user.id,
-    walletAddress: input.user.walletAddress,
+    walletAddress: input.payoutAddress,
     email: input.user.email,
     providerOrderId: confirmed.id,
     externalOrderId: confirmed.external_order_id,

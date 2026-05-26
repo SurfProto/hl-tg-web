@@ -28,11 +28,6 @@ interface Envelope<T> {
 }
 
 interface BootstrapProfileInput {
-  telegramId?: string;
-  privyUserId?: string;
-  username?: string;
-  walletAddress?: string;
-  email?: string;
   language?: string;
 }
 
@@ -63,9 +58,14 @@ export function getTelegramProfile() {
   return window.Telegram?.WebApp?.initDataUnsafe?.user;
 }
 
-export async function bootstrapProfile(accessToken: string, input: BootstrapProfileInput): Promise<ProfileEnvelope> {
+export async function bootstrapProfile(
+  accessToken: string,
+  input: BootstrapProfileInput = {},
+): Promise<ProfileEnvelope> {
+  const initData = window.Telegram?.WebApp?.initData;
   return requestJson<ProfileEnvelope>("/api/profile/bootstrap", accessToken, {
     method: "POST",
+    headers: initData ? { "x-telegram-init-data": initData } : undefined,
     body: JSON.stringify(input),
   });
 }

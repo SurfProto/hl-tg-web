@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { getRecentOrders, getUserByPrivyUserId, upsertOnrampUser } from "./supabase-admin";
+import {
+  getOwnedOrder,
+  getRecentOrders,
+  getUserByPrivyUserId,
+  updateOwnedOrderStatus,
+} from "./supabase-admin";
 import type { OnrampConfig } from "./config";
 
 const config: OnrampConfig = {
@@ -90,8 +95,8 @@ describe("supabaseRequest", () => {
     });
   });
 
-  it("throws a user-not-found error before building an update payload", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+  it("scopes explicit order lookup to the authenticated user", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify([]), {
         status: 200,
         headers: {
@@ -100,15 +105,59 @@ describe("supabaseRequest", () => {
       }),
     );
 
-    await expect(
-      upsertOnrampUser(config, {
-        privyUserId: "did:privy:user_123",
-        walletAddress: null,
-        email: "user@example.com",
-        kycStatus: "unknown",
-        kycSource: "local_allowlist",
-        kycCheckedAt: "2026-04-10T08:00:00.000Z",
-      }),
-    ).rejects.toThrow("USER_NOT_FOUND");
+    await getOwnedOrder(config, "user_123", {
+      providerOrderId: "ord_123",
+      externalOrderId: "ext_123",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("onramp_orders?user_id=eq.user_123"),
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("provider_order_id=eq.ord_123"),
+      expect.any(Object),
+    );
+  });
+
+  it("updates status fields without writing owner, payout wallet, or email", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json([
+        {
+          provider_order_id: "ord_123",
+          external_order_id: "ext_123",
+          provider_state: "SUCCESS",
+          app_state: "success",
+          payin_amount: "1000",
+          payin_currency: "RUB",
+          payout_amount: "12.33",
+          payout_currency: "USDT",
+          fee_amount: null,
+          invoice_url: null,
+          invoice_url_expires_at: null,
+          error_code: null,
+          error_message: null,
+          last_synced_at: "2026-04-10T08:00:00.000Z",
+        },
+      ]),
+    );
+
+    await updateOwnedOrderStatus(config, "user_123", "ord_123", {
+      providerState: "SUCCESS",
+      payinAmount: "1000",
+      payoutAmount: "12.33",
+      feeAmount: null,
+      invoiceUrl: null,
+      invoiceUrlExpiresAt: null,
+      providerTouchedAt: "2026-04-10T08:00:00.000Z",
+      errorCode: null,
+      errorMessage: null,
+    });
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const payload = JSON.parse(String(init.body)) as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("user_id");
+    expect(payload).not.toHaveProperty("wallet_address");
+    expect(payload).not.toHaveProperty("email");
   });
 });

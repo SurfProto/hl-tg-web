@@ -3,11 +3,12 @@ import { createAndPersistOrder } from "./_lib/checkout";
 import { getOnrampConfig } from "./_lib/config";
 import { ensureMethod, json, parseJsonBody, withJsonRoute, HttpError } from "./_lib/http";
 import { assertAmountWithinOnrampLimits } from "./_lib/provider";
-import { parseAmount } from "./_lib/request";
+import { parseAmount, parsePayoutAddress } from "./_lib/request";
 import { getUserByPrivyUserId } from "./_lib/supabase-admin";
 
 interface CheckoutBody {
   amount?: number | string;
+  payoutAddress?: string;
 }
 
 export default async function handler(request: any, response: any) {
@@ -26,16 +27,17 @@ export default async function handler(request: any, response: any) {
 
     const body = parseJsonBody<CheckoutBody>(request);
     const amount = parseAmount(body.amount);
+    const payoutAddress = parsePayoutAddress(body.payoutAddress, config.network);
     await assertAmountWithinOnrampLimits(config, amount);
     const order = await createAndPersistOrder({
       config,
       user: {
         id: user.id,
-        walletAddress: user.wallet_address,
         email: user.email,
         kycId: user.kyc_id,
       },
       amount,
+      payoutAddress,
     });
 
     json(response, 200, {

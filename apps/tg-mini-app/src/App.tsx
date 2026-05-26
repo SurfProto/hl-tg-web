@@ -12,7 +12,7 @@ import { arbitrum } from "viem/chains";
 import { useMarketData, useSetupTrading } from "@repo/hyperliquid-sdk";
 import { Layout } from "./components/Layout";
 import { HomePage } from "./pages/HomePage";
-import { bootstrapProfile, getTelegramProfile } from "./lib/profile";
+import { bootstrapProfile } from "./lib/profile";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ToastProvider } from "./components/Toast";
 import { PortfolioRangeProvider } from "./hooks/usePortfolioRange";
@@ -249,7 +249,6 @@ export function TelegramAuthGate({
   useEffect(() => {
     if (!ready || !authenticated) return;
 
-    const telegramProfile = getTelegramProfile();
     void (async () => {
       try {
         const accessToken = await getAccessToken();
@@ -257,18 +256,7 @@ export function TelegramAuthGate({
           return;
         }
 
-        await bootstrapProfile(accessToken, {
-          telegramId:
-            telegramProfile?.id != null ? String(telegramProfile.id) : undefined,
-          privyUserId: user?.id,
-          username:
-            telegramProfile?.username ??
-            user?.telegram?.username ??
-            user?.email?.address ??
-            undefined,
-          walletAddress: user?.wallet?.address,
-          email: user?.email?.address,
-        });
+        await bootstrapProfile(accessToken);
       } catch (error) {
         log.warn("[auth] Profile bootstrap failed", {
           error,

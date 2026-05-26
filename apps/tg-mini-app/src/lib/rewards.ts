@@ -66,7 +66,7 @@ async function requestJson<T>(path: string, accessToken: string, init: RequestIn
 
 export async function fetchRewardsDashboard(
   accessToken: string,
-  input: { startParam?: string | null; username?: string | null; walletAddress?: string | null },
+  input: { startParam?: string | null },
 ) {
   return requestJson<RewardsDashboard>("/api/rewards/dashboard", accessToken, {
     body: JSON.stringify(input),

@@ -108,8 +108,6 @@ describe("syncRewardsDashboard", () => {
     const dashboard = await syncRewardsDashboard(
       {
         privyUserId: "privy-1",
-        username: "user",
-        walletAddress: null,
       },
       {
         firstTradeThresholdUsd: 50,
@@ -154,8 +152,6 @@ describe("syncRewardsDashboard", () => {
       {
         privyUserId: "privy-1",
         referralStartParam: null,
-        username: "user",
-        walletAddress: null,
       },
       {
         firstTradeThresholdUsd: 50,

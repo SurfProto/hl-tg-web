@@ -42,8 +42,6 @@ import {
 interface SyncRewardsDashboardInput {
   privyUserId: string;
   referralStartParam?: string | null;
-  username?: string | null;
-  walletAddress?: string | null;
 }
 
 type FillSummary = {
@@ -369,8 +367,6 @@ export async function syncRewardsDashboard(
 ): Promise<RewardsDashboard> {
   let user = await getOrCreateRewardsUser(config, {
     privyUserId: input.privyUserId,
-    username: input.username ?? null,
-    walletAddress: input.walletAddress ?? null,
   });
   user = await ensureReferralCode(config, user);
   user = await applyReferralCodeIfEligible(config, {
@@ -596,8 +592,6 @@ export async function applyReferralCode(
 
   let user = await getOrCreateRewardsUser(config, {
     privyUserId,
-    username: null,
-    walletAddress: null,
   });
   user = await ensureReferralCode(config, user);
 

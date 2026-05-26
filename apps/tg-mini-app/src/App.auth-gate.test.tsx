@@ -45,10 +45,6 @@ vi.mock("react-i18next", async () => {
 
 vi.mock("./lib/profile", () => ({
   bootstrapProfile: bootstrapProfileMock,
-  getTelegramProfile: () => ({
-    id: 123,
-    username: "alice_tg",
-  }),
 }));
 
 vi.mock("@repo/hyperliquid-sdk", () => ({
@@ -113,12 +109,6 @@ describe("TelegramAuthGate", () => {
       await Promise.resolve();
     });
 
-    expect(bootstrapProfileMock).toHaveBeenCalledWith("access-token", {
-      telegramId: "123",
-      privyUserId: "did:privy:user:123",
-      username: "alice_tg",
-      walletAddress: "0xabc",
-      email: "alice@example.com",
-    });
+    expect(bootstrapProfileMock).toHaveBeenCalledWith("access-token");
   });
 });

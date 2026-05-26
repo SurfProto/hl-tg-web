@@ -2,7 +2,7 @@ create extension if not exists pgcrypto;
 
 -- Core user identity table.
 -- telegram_id is nullable: wallet-only users (no Telegram) have NULL.
--- wallet_address is the primary identity anchor for RLS since Privy handles auth.
+-- wallet_address is the Privy-managed canonical trading/rewards wallet.
 create table if not exists users (
   id uuid primary key default gen_random_uuid(),
   telegram_id text unique,          -- nullable: NULL for wallet-only users
@@ -196,12 +196,11 @@ alter table awards enable row level security;
 alter table reward_ledger enable row level security;
 alter table onramp_orders enable row level security;
 
--- RLS Policies (see migrations/001_identity_and_rls.sql for the ALTER statements)
--- users: public read, authenticated update own, open insert for ensureUser()
-create policy "users_select_own" on users for select using (true);
-create policy "users_insert_any" on users for insert with check (true);
-create policy "users_update_own" on users for update
-  using (wallet_address = current_setting('request.jwt.claims', true)::json->>'wallet_address');
+-- Profile identity and notification configuration are only accessed through
+-- authenticated API routes backed by the service-role key.
+create policy "users_service_role_access" on users for all
+  using (current_setting('request.jwt.claims', true)::json->>'role' = 'service_role')
+  with check (current_setting('request.jwt.claims', true)::json->>'role' = 'service_role');
 
 -- points tables: anon reads own rows, service role writes
 create policy "user_points_select_own" on user_points for select
@@ -229,15 +228,13 @@ create policy "reward_ledger_select_own" on reward_ledger for select
 create policy "reward_ledger_service_write" on reward_ledger for all
   using (current_setting('request.jwt.claims', true)::json->>'role' = 'service_role');
 
-create policy "notif_prefs_select_own" on notification_preferences for select
-  using (user_id in (select id from users where wallet_address = current_setting('request.jwt.claims', true)::json->>'wallet_address'));
-create policy "notif_prefs_write_own" on notification_preferences for all
-  using (user_id in (select id from users where wallet_address = current_setting('request.jwt.claims', true)::json->>'wallet_address'));
+create policy "notif_prefs_service_role_access" on notification_preferences for all
+  using (current_setting('request.jwt.claims', true)::json->>'role' = 'service_role')
+  with check (current_setting('request.jwt.claims', true)::json->>'role' = 'service_role');
 
-create policy "notification_channels_select_own" on notification_channels for select
-  using (user_id in (select id from users where wallet_address = current_setting('request.jwt.claims', true)::json->>'wallet_address'));
-create policy "notification_channels_service_write" on notification_channels for all
-  using (current_setting('request.jwt.claims', true)::json->>'role' = 'service_role');
+create policy "notification_channels_service_role_access" on notification_channels for all
+  using (current_setting('request.jwt.claims', true)::json->>'role' = 'service_role')
+  with check (current_setting('request.jwt.claims', true)::json->>'role' = 'service_role');
 
 create policy "notification_events_select_own" on notification_events for select
   using (user_id in (select id from users where wallet_address = current_setting('request.jwt.claims', true)::json->>'wallet_address'));

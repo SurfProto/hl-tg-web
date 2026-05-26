@@ -5,8 +5,6 @@ import { syncRewardsDashboard } from "./_lib/program";
 
 interface DashboardBody {
   startParam?: string | null;
-  username?: string | null;
-  walletAddress?: string | null;
 }
 
 export default async function handler(request: any, response: any) {
@@ -20,8 +18,6 @@ export default async function handler(request: any, response: any) {
       {
         privyUserId: session.privyUserId,
         referralStartParam: body.startParam ?? null,
-        username: body.username ?? null,
-        walletAddress: body.walletAddress ?? null,
       },
       config,
     );

@@ -197,15 +197,6 @@ export async function getUserByPrivyUserId(config: RewardsConfig, privyUserId: s
   return rows[0] ?? null;
 }
 
-async function getUserByWalletAddress(config: RewardsConfig, walletAddress: string) {
-  const rows = await supabaseRequest<RewardsUserRow[]>(
-    config,
-    `users?wallet_address=eq.${encodeURIComponent(walletAddress)}&select=*`,
-    { headers: buildHeaders(config) },
-  );
-  return rows[0] ?? null;
-}
-
 export async function getUserById(config: RewardsConfig, userId: string) {
   const rows = await supabaseRequest<RewardsUserRow[]>(
     config,
@@ -238,27 +229,12 @@ export async function getUsersByIds(config: RewardsConfig, userIds: string[]) {
 
 export async function getOrCreateRewardsUser(
   config: RewardsConfig,
-  input: { privyUserId: string; walletAddress: string | null; username: string | null },
+  input: { privyUserId: string },
 ) {
-  const existing =
-    (await getUserByPrivyUserId(config, input.privyUserId)) ??
-    (input.walletAddress ? await getUserByWalletAddress(config, input.walletAddress) : null);
+  const existing = await getUserByPrivyUserId(config, input.privyUserId);
 
   if (existing) {
-    const rows = await supabaseRequest<RewardsUserRow[]>(
-      config,
-      `users?id=eq.${existing.id}&select=*`,
-      {
-        body: JSON.stringify({
-          privy_user_id: input.privyUserId,
-          username: input.username ?? existing.username,
-          wallet_address: input.walletAddress ?? existing.wallet_address,
-        }),
-        headers: buildHeaders(config, { Prefer: "return=representation" }),
-        method: "PATCH",
-      },
-    );
-    return rows[0];
+    return existing;
   }
 
   const rows = await supabaseRequest<RewardsUserRow[]>(
@@ -267,8 +243,6 @@ export async function getOrCreateRewardsUser(
     {
       body: JSON.stringify({
         privy_user_id: input.privyUserId,
-        username: input.username,
-        wallet_address: input.walletAddress,
       }),
       headers: buildHeaders(config, { Prefer: "return=representation" }),
       method: "POST",

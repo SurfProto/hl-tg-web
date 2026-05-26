@@ -3,7 +3,8 @@ interface EnvLike {
 }
 
 export interface ProfileConfig {
-  privyAppId: string | null;
+  privyAppId: string;
+  privyAppSecret: string;
   supabaseUrl: string;
   supabaseServiceRoleKey: string;
 }
@@ -19,7 +20,8 @@ function getRequired(env: EnvLike, key: string): string {
 
 export function getProfileConfig(env: EnvLike = process.env): ProfileConfig {
   return {
-    privyAppId: env.PROFILE_PRIVY_APP_ID ?? env.VITE_PRIVY_APP_ID ?? null,
+    privyAppId: env.PROFILE_PRIVY_APP_ID?.trim() || getRequired(env, "VITE_PRIVY_APP_ID"),
+    privyAppSecret: getRequired(env, "PRIVY_APP_SECRET"),
     supabaseUrl: getRequired(env, "SUPABASE_URL"),
     supabaseServiceRoleKey: getRequired(env, "SUPABASE_SERVICE_ROLE_KEY"),
   };

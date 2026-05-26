@@ -14,7 +14,6 @@ import {
 } from "./profile/_lib/supabase-admin";
 
 interface UpdateProfileBody {
-  username?: string | null;
   language?: string | null;
 }
 
@@ -69,18 +68,15 @@ export default async function handler(request: any, response: any) {
 
     if (request.method === "PATCH") {
       const body = parseJsonBody<UpdateProfileBody>(request);
-      const username =
-        typeof body.username === "string" ? body.username.trim() || null : undefined;
       const language =
         typeof body.language === "string" ? body.language.trim() || null : undefined;
 
-      if (typeof username === "undefined" && typeof language === "undefined") {
+      if (typeof language === "undefined") {
         throw new HttpError(400, "INVALID_PROFILE_UPDATE", "No editable profile fields were provided");
       }
 
       const profile = await updateProfileUser(config, session.privyUserId, {
-        ...(typeof username !== "undefined" ? { username } : {}),
-        ...(typeof language !== "undefined" ? { language } : {}),
+        language,
       });
 
       json(response, 200, {

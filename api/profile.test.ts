@@ -100,7 +100,7 @@ describe("/api/profile", () => {
     });
   });
 
-  it("patches editable profile fields through the server boundary", async () => {
+  it("patches editable presentation fields through the server boundary", async () => {
     const response = createResponse();
 
     await handler(
@@ -108,7 +108,6 @@ describe("/api/profile", () => {
         method: "PATCH",
         headers: { authorization: "Bearer token" },
         body: {
-          username: " alice-updated ",
           language: "ru",
         },
       },
@@ -119,7 +118,6 @@ describe("/api/profile", () => {
       expect.any(Object),
       "did:privy:user:123",
       {
-        username: "alice-updated",
         language: "ru",
       },
     );

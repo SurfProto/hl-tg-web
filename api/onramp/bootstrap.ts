@@ -1,13 +1,8 @@
 import { requirePrivySession } from "./_lib/auth";
 import { buildBootstrapState } from "./_lib/bootstrap";
 import { getOnrampConfig } from "./_lib/config";
-import { ensureMethod, json, parseJsonBody, withJsonRoute } from "./_lib/http";
-import { getActiveOrder, getRecentOrders, hasVerifiedEmail, upsertOnrampUser } from "./_lib/supabase-admin";
-
-interface BootstrapBody {
-  email?: string | null;
-  walletAddress?: string | null;
-}
+import { ensureMethod, HttpError, json, withJsonRoute } from "./_lib/http";
+import { getActiveOrder, getRecentOrders, getUserByPrivyUserId, hasVerifiedEmail } from "./_lib/supabase-admin";
 
 export default async function handler(request: any, response: any) {
   await withJsonRoute(request, response, async () => {
@@ -15,20 +10,11 @@ export default async function handler(request: any, response: any) {
 
     const config = getOnrampConfig();
     const session = await requirePrivySession(request, config.privyAppId);
-    const body = parseJsonBody<BootstrapBody>(request);
-    const email = body.email?.trim().toLowerCase() ?? null;
-    const walletAddress = body.walletAddress?.trim() ?? null;
-    const hasVerifiedEmailMatch = await hasVerifiedEmail(config, email);
-    const kycStatus = !email ? "email_missing" : hasVerifiedEmailMatch ? "verified_local" : "unknown";
-    const kycSource = !email ? null : hasVerifiedEmailMatch ? "verified_emails" : "deferred_v1";
-    const user = await upsertOnrampUser(config, {
-      privyUserId: session.privyUserId,
-      walletAddress,
-      email,
-      kycStatus,
-      kycSource,
-      kycCheckedAt: new Date().toISOString(),
-    });
+    const user = await getUserByPrivyUserId(config, session.privyUserId);
+    if (!user) {
+      throw new HttpError(404, "PROFILE_NOT_FOUND", "Profile not found");
+    }
+    const hasVerifiedEmailMatch = await hasVerifiedEmail(config, user.email);
     const activeOrder = await getActiveOrder(config, user.id);
     const recentOrders = await getRecentOrders(config, user.id, 5);
 

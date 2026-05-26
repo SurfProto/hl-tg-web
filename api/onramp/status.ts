@@ -3,7 +3,7 @@ import { getOnrampConfig } from "./_lib/config";
 import { ensureMethod, json, withJsonRoute, HttpError } from "./_lib/http";
 import { getOnrampOrder } from "./_lib/provider";
 import { getStringQuery } from "./_lib/request";
-import { getActiveOrder, getUserByPrivyUserId, persistOrder } from "./_lib/supabase-admin";
+import { getActiveOrder, getOwnedOrder, getUserByPrivyUserId, updateOwnedOrderStatus } from "./_lib/supabase-admin";
 
 export default async function handler(request: any, response: any) {
   await withJsonRoute(request, response, async () => {
@@ -20,37 +20,29 @@ export default async function handler(request: any, response: any) {
     const externalOrderId =
       getStringQuery(request, "external_order_id") ?? getStringQuery(request, "onramp_external_order_id");
 
-    let targetOrderId = orderId;
-    let targetExternalOrderId = externalOrderId;
-
-    if (!targetOrderId && !targetExternalOrderId) {
-      const activeOrder = await getActiveOrder(config, user.id);
-      if (!activeOrder) {
-        throw new HttpError(404, "ORDER_NOT_FOUND", "No active onramp order found");
-      }
-      targetOrderId = activeOrder.id;
-      targetExternalOrderId = activeOrder.externalOrderId;
+    const localOrder =
+      orderId || externalOrderId
+        ? await getOwnedOrder(config, user.id, {
+            providerOrderId: orderId,
+            externalOrderId,
+          })
+        : await getActiveOrder(config, user.id);
+    if (!localOrder) {
+      throw new HttpError(404, "ORDER_NOT_FOUND", "No owned onramp order found");
     }
 
     const order = await getOnrampOrder(config, {
-      orderId: targetOrderId,
-      externalOrderId: targetExternalOrderId,
+      orderId: localOrder.id,
+      externalOrderId: localOrder.externalOrderId,
     });
 
-    const persisted = await persistOrder(config, {
-      userId: user.id,
-      walletAddress: user.wallet_address,
-      email: user.email,
-      providerOrderId: order.id,
-      externalOrderId: order.external_order_id,
-      serviceId: order.service_id,
+    const persisted = await updateOwnedOrderStatus(config, user.id, localOrder.id, {
       providerState: order.state,
       payinAmount: order.payin_amount,
       payoutAmount: order.payout_amount,
       feeAmount: order.fee ?? null,
       invoiceUrl: order.invoice_url,
       invoiceUrlExpiresAt: order.invoice_url_expires_at,
-      providerCreatedAt: order.created_at,
       providerTouchedAt: order.touched_at,
       errorCode: null,
       errorMessage: null,

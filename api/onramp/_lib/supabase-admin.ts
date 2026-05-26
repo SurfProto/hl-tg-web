@@ -31,15 +31,6 @@ interface SupabaseOrderRow {
   last_synced_at: string | null;
 }
 
-interface UpsertUserInput {
-  privyUserId: string;
-  walletAddress: string | null;
-  email: string | null;
-  kycStatus: string;
-  kycSource: string | null;
-  kycCheckedAt: string;
-}
-
 interface PersistOrderInput {
   userId: string;
   walletAddress: string;
@@ -54,6 +45,18 @@ interface PersistOrderInput {
   invoiceUrl: string | null;
   invoiceUrlExpiresAt: string | null;
   providerCreatedAt: string | null;
+  providerTouchedAt: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+}
+
+interface UpdateOrderStatusInput {
+  providerState: string;
+  payinAmount: string | null;
+  payoutAmount: string | null;
+  feeAmount: string | null;
+  invoiceUrl: string | null;
+  invoiceUrlExpiresAt: string | null;
   providerTouchedAt: string | null;
   errorCode: string | null;
   errorMessage: string | null;
@@ -118,55 +121,6 @@ export async function getUserByPrivyUserId(config: OnrampConfig, privyUserId: st
   return rows[0] ?? null;
 }
 
-async function getUserByWalletAddress(config: OnrampConfig, walletAddress: string): Promise<SupabaseUserRow | null> {
-  const rows = await supabaseRequest<SupabaseUserRow[]>(
-    config,
-    `users?wallet_address=eq.${encodeURIComponent(walletAddress)}&select=*`,
-    {
-      headers: buildHeaders(config),
-    },
-  );
-
-  return rows[0] ?? null;
-}
-
-export async function upsertOnrampUser(config: OnrampConfig, input: UpsertUserInput): Promise<SupabaseUserRow> {
-  const normalizedEmail = normalizeEmail(input.email);
-  const existingUser =
-    (await getUserByPrivyUserId(config, input.privyUserId)) ??
-    (input.walletAddress ? await getUserByWalletAddress(config, input.walletAddress) : null);
-
-  if (!existingUser) {
-    throw new Error("USER_NOT_FOUND: Open the app via Telegram first to create your account before using onramp");
-  }
-
-  const payload = {
-    privy_user_id: input.privyUserId,
-    wallet_address: input.walletAddress,
-    email: normalizedEmail,
-    kyc_status: input.kycStatus === "unknown" && existingUser.kyc_status ? existingUser.kyc_status : input.kycStatus,
-    kyc_source: input.kycStatus === "unknown" && existingUser.kyc_source ? existingUser.kyc_source : input.kycSource,
-    kyc_checked_at:
-      input.kycStatus === "unknown" && existingUser.kyc_checked_at
-        ? existingUser.kyc_checked_at
-        : input.kycCheckedAt,
-  };
-
-  const rows = await supabaseRequest<SupabaseUserRow[]>(
-    config,
-    `users?id=eq.${existingUser.id}&select=*`,
-    {
-      method: "PATCH",
-      headers: buildHeaders(config, {
-        Prefer: "return=representation",
-      }),
-      body: JSON.stringify(payload),
-    },
-  );
-
-  return rows[0];
-}
-
 export async function hasVerifiedEmail(config: OnrampConfig, email: string | null): Promise<boolean> {
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail) {
@@ -229,15 +183,37 @@ export async function getRecentOrders(config: OnrampConfig, userId: string, limi
   return rows.map(mapOrderRow);
 }
 
+export async function getOwnedOrder(
+  config: OnrampConfig,
+  userId: string,
+  input: { providerOrderId?: string | null; externalOrderId?: string | null },
+): Promise<OnrampOrderStatus | null> {
+  const identifiers = [
+    input.providerOrderId
+      ? `provider_order_id=eq.${encodeURIComponent(input.providerOrderId)}`
+      : null,
+    input.externalOrderId
+      ? `external_order_id=eq.${encodeURIComponent(input.externalOrderId)}`
+      : null,
+  ].filter(Boolean).join("&");
+  const rows = await supabaseRequest<SupabaseOrderRow[]>(
+    config,
+    `onramp_orders?user_id=eq.${encodeURIComponent(userId)}&${identifiers}&select=provider_order_id,external_order_id,service_id,provider_state,app_state,payin_amount,payin_currency,payout_amount,payout_currency,fee_amount,invoice_url,invoice_url_expires_at,error_code,error_message,last_synced_at&limit=1`,
+    { headers: buildHeaders(config) },
+  );
+
+  return rows[0] ? mapOrderRow(rows[0]) : null;
+}
+
 export async function persistOrder(config: OnrampConfig, input: PersistOrderInput): Promise<OnrampOrderStatus> {
   const { payinCurrency, payoutCurrency } = getSymbolCurrencies(config.appSymbol);
   const rows = await supabaseRequest<SupabaseOrderRow[]>(
     config,
-    "onramp_orders?on_conflict=provider_order_id&select=provider_order_id,external_order_id,service_id,provider_state,app_state,payin_amount,payin_currency,payout_amount,payout_currency,fee_amount,invoice_url,invoice_url_expires_at,error_code,error_message,last_synced_at",
+    "onramp_orders?select=provider_order_id,external_order_id,service_id,provider_state,app_state,payin_amount,payin_currency,payout_amount,payout_currency,fee_amount,invoice_url,invoice_url_expires_at,error_code,error_message,last_synced_at",
     {
       method: "POST",
       headers: buildHeaders(config, {
-        Prefer: "resolution=merge-duplicates,return=representation",
+        Prefer: "return=representation",
       }),
       body: JSON.stringify({
         user_id: input.userId,
@@ -264,5 +240,38 @@ export async function persistOrder(config: OnrampConfig, input: PersistOrderInpu
     },
   );
 
+  return mapOrderRow(rows[0]);
+}
+
+export async function updateOwnedOrderStatus(
+  config: OnrampConfig,
+  userId: string,
+  providerOrderId: string,
+  input: UpdateOrderStatusInput,
+): Promise<OnrampOrderStatus> {
+  const { payinCurrency, payoutCurrency } = getSymbolCurrencies(config.appSymbol);
+  const rows = await supabaseRequest<SupabaseOrderRow[]>(
+    config,
+    `onramp_orders?user_id=eq.${encodeURIComponent(userId)}&provider_order_id=eq.${encodeURIComponent(providerOrderId)}&select=provider_order_id,external_order_id,service_id,provider_state,app_state,payin_amount,payin_currency,payout_amount,payout_currency,fee_amount,invoice_url,invoice_url_expires_at,error_code,error_message,last_synced_at`,
+    {
+      method: "PATCH",
+      headers: buildHeaders(config, { Prefer: "return=representation" }),
+      body: JSON.stringify({
+        provider_state: input.providerState,
+        app_state: normalizeOrderState(input.providerState),
+        payin_amount: input.payinAmount,
+        payin_currency: payinCurrency,
+        payout_amount: input.payoutAmount,
+        payout_currency: payoutCurrency,
+        fee_amount: input.feeAmount,
+        invoice_url: input.invoiceUrl,
+        invoice_url_expires_at: input.invoiceUrlExpiresAt,
+        provider_touched_at: input.providerTouchedAt,
+        last_synced_at: new Date().toISOString(),
+        error_code: input.errorCode,
+        error_message: input.errorMessage,
+      }),
+    },
+  );
   return mapOrderRow(rows[0]);
 }

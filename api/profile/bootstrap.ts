@@ -1,13 +1,11 @@
 import { requirePrivySession } from "../onramp/_lib/auth";
+import { requireTelegramInitData } from "../account/_lib/telegram";
 import { ensureMethod, json, parseJsonBody, withJsonRoute } from "../onramp/_lib/http";
 import { getProfileConfig } from "./_lib/config";
+import { resolveAuthoritativeProfileIdentity } from "./_lib/identity";
 import { bootstrapProfileUser, getNotificationPreferences } from "./_lib/supabase-admin";
 
 interface BootstrapProfileBody {
-  telegramId?: string | null;
-  walletAddress?: string | null;
-  username?: string | null;
-  email?: string | null;
   language?: string | null;
 }
 
@@ -33,6 +31,13 @@ function mapNotificationPreferences(
   };
 }
 
+function hasTelegramInitData(request: any) {
+  const value =
+    request.headers?.["x-telegram-init-data"] ??
+    request.headers?.["X-Telegram-Init-Data"];
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 export default async function handler(request: any, response: any) {
   await withJsonRoute(request, response, async () => {
     ensureMethod(request, "POST");
@@ -40,12 +45,14 @@ export default async function handler(request: any, response: any) {
     const config = getProfileConfig();
     const session = await requirePrivySession(request, config.privyAppId);
     const body = parseJsonBody<BootstrapProfileBody>(request);
+    const identity = await resolveAuthoritativeProfileIdentity(config, session.privyUserId);
+    const telegram = hasTelegramInitData(request) ? requireTelegramInitData(request) : null;
     const profile = await bootstrapProfileUser(config, {
       privyUserId: session.privyUserId,
-      telegramId: body.telegramId?.trim() ?? null,
-      walletAddress: body.walletAddress?.trim() ?? null,
-      username: body.username?.trim() ?? null,
-      email: body.email?.trim().toLowerCase() ?? null,
+      telegramId: telegram?.user?.id != null ? String(telegram.user.id) : null,
+      walletAddress: identity.walletAddress,
+      username: telegram?.user?.username?.trim() ?? null,
+      email: identity.email,
       language: body.language?.trim() ?? null,
     });
     const prefs = await getNotificationPreferences(config, profile.id);

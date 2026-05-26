@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   requirePrivySession: vi.fn(),
+  requireTelegramInitData: vi.fn(),
   getProfileConfig: vi.fn(),
+  resolveAuthoritativeProfileIdentity: vi.fn(),
   bootstrapProfileUser: vi.fn(),
   getNotificationPreferences: vi.fn(),
 }));
@@ -11,8 +13,16 @@ vi.mock("../onramp/_lib/auth", () => ({
   requirePrivySession: mocks.requirePrivySession,
 }));
 
+vi.mock("../account/_lib/telegram", () => ({
+  requireTelegramInitData: mocks.requireTelegramInitData,
+}));
+
 vi.mock("./_lib/config", () => ({
   getProfileConfig: mocks.getProfileConfig,
+}));
+
+vi.mock("./_lib/identity", () => ({
+  resolveAuthoritativeProfileIdentity: mocks.resolveAuthoritativeProfileIdentity,
 }));
 
 vi.mock("./_lib/supabase-admin", () => ({
@@ -38,6 +48,16 @@ describe("POST /api/profile/bootstrap", () => {
     mocks.requirePrivySession.mockResolvedValue({
       privyUserId: "did:privy:user:123",
     });
+    mocks.requireTelegramInitData.mockReturnValue({
+      user: {
+        id: 123,
+        username: "alice_signed",
+      },
+    });
+    mocks.resolveAuthoritativeProfileIdentity.mockResolvedValue({
+      walletAddress: "0xabc",
+      email: "alice@example.com",
+    });
     mocks.bootstrapProfileUser.mockResolvedValue({
       id: "user-1",
       telegram_id: "123",
@@ -54,18 +74,21 @@ describe("POST /api/profile/bootstrap", () => {
     });
   });
 
-  it("normalizes bootstrap input and returns profile state", async () => {
+  it("derives Telegram identity from signed init data and ignores client identity fields", async () => {
     const response = createResponse();
 
     await handler(
       {
         method: "POST",
-        headers: { authorization: "Bearer token" },
+        headers: {
+          authorization: "Bearer token",
+          "x-telegram-init-data": "signed-telegram-data",
+        },
         body: {
-          telegramId: " 123 ",
-          walletAddress: " 0xabc ",
-          username: " alice ",
-          email: " ALICE@example.com ",
+          telegramId: "attacker-id",
+          walletAddress: "0xattacker",
+          username: "attacker",
+          email: "attacker@example.com",
           language: "ru",
         },
       },
@@ -76,15 +99,23 @@ describe("POST /api/profile/bootstrap", () => {
       expect.any(Object),
       "privy-app-id",
     );
+    expect(mocks.requireTelegramInitData).toHaveBeenCalledWith(expect.any(Object));
     expect(mocks.bootstrapProfileUser).toHaveBeenCalledWith(
       expect.any(Object),
       expect.objectContaining({
         privyUserId: "did:privy:user:123",
         telegramId: "123",
         walletAddress: "0xabc",
-        username: "alice",
         email: "alice@example.com",
+        username: "alice_signed",
         language: "ru",
+      }),
+    );
+    expect(mocks.bootstrapProfileUser).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        walletAddress: "0xattacker",
+        email: "attacker@example.com",
       }),
     );
     expect(response.status).toHaveBeenCalledWith(200);
@@ -103,5 +134,28 @@ describe("POST /api/profile/bootstrap", () => {
         },
       },
     });
+  });
+
+  it("does not require or modify Telegram identity for wallet-only bootstrap", async () => {
+    const response = createResponse();
+
+    await handler(
+      {
+        method: "POST",
+        headers: { authorization: "Bearer token" },
+        body: { language: "en" },
+      },
+      response,
+    );
+
+    expect(mocks.requireTelegramInitData).not.toHaveBeenCalled();
+    expect(mocks.bootstrapProfileUser).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        privyUserId: "did:privy:user:123",
+        telegramId: null,
+        username: null,
+      }),
+    );
   });
 });

@@ -172,13 +172,9 @@ async function requestJson<T>(path: string, accessToken: string, init: RequestIn
   return payload.data;
 }
 
-export async function bootstrapOnramp(
-  accessToken: string,
-  input: { email: string | null; walletAddress: string | null },
-): Promise<OnrampBootstrapData> {
+export async function bootstrapOnramp(accessToken: string): Promise<OnrampBootstrapData> {
   return requestJson<OnrampBootstrapData>("/api/onramp/bootstrap", accessToken, {
     method: "POST",
-    body: JSON.stringify(input),
   });
 }
 
@@ -189,10 +185,14 @@ export async function fetchOnrampQuote(accessToken: string, amount: number): Pro
   });
 }
 
-export async function checkoutOnramp(accessToken: string, amount: number): Promise<{ state: OnrampAppState; order: OnrampOrderStatus }> {
+export async function checkoutOnramp(
+  accessToken: string,
+  amount: number,
+  payoutAddress: string,
+): Promise<{ state: OnrampAppState; order: OnrampOrderStatus }> {
   return requestJson<{ state: OnrampAppState; order: OnrampOrderStatus }>("/api/onramp/checkout", accessToken, {
     method: "POST",
-    body: JSON.stringify({ amount }),
+    body: JSON.stringify({ amount, payoutAddress }),
   });
 }
 

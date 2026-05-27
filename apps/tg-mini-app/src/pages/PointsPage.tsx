@@ -3,8 +3,6 @@ import { usePrivy, useToken } from "@privy-io/react-auth";
 import type { ReferralSummary, RewardsDashboard } from "@repo/types";
 import { useTranslation } from "react-i18next";
 import { ReferralCard } from "../components/ReferralCard";
-import { useHaptics } from "../hooks/useHaptics";
-import { getTelegramProfile } from "../lib/profile";
 import { getTelegramStartParam } from "../lib/referrals";
 import { fetchRewardsDashboard } from "../lib/rewards";
 
@@ -25,17 +23,10 @@ function formatUsd(value: number) {
 
 export function PointsPage() {
   const { t } = useTranslation();
-  const haptics = useHaptics();
   const { user } = usePrivy();
   const { getAccessToken } = useToken();
   const queryClient = useQueryClient();
-  const telegramProfile = getTelegramProfile();
   const startParam = getTelegramStartParam();
-  const username =
-    telegramProfile?.username ??
-    user?.telegram?.username ??
-    user?.email?.address ??
-    null;
   const walletAddress = user?.wallet?.address ?? null;
 
   const accessTokenQuery = useQuery({
@@ -78,11 +69,6 @@ export function PointsPage() {
     await dashboardQuery.refetch();
   };
 
-  const handleCopyReferralLink = async (link: string) => {
-    await navigator.clipboard.writeText(link);
-    haptics.success();
-  };
-
   if (dashboardQuery.isLoading) {
     return (
       <div className="editorial-page px-4 py-5">
@@ -111,7 +97,6 @@ export function PointsPage() {
     );
   }
 
-  const referralLink = `t.me/hyperliq?ref=${username || walletAddress?.slice(0, 8)}`;
   const progressToNext = Math.max(0, 5000 - (dashboard.season.xpTotal % 5000));
 
   return (
@@ -122,7 +107,7 @@ export function PointsPage() {
           <h1 className="editorial-heading text-foreground">{t("nav.rewards")}</h1>
         </div>
 
-        <div className="mt-5 rounded-[30px] bg-[#10161f] p-5 text-white shadow-[0_22px_50px_rgba(15,23,42,0.22)]">
+        <div className="mt-5 rounded-[20px] bg-primary p-5 text-white">
           <div className="editorial-kicker text-white/55">
             {dashboard.season.name} · YOUR POINTS
           </div>
@@ -140,40 +125,22 @@ export function PointsPage() {
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-white/15">
               <div
-                className="h-full rounded-full bg-primary transition-all"
+                className="h-full rounded-full bg-signal transition-all"
                 style={{ width: `${(dashboard.season.xpTotal % 5000) / 50}%` }}
               />
             </div>
           </div>
         </div>
 
-        <div className="editorial-card mt-4 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="editorial-section-title text-[1.45rem]">{t("points.referEarn")}</div>
-              <div className="mt-1 text-sm text-muted">20% of friends&apos; fees forever</div>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleCopyReferralLink(referralLink)}
-              className="editorial-button-primary px-4 py-2"
-            >
-              {t("common.share")}
-            </button>
+        {user?.id && accessTokenQuery.data && (
+          <div className="pt-4">
+            <ReferralCard
+              accessToken={accessTokenQuery.data}
+              onApplied={handleReferralApplied}
+              referral={dashboard.referral}
+            />
           </div>
-          <div className="mt-3 flex items-center gap-2">
-            <div className="editorial-mono flex-1 truncate rounded-[18px] bg-[var(--color-primary-soft)] px-3 py-2.5 text-sm text-muted">
-              {referralLink}
-            </div>
-            <button
-              type="button"
-              onClick={() => handleCopyReferralLink(referralLink)}
-              className="editorial-button-secondary px-3 py-2.5"
-            >
-              {t("common.copy")}
-            </button>
-          </div>
-        </div>
+        )}
 
         <div className="pb-2 pt-6">
           <div className="editorial-kicker">{t("points.thisWeek")}</div>
@@ -278,15 +245,6 @@ export function PointsPage() {
           </>
         )}
 
-        {user?.id && accessTokenQuery.data && (
-          <div className="pt-6">
-            <ReferralCard
-              accessToken={accessTokenQuery.data}
-              onApplied={handleReferralApplied}
-              referral={dashboard.referral}
-            />
-          </div>
-        )}
       </div>
     </div>
   );

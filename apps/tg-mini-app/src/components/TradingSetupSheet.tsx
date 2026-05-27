@@ -56,14 +56,14 @@ export function TradingSetupSheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby="trading-setup-title"
-        className="relative mt-auto bg-white rounded-t-2xl px-4 pt-4 pb-8 animate-slide-up"
+        className="relative mt-auto rounded-t-[24px] bg-white px-4 pt-4 pb-8 animate-slide-up"
       >
         <div className="flex justify-center mb-5">
-          <div className="w-10 h-1 rounded-full bg-gray-300" />
+          <div className="w-10 h-1 rounded-full bg-separator" />
         </div>
 
         <div className="flex justify-center mb-4">
-          <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
+          <div className="p34k-signal w-14 h-14 rounded-2xl flex items-center justify-center">
             <svg className="w-7 h-7 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
@@ -73,7 +73,7 @@ export function TradingSetupSheet({
         <h2 id="trading-setup-title" className="text-lg font-bold text-foreground text-center mb-2">
           {isExpired ? t('tradingSetup.titleReauth') : t('tradingSetup.title1Click')}
         </h2>
-        <p className="text-sm text-gray-500 text-center mb-6 leading-relaxed">
+        <p className="text-sm text-muted text-center mb-6 leading-relaxed">
           {isExpired
             ? t('tradingSetup.descExpired')
             : t('tradingSetup.desc1Click')}
@@ -81,13 +81,13 @@ export function TradingSetupSheet({
 
         {isSuccess ? (
           <div className="flex flex-col items-center py-4 mb-6">
-            <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mb-3">
-              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="p34k-signal w-12 h-12 rounded-full flex items-center justify-center mb-3">
+              <svg className="w-6 h-6 text-positive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
               </svg>
             </div>
             <p className="text-base font-bold text-foreground">{t('tradingSetup.allSet')}</p>
-            <p className="text-sm text-gray-500 mt-1">{t('tradingSetup.readyToTrade')}</p>
+            <p className="text-sm text-muted mt-1">{t('tradingSetup.readyToTrade')}</p>
           </div>
         ) : (
           <div className="space-y-2.5 mb-6">

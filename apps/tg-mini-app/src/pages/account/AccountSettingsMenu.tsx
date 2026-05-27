@@ -11,9 +11,10 @@ const SETTINGS_ROUTES = [
 
 export function AccountSettingsMenu() {
   return (
-    <div className="min-h-full bg-background px-4 py-5">
-      <h1 className="mb-4 text-2xl font-bold text-foreground">Account settings</h1>
-      <div className="overflow-hidden rounded-2xl border border-separator bg-white shadow-sm">
+    <div className="editorial-page px-4 py-5">
+      <p className="editorial-kicker">Account</p>
+      <h1 className="editorial-heading mb-5 mt-2 text-foreground">Account settings</h1>
+      <div className="overflow-hidden rounded-[18px] border border-separator bg-white">
         {SETTINGS_ROUTES.map((route, index) => (
           <Link
             key={route.path}

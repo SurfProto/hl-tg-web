@@ -38,9 +38,9 @@ function ApprovalStatusPill({
 }) {
   const className =
     tone === "positive"
-      ? "bg-green-50 text-positive"
+      ? "p34k-signal text-positive"
       : tone === "warning"
-        ? "bg-yellow-50 text-amber-600"
+        ? "bg-[var(--color-primary-soft)] text-primary"
         : "bg-surface text-muted";
 
   return (
@@ -66,7 +66,7 @@ function ApprovalActionButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${
+      className={`rounded-xl px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${
         variant === "primary"
           ? "bg-primary text-white active:bg-primary-dark"
           : "border border-separator bg-white text-foreground active:bg-surface"
@@ -204,9 +204,10 @@ export function ApprovalsPage() {
   ];
 
   return (
-    <div className="min-h-full bg-background px-4 py-5 space-y-4">
+    <div className="editorial-page px-4 py-5 space-y-4">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">
+        <p className="editorial-kicker">{t("nav.account")}</p>
+        <h1 className="editorial-heading mt-2 text-foreground">
           {t("approvals.title")}
         </h1>
         <p className="mt-1 text-sm text-muted">{t("approvals.subtitle")}</p>
@@ -215,7 +216,7 @@ export function ApprovalsPage() {
       {cards.map((card) => (
         <div
           key={card.key}
-          className="rounded-2xl border border-separator bg-white p-4 shadow-sm"
+          className="rounded-[18px] border border-separator bg-white p-4"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -230,7 +231,7 @@ export function ApprovalsPage() {
             />
           </div>
 
-          <div className="mt-4 rounded-2xl bg-surface px-4 py-3">
+          <div className="mt-4 rounded-xl bg-surface px-4 py-3">
             <p className="text-xs text-muted">{t("approvals.currentState")}</p>
             <p className="mt-1 break-all text-sm text-foreground">{card.meta}</p>
           </div>

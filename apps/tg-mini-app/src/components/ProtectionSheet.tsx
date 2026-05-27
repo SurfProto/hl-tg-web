@@ -97,7 +97,7 @@ export function ProtectionSheet({
     const helperId = `${kind}-helper`;
 
     return (
-      <div className="rounded-[22px] border border-separator bg-surface px-4 py-4">
+      <div className="rounded-[18px] border border-separator bg-surface px-4 py-4">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-foreground">{label}</p>
@@ -114,7 +114,7 @@ export function ProtectionSheet({
             }
             aria-pressed={enabled}
             className={`min-w-[74px] rounded-full px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 ${
-              enabled ? accentClassName : "bg-white text-gray-500 shadow-sm"
+              enabled ? accentClassName : "bg-white text-muted"
             }`}
           >
             {enabled ? t("protection.on") : t("protection.off")}
@@ -140,7 +140,7 @@ export function ProtectionSheet({
                   } as Partial<ProtectionDraft>)
                 }
                 aria-describedby={helperId}
-                className="mt-2 h-12 w-full rounded-2xl border border-separator bg-white px-4 text-base font-semibold text-foreground tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                className="mt-2 h-12 w-full rounded-xl border border-separator bg-white px-4 text-base font-semibold text-foreground tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
                 placeholder={t("protection.pricePlaceholder")}
               />
             </label>
@@ -161,7 +161,7 @@ export function ProtectionSheet({
                         ),
                       } as Partial<ProtectionDraft>)
                     }
-                    className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 active:bg-gray-100"
+                    className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 active:bg-[var(--color-primary-soft)]"
                   >
                     {kind === "stopLoss" ? "-" : "+"}
                     {percent}%
@@ -202,7 +202,7 @@ export function ProtectionSheet({
         <div className="flex max-h-[88vh] flex-col">
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-4 pb-4">
             <div className="flex justify-center">
-              <div className="h-1 w-10 rounded-full bg-gray-300" />
+              <div className="h-1 w-10 rounded-full bg-separator" />
             </div>
 
             <div className="mt-5 flex items-start justify-between gap-3">
@@ -225,7 +225,7 @@ export function ProtectionSheet({
             </div>
 
             {disabledNotice && (
-              <div className="mt-4 rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              <div className="mt-4 rounded-xl border border-primary/15 bg-[var(--color-primary-soft)] px-4 py-3 text-sm text-[var(--color-text-secondary)]">
                 {disabledNotice}
               </div>
             )}
@@ -243,7 +243,7 @@ export function ProtectionSheet({
               )}
             </div>
 
-            <div className="mt-1 rounded-[22px] bg-surface px-4 py-3 text-sm text-muted">
+            <div className="mt-1 rounded-[18px] bg-surface px-4 py-3 text-sm text-muted">
               {referencePrice != null
                 ? t("protection.referenceInfo", {
                     price: formatPrice(referencePrice),
@@ -260,7 +260,7 @@ export function ProtectionSheet({
               type="button"
               onClick={onSubmit}
               disabled={isSubmitting}
-              className="w-full rounded-full bg-primary px-4 py-3.5 text-sm font-semibold text-white transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:opacity-50 active:opacity-80"
+              className="w-full rounded-xl bg-primary px-4 py-3.5 text-sm font-semibold text-white transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:opacity-50 active:opacity-80"
             >
               {isSubmitting ? t("protection.saving") : submitLabel}
             </button>

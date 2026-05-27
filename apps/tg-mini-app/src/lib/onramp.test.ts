@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -133,24 +134,31 @@ function makeOrder(id: string, appState: OnrampOrderStatus["appState"]): OnrampO
   };
 }
 
-describe("tg-mini-app vercel config", () => {
-  it("preserves /api routes before the SPA catch-all rewrite", async () => {
+describe("root vercel deployment config", () => {
+  it("owns the API routes and enables Fluid Compute from the repository root", async () => {
     const rawConfig = await readFile(
-      new URL("../../vercel.json", import.meta.url),
+      resolve(process.cwd(), "../../vercel.json"),
       "utf8",
     );
     const config = JSON.parse(rawConfig) as {
-      rewrites?: Array<{ source: string; destination: string }>;
+      fluid?: boolean;
+      routes?: Array<{ src?: string; dest?: string }>;
+      crons?: Array<{ path: string; schedule: string }>;
     };
 
-    expect(config.rewrites?.[0]).toEqual({
-      source: "/api/(.*)",
-      destination: "/api/$1",
+    expect(config.fluid).toBe(true);
+    expect(config.routes?.[0]).toEqual({
+      src: "/api/(.*)",
+      dest: "/api/$1",
     });
 
-    expect(config.rewrites).toContainEqual({
-      source: "/(.*)",
-      destination: "/index.html",
+    expect(config.routes).toContainEqual({
+      src: "/(.*)",
+      dest: "/index.html",
+    });
+    expect(config.crons).toContainEqual({
+      path: "/api/rewards/weekly-raffle",
+      schedule: "5 0 * * 1",
     });
   });
 });

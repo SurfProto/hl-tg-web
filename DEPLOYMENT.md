@@ -61,9 +61,8 @@ npm install -g vercel
 vercel login
 ```
 
-3. Deploy the Telegram Mini App:
+3. Deploy the Telegram Mini App and API from the repository root:
 ```bash
-cd apps/tg-mini-app
 vercel
 ```
 
@@ -72,7 +71,7 @@ vercel
    - Which scope? Select your account
    - Link to existing project? **No**
    - Project name? `hl-tg-mini-app` (or your preferred name)
-   - Directory? `./` (current directory)
+   - Directory? `./` (repository root)
    - Override settings? **No**
 
 5. Set environment variables in Vercel:
@@ -97,9 +96,9 @@ vercel --prod
 3. Import your Git repository
 4. Configure project:
    - Framework Preset: **Vite**
-   - Root Directory: `apps/tg-mini-app`
+   - Root Directory: leave empty (repository root)
    - Build Command: `pnpm build`
-   - Output Directory: `dist`
+   - Output Directory: `apps/tg-mini-app/dist`
 5. Add Environment Variables:
    - `VITE_PRIVY_APP_ID`
    - `VITE_HYPERLIQUID_TESTNET`
@@ -149,6 +148,34 @@ First review the JSON report. Apply mode corrects only deterministic Privy
 wallet and email mismatches; it intentionally exits nonzero while Telegram
 bindings still require manual confirmation. Re-verify those Telegram
 associations separately before treating the identity audit as closed.
+
+
+### Vercel Function Performance
+
+The root `vercel.json` is the canonical deployment configuration: it builds the
+mini app, exposes the root `/api/*` Node.js Functions, includes the raffle cron,
+and opts into Fluid Compute. Do not configure the Vercel project with
+`apps/tg-mini-app` as its Root Directory, because that excludes the root API
+Functions from the deployment.
+
+Keep these API handlers on the Node.js runtime. Authenticated endpoints rely on
+Node cryptography, and the latency-sensitive read endpoints already use Redis
+and CDN cache headers.
+
+For the Europe/CIS latency pass on Vercel Pro:
+
+1. In the Vercel dashboard, record Function route latency and error baselines
+   for `/api/market/markets`, `/api/market/stats`, and authenticated
+   `/api/account/snapshot`.
+2. Record the deployed Vercel Function, Upstash Redis, and Supabase regions.
+3. Benchmark the existing Function region against `fra1` using equivalent
+   preview deployments and the same critical routes.
+4. Add one `regions` value to root `vercel.json` only after the benchmark shows
+   improved or unchanged critical-path latency with no error regression.
+
+Use Vercel Function Observability and Runtime Logs for this measurement. Do not
+expose timing data in the UI or API responses, and do not enable multiple
+Function regions until Redis and Supabase locality has been validated.
 
 ## Step 4: Set Up Telegram Bot
 

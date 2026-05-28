@@ -109,7 +109,7 @@ export function ReferralCard({ accessToken, referral, onApplied }: ReferralCardP
         </button>
       </div>
 
-      <div className="mt-4 flex items-center justify-between rounded-[22px] bg-[var(--color-primary-soft)] px-4 py-3">
+      <div className="p34k-signal mt-4 flex items-center justify-between rounded-xl px-4 py-3">
         <div>
           <p className="editorial-stat-label">{t("points.referralCode")}</p>
           <p className="editorial-mono mt-1 text-sm font-semibold text-foreground">
@@ -144,11 +144,11 @@ export function ReferralCard({ accessToken, referral, onApplied }: ReferralCardP
       <p className="mt-3 text-xs text-muted">{t("points.referral.manualHint")}</p>
 
       {referral.hasReferrer ? (
-        <div className="mt-4 rounded-[22px] border border-border bg-surface px-4 py-3 text-sm text-muted">
+        <div className="mt-4 rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted">
           {t("points.referral.linkedState")}
         </div>
       ) : (
-        <div className="mt-4 rounded-[22px] border border-border bg-white p-3">
+        <div className="mt-4 rounded-xl border border-border bg-white p-3">
           <label className="editorial-stat-label" htmlFor="manual-referral-code">
             {t("points.enterReferralCode")}
           </label>
@@ -156,13 +156,13 @@ export function ReferralCard({ accessToken, referral, onApplied }: ReferralCardP
             <input
               id="manual-referral-code"
               aria-label={t("points.enterReferralCode")}
-              className="min-w-0 flex-1 rounded-[18px] border border-border px-4 py-3 text-sm text-foreground outline-none placeholder:text-muted focus:border-primary focus:ring-2 focus:ring-primary/20"
+              className="min-w-0 flex-1 rounded-xl border border-border px-4 py-3 text-sm text-foreground outline-none placeholder:text-muted focus:border-primary focus:ring-2 focus:ring-primary/20"
               onChange={(event) => setDraftCode(event.target.value)}
               placeholder={t("points.referral.manualPlaceholder")}
               value={draftCode}
             />
             <button
-              className="editorial-button-primary rounded-[18px] px-4 py-3 disabled:opacity-60"
+              className="editorial-button-primary px-4 py-3 disabled:opacity-60"
               disabled={isApplying || normalizedDraft.length === 0}
               onClick={() => void handleApply()}
               type="button"

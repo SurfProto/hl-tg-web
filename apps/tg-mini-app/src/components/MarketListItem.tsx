@@ -16,8 +16,7 @@ interface MarketListItemProps {
 
 // Simple sparkline SVG that mimics a price trend
 function MiniSparkline({ isPositive }: { isPositive: boolean }) {
-  const color = isPositive ? '#00C076' : '#dc2626';
-  // Different path patterns for visual variety
+  const color = isPositive ? '#3447F3' : '#EB4D3D';
   const paths = isPositive
     ? 'M0,20 L8,18 L16,15 L24,16 L32,12 L40,8 L48,10 L56,5'
     : 'M0,5 L8,8 L16,6 L24,10 L32,12 L40,15 L48,14 L56,18';
@@ -62,20 +61,24 @@ export function MarketListItem({
   return (
     <button
       onClick={onClick}
-      className="w-full rounded-[24px] border border-transparent bg-white px-4 py-3.5 text-left transition-colors active:bg-slate-50"
+      className="flex w-full items-center gap-3 bg-white px-4 py-3.5 text-left transition-colors active:bg-surface"
     >
-      <TokenIcon coin={iconCoin} size={40} />
+      <TokenIcon coin={iconCoin} size={36} />
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-base font-semibold text-foreground truncate">{displayName}</span>
+          <span className="text-sm font-bold text-foreground truncate">{displayName}</span>
+          {maxLeverage ? (
+            <span className="rounded-full bg-surface px-1.5 py-0.5 text-[10px] font-semibold text-muted">
+              {maxLeverage}x
+            </span>
+          ) : null}
         </div>
         <span className="editorial-kicker mt-1 block">
           {marketType}
         </span>
       </div>
 
-      {/* Mini sparkline chart */}
       <div className="flex-shrink-0">
         <MiniSparkline isPositive={isPositive} />
       </div>

@@ -22,7 +22,7 @@ const BalanceHeroChart = lazyNamedModule(
   () => import("./BalanceHeroChart"),
   "BalanceHeroChart",
 );
-const HERO_CHART_SLOT_CLASS = "min-h-[286px]";
+const HERO_CHART_SLOT_CLASS = "min-h-[132px]";
 
 function formatUsd(value: number): string {
   const formatted = new Intl.NumberFormat("en-US", {
@@ -50,7 +50,7 @@ function BalanceHeroChartFallback() {
   return (
     <div className="animate-pulse">
       <div className="h-5 w-28 rounded bg-gray-200" />
-      <div className="mt-4 h-[252px] rounded-[32px] bg-gray-100" />
+      <div className="mt-4 h-[92px] rounded-xl bg-gray-100" />
     </div>
   );
 }
@@ -58,17 +58,14 @@ function BalanceHeroChartFallback() {
 export function BalanceHeroSkeleton() {
   return (
     <section className="px-4 pt-5">
-      <div className="editorial-card overflow-hidden px-5 pb-5 pt-5">
-        <div className="animate-pulse">
-          <div className="h-3 w-20 rounded bg-gray-200" />
-          <div className="mt-3 h-12 w-48 rounded bg-gray-200" />
-          <div className="mt-3 h-4 w-36 rounded bg-gray-100" />
-        </div>
-
+      <div className="animate-pulse">
+        <div className="h-6 w-20 rounded bg-gray-200" />
+        <div className="mt-8 h-12 w-48 rounded bg-gray-200" />
+        <div className="mt-3 h-4 w-36 rounded bg-gray-100" />
+      </div>
         <div className={`mt-5 ${HERO_CHART_SLOT_CLASS}`}>
           <BalanceHeroChartFallback />
         </div>
-      </div>
     </section>
   );
 }
@@ -111,7 +108,11 @@ export function BalanceHero() {
 
   return (
     <section className="px-4 pt-5">
-      <div className="editorial-card overflow-hidden px-5 pb-5 pt-5">
+      <div className="flex items-end justify-between pb-8">
+        <div className="p34k-wordmark">P34k</div>
+        <p className="p34k-powered">Powered by Hyperliquid</p>
+      </div>
+      <div>
         <p className="editorial-kicker">
           {t("balanceHero.totalEquity")}
         </p>
@@ -119,10 +120,10 @@ export function BalanceHero() {
         {valueState.state === "ready" ? (
           <>
             <p className="mt-2 flex items-baseline gap-0.5">
-              <span className="editorial-mono text-[2.95rem] font-semibold tracking-[-0.06em] text-foreground">
+              <span className="editorial-mono text-[2.65rem] font-semibold tracking-[-0.06em] text-foreground">
                 ${totalValueParts.integer}
               </span>
-              <span className="editorial-mono text-[2rem] font-semibold tracking-[-0.05em] text-foreground">
+              <span className="editorial-mono text-[1.7rem] font-semibold tracking-[-0.05em] text-foreground">
                 .{totalValueParts.decimal}
               </span>
             </p>
@@ -160,7 +161,6 @@ export function BalanceHero() {
           )}
         </div>
 
-        {/* Action buttons */}
         <div className="mt-5 flex gap-3">
           <button
             type="button"

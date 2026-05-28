@@ -17,9 +17,10 @@ export function LegalPage() {
   ].filter((item) => Boolean(item.url));
 
   return (
-    <div className="min-h-full bg-background px-4 py-5 space-y-4">
-      <h1 className="text-2xl font-bold text-foreground">{t('legal.title')}</h1>
-      <div className="overflow-hidden rounded-2xl border border-separator bg-white shadow-sm">
+    <div className="editorial-page px-4 py-5 space-y-4">
+      <p className="editorial-kicker">{t('nav.account')}</p>
+      <h1 className="editorial-heading text-foreground">{t('legal.title')}</h1>
+      <div className="overflow-hidden rounded-[18px] border border-separator bg-white">
         {items.map((item, index) => (
           <button
             key={item.label}

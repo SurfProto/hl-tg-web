@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -45,11 +47,11 @@ describe("Layout", () => {
 
     const { container } = renderLayout("/");
 
-    expect(screen.getByText("tr:nav.home")).toBeInTheDocument();
+    expect(screen.getByText("tr:nav.markets")).toBeInTheDocument();
     expect(screen.getByText("tr:nav.positions")).toBeInTheDocument();
     expect(container.firstChild).toHaveClass("tg-root-height");
     expect(container.querySelector("main")).toHaveClass("page-above-bottom-nav");
-    expect(container.querySelector("nav")).toHaveClass("bottom-nav-safe");
+    expect(container.querySelector("nav")).toHaveClass("bottom-nav-safe", "p34k-bottom-nav");
   });
 
   it("hides the nav on sub-routes that should use the Telegram back button", () => {

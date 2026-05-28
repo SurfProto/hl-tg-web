@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -24,8 +26,8 @@ function translate(key: string) {
       "coinDetail.holdings": "Holdings",
       "coinDetail.holdingsValue": "Holdings Value",
       "coinDetail.marketCap": "Market Cap",
-      "coinDetail.longButton": "Long ↑",
-      "coinDetail.shortButton": "Short ↓",
+      "coinDetail.longButton": "Long",
+      "coinDetail.shortButton": "Short",
       "coinDetail.buyButton": "Buy",
       "coinDetail.sellButton": "Sell",
       "coinDetail.open": "Open",
@@ -174,10 +176,11 @@ describe("CoinDetailPage", () => {
         enableLiteCandleInspect: true,
         heightClassName: "h-[248px]",
         ranges: [
-          { key: "15m", label: "15M" },
+          { key: "15m", label: "15m" },
           { key: "1h", label: "1H" },
           { key: "4h", label: "4H" },
-          { key: "1d", label: "24H" },
+          { key: "1d", label: "1D" },
+          { key: "1w", label: "1W" },
         ],
       }),
     );

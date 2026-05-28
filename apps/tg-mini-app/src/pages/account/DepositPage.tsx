@@ -486,17 +486,18 @@ export function DepositPage() {
       : t("deposit.getQuote");
 
   return (
-    <div className="min-h-full bg-background px-4 py-5">
+    <div className="editorial-page px-4 py-5">
       {view === "choice" && (
         <div className="space-y-4">
-          <h1 className="text-2xl font-bold text-foreground">
+          <p className="editorial-kicker">{t("nav.account")}</p>
+          <h1 className="editorial-heading text-foreground">
             {t("deposit.title")}
           </h1>
           <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
               onClick={() => setView("fiat")}
-              className="rounded-2xl border border-separator bg-white p-5 text-left shadow-sm"
+              className="rounded-[18px] border border-separator bg-white p-5 text-left"
             >
               <svg
                 className="h-8 w-8 text-primary"
@@ -528,7 +529,7 @@ export function DepositPage() {
             <button
               type="button"
               onClick={() => setView("crypto")}
-              className="rounded-2xl border border-separator bg-white p-5 text-left shadow-sm"
+              className="rounded-[18px] border border-separator bg-white p-5 text-left"
             >
               <svg
                 className="h-8 w-8 text-primary"
@@ -571,7 +572,7 @@ export function DepositPage() {
             {t("common.back")}
           </button>
 
-          <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm space-y-3">
+          <div className="rounded-[18px] border border-separator bg-white p-4 space-y-3">
             <div className="space-y-2">
               <p className="text-xs text-muted">{t("deposit.destinationWallet")}</p>
               {isTrc20 && (
@@ -610,7 +611,7 @@ export function DepositPage() {
                       setQuoteRequest(null);
                     }}
                     placeholder={t("deposit.trc20AddressPlaceholder")}
-                    className="w-full rounded-2xl border border-separator bg-surface px-4 py-3 font-mono text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                    className="w-full rounded-xl border border-separator bg-surface px-4 py-3 font-mono text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                   />
                   <p className="text-xs text-muted">{t("deposit.trc20AddressHint")}</p>
                   {tronAddress && !isValidTrc20Address(tronAddress) && (
@@ -653,7 +654,7 @@ export function DepositPage() {
                 <button
                   type="button"
                   onClick={() => privy.linkEmail?.()}
-                  className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white"
+                  className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white"
                 >
                   {t("deposit.connectEmail")}
                 </button>
@@ -662,7 +663,7 @@ export function DepositPage() {
           </div>
 
           {isEmailRequired && (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+            <div className="rounded-[18px] border border-primary/15 bg-[var(--color-primary-soft)] p-4">
               <p className="text-sm font-semibold text-foreground">
                 {t("deposit.emailRequiredTitle")}
               </p>
@@ -673,7 +674,7 @@ export function DepositPage() {
           )}
 
           {/* TODO: Replace the v1 "pending verification" note with the real provider KYC gate and redirect flow. */}
-          <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm space-y-3">
+          <div className="rounded-[18px] border border-separator bg-white p-4 space-y-3">
             <p className="text-sm font-semibold text-foreground">
               {t("deposit.fiatAmountLabel")}
             </p>
@@ -694,7 +695,7 @@ export function DepositPage() {
               onChange={(event) => handleFiatAmountChange(event.target.value)}
               placeholder="1000"
               disabled={isEmailRequired}
-              className="w-full rounded-2xl border border-separator bg-surface px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-50"
+              className="w-full rounded-xl border border-separator bg-surface px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-50"
             />
             {onrampLimits && (
               <p className="text-xs text-muted">
@@ -712,7 +713,7 @@ export function DepositPage() {
               type="button"
               onClick={() => void (quoteMatchesCurrentInput ? startCheckout() : requestQuote())}
               disabled={!canUseFiatCta}
-              className="w-full rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+              className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
             >
               {fiatCtaLabel}
             </button>
@@ -720,7 +721,7 @@ export function DepositPage() {
           </div>
 
           {showQuoteCard && quote && (
-            <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm space-y-3">
+            <div className="rounded-[18px] border border-separator bg-white p-4 space-y-3">
               <p className="text-sm font-semibold text-foreground">
                 {t("deposit.quotePreview")}
               </p>
@@ -743,7 +744,7 @@ export function DepositPage() {
           )}
 
           {showOrderCard && order && (
-            <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm space-y-3">
+            <div className="rounded-[18px] border border-separator bg-white p-4 space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-foreground">
@@ -794,7 +795,7 @@ export function DepositPage() {
                 <button
                   type="button"
                   onClick={() => openExternal(order.invoiceUrl)}
-                  className="w-full rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white"
+                  className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white"
                 >
                   {t("deposit.openPaymentPage")}
                 </button>
@@ -820,7 +821,7 @@ export function DepositPage() {
           )}
 
           {terminalRecentOrders.length > 0 && (
-            <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm space-y-3">
+            <div className="rounded-[18px] border border-separator bg-white p-4 space-y-3">
               <p className="text-sm font-semibold text-foreground">
                 {t("deposit.orderHistoryTitle")}
               </p>
@@ -897,7 +898,7 @@ export function DepositPage() {
             {t("common.back")}
           </button>
 
-          <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm space-y-3">
+          <div className="rounded-[18px] border border-separator bg-white p-4 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted">{t("deposit.network")}</span>
               <span className="font-semibold text-foreground">
@@ -916,7 +917,7 @@ export function DepositPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm space-y-3">
+          <div className="rounded-[18px] border border-separator bg-white p-4 space-y-3">
             <p className="text-sm font-semibold text-foreground">
               {t("deposit.step1Title")}
             </p>
@@ -924,7 +925,7 @@ export function DepositPage() {
               type="button"
               onClick={() => fundWallet.mutate({ address })}
               disabled={!address || fundWallet.isPending}
-              className="w-full rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white active:bg-primary-dark transition-colors disabled:opacity-60"
+              className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white active:bg-primary-dark transition-colors disabled:opacity-60"
             >
               {fundWallet.isPending
                 ? t("deposit.openingFundingModal")

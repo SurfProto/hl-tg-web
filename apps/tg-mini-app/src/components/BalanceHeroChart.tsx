@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { usePortfolioPeriod } from '@repo/hyperliquid-sdk';
 import { useTranslation } from 'react-i18next';
-import { Chart } from '@repo/ui';
 import { usePortfolioRange } from '../hooks/usePortfolioRange';
 import { getPortfolioChangePct, getPortfolioTone } from '../lib/portfolio';
 
@@ -15,6 +14,20 @@ export function BalanceHeroChart() {
     const changePct = getPortfolioChangePct(historyPoints);
     return { changePct, tone: getPortfolioTone(historyPoints) };
   }, [historyPoints]);
+  const sparklinePath = useMemo(() => {
+    if (historyPoints.length === 0) return '';
+    const values = historyPoints.map((point) => point.value);
+    const low = Math.min(...values);
+    const high = Math.max(...values);
+    const span = high - low || 1;
+    return historyPoints
+      .map((point, index) => {
+        const x = historyPoints.length === 1 ? 0 : (index / (historyPoints.length - 1)) * 100;
+        const y = 38 - ((point.value - low) / span) * 34;
+        return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
+      })
+      .join(' ');
+  }, [historyPoints]);
 
   const periodCopy =
     period === '1d'
@@ -27,7 +40,7 @@ export function BalanceHeroChart() {
     return (
       <div className="animate-pulse">
         <div className="h-4 w-28 rounded bg-gray-200" />
-        <div className="mt-4 h-[228px] rounded-[28px] bg-gray-100" />
+        <div className="mt-4 h-[72px] rounded-xl bg-gray-100" />
       </div>
     );
   }
@@ -36,7 +49,7 @@ export function BalanceHeroChart() {
     return (
       <div>
         <div className="text-sm font-semibold text-gray-500">0.00%</div>
-        <div className="mt-4 flex h-[228px] items-center justify-center rounded-[28px] border border-dashed border-separator bg-surface">
+        <div className="mt-4 flex h-[72px] items-center justify-center rounded-xl border border-dashed border-separator bg-surface">
           <p className="text-sm text-gray-400">{t('chart.unavailable')}</p>
         </div>
       </div>
@@ -47,7 +60,7 @@ export function BalanceHeroChart() {
     return (
       <div>
         <div className="text-sm font-semibold text-gray-500">0.00%</div>
-        <div className="mt-4 flex h-[228px] items-center justify-center rounded-[28px] border border-dashed border-separator bg-surface">
+        <div className="mt-4 flex h-[72px] items-center justify-center rounded-xl border border-dashed border-separator bg-surface">
           <p className="text-sm text-gray-400">{t('chart.empty')}</p>
         </div>
       </div>
@@ -57,37 +70,39 @@ export function BalanceHeroChart() {
   return (
     <div>
       <div
-        className={`text-sm font-semibold ${
+        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
           performance.tone === 'positive'
-            ? 'text-positive'
+            ? 'p34k-signal'
             : performance.tone === 'negative'
-              ? 'text-negative'
-              : 'text-gray-500'
+              ? 'bg-negative/10 text-negative'
+              : 'bg-surface text-gray-500'
         }`}
       >
         {performance.changePct > 0 ? '+' : ''}
         {performance.changePct.toFixed(2)}%
-        <span className="ml-1 font-medium text-gray-400">{periodCopy}</span>
+        <span className="ml-1 font-medium opacity-65">{periodCopy}</span>
       </div>
 
-      <div className="mt-4">
-        <Chart
-          candles={[]}
-          interval={period}
-          onIntervalChange={(value) => setPeriod(value as typeof period)}
-          mode="area"
-          variant="lite-area"
-          tone={performance.tone}
-          areaData={historyPoints}
-          ranges={[
-            { key: '1d', label: '1D' },
-            { key: '7d', label: '1W' },
-            { key: '30d', label: '1M' },
-          ]}
-          showGrid={false}
-          showFooterStats={false}
-          heightClassName="h-[228px]"
-        />
+      <svg className="mt-4 h-[58px] w-full overflow-visible" viewBox="0 0 100 42" preserveAspectRatio="none" aria-hidden="true">
+        <path d={sparklinePath} fill="none" stroke="var(--color-primary)" strokeWidth="1.65" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+      </svg>
+      <div className="mt-3 flex gap-1.5">
+        {[
+          { key: '1d' as const, label: '1D' },
+          { key: '7d' as const, label: '1W' },
+          { key: '30d' as const, label: '1M' },
+        ].map((range) => (
+          <button
+            key={range.key}
+            type="button"
+            onClick={() => setPeriod(range.key)}
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+              period === range.key ? 'bg-primary text-white' : 'bg-surface text-muted'
+            }`}
+          >
+            {range.label}
+          </button>
+        ))}
       </div>
     </div>
   );

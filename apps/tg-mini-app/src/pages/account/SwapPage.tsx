@@ -106,9 +106,10 @@ export function SwapPage() {
   const isSameAsset = fromAsset === toAsset;
 
   return (
-    <div className="min-h-full bg-background px-4 py-5 space-y-4">
+    <div className="editorial-page px-4 py-5 space-y-4">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">{t("swap.title")}</h1>
+        <p className="editorial-kicker">{t("nav.account")}</p>
+        <h1 className="editorial-heading mt-2 text-foreground">{t("swap.title")}</h1>
         <p className="mt-1 text-sm text-muted">
           {isUnifiedLike
             ? t("swap.descriptionUnified")
@@ -118,7 +119,7 @@ export function SwapPage() {
 
       <StableBalanceList balances={visibleStableBalances} />
 
-      <div className="rounded-3xl border border-separator bg-white p-4 shadow-sm">
+      <div className="rounded-[18px] border border-separator bg-white p-4">
         <StableAssetPicker
           label={t("swap.from")}
           value={fromAsset}
@@ -156,7 +157,7 @@ export function SwapPage() {
           }}
         />
 
-        <div className="mt-5 rounded-2xl bg-surface p-4">
+        <div className="mt-5 rounded-xl bg-surface p-4">
           <div className="flex items-center justify-between gap-3">
             <label
               htmlFor="swap-amount"
@@ -185,7 +186,7 @@ export function SwapPage() {
               value={amount}
               onChange={(event) => setAmount(event.target.value)}
               placeholder="0.00"
-              className="flex-1 rounded-2xl border border-separator bg-white px-4 py-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+              className="flex-1 rounded-xl border border-separator bg-white px-4 py-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
             <button
               type="button"
@@ -196,13 +197,13 @@ export function SwapPage() {
                     : "",
                 )
               }
-              className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-primary transition-colors active:bg-gray-50"
+              className="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-primary transition-colors active:bg-surface"
             >
               MAX
             </button>
           </div>
 
-          <div className="mt-4 rounded-2xl border border-separator bg-white px-4 py-3">
+          <div className="mt-4 rounded-xl border border-separator bg-white px-4 py-3">
             <p className="text-xs uppercase tracking-wide text-muted">
               {t("swap.routing")}
             </p>
@@ -229,7 +230,7 @@ export function SwapPage() {
             })
           }
           disabled={isInvalidAmount || isSameAsset || swap.isPending}
-          className="mt-5 w-full rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white transition-colors disabled:opacity-50"
+          className="mt-5 w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition-colors disabled:opacity-50"
         >
           {swap.isPending
             ? t("swap.swapping")

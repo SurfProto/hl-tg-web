@@ -167,7 +167,10 @@ export function CoinDetailPage() {
   return (
     <div className="editorial-page page-above-bottom-dock">
       <div className="editorial-shell">
-        <div className="flex items-start gap-3">
+        <div className="relative flex items-start gap-3 overflow-hidden">
+          <span aria-hidden="true" className="pointer-events-none absolute right-0 top-0 text-[3.25rem] font-extrabold tracking-[-0.08em] text-primary/[0.05]">
+            {baseToken}
+          </span>
           <TokenIcon coin={baseToken} size={40} />
           <div className="flex-1">
             <p className="editorial-kicker">
@@ -202,7 +205,7 @@ export function CoinDetailPage() {
                   .{priceParts.decimal}
                 </span>
               </div>
-              <div className={`mt-2 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium ${isPositive ? 'bg-positive/10 text-positive' : 'bg-negative/10 text-negative'}`}>
+              <div className={`mt-2 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium ${isPositive ? 'p34k-signal' : 'bg-negative/10 text-negative'}`}>
                 <svg className={`w-4 h-4 ${isPositive ? '' : 'rotate-180'}`} fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
                 </svg>
@@ -231,8 +234,8 @@ export function CoinDetailPage() {
           )}
         </div>
 
-        <div className="editorial-card-soft mt-5 p-3">
-          <div className="relative rounded-[22px]">
+        <div className="editorial-card-soft mt-5 p-2">
+          <div className="relative rounded-[16px]">
             <Chart
               candles={candles ?? []}
               interval={interval}
@@ -375,13 +378,13 @@ export function CoinDetailPage() {
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 flex gap-3 border-t border-separator bg-white/92 px-4 py-3 backdrop-blur-md bottom-dock-safe">
+      <div className="fixed bottom-0 left-0 right-0 flex gap-3 border-t border-separator bg-white px-4 py-3 bottom-dock-safe">
         {isPerp ? (
           <>
             <button
               type="button"
               onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=short`)}
-              className="flex-1 rounded-full border border-negative/30 bg-white py-3.5 font-semibold text-negative transition-colors active:bg-red-50"
+              className="flex-1 rounded-xl border border-negative/25 bg-white py-3.5 font-semibold text-negative transition-colors active:bg-red-50"
             >
               {t('coinDetail.shortButton')} ↓
             </button>

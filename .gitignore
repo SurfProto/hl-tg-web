@@ -1,12 +1,14 @@
 # Dependencies
 node_modules/
 .pnpm-store/
+.node_modules_broken_*/
 
 # Build outputs
 dist/
 build/
 .next/
 out/
+*.tsbuildinfo
 
 # Environment variables
 .env

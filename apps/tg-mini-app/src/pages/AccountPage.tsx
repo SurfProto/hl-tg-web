@@ -28,7 +28,7 @@ function ChevronRightIcon() {
 }
 
 function SkeletonBar({ className }: { className: string }) {
-  return <div className={`animate-pulse rounded bg-gray-200 ${className}`} />;
+  return <div className={`animate-pulse rounded bg-surface ${className}`} />;
 }
 
 function MenuLink({
@@ -46,7 +46,7 @@ function MenuLink({
     <Link
       to={to}
       onClick={onClick}
-      className="flex items-center justify-between border-b border-separator py-4 transition-colors active:bg-gray-50 last:border-b-0"
+      className="flex items-center justify-between border-b border-separator py-4 transition-colors active:bg-surface last:border-b-0"
     >
       <div className="flex items-center gap-3">
         <span className="text-muted">{icon}</span>
@@ -82,10 +82,10 @@ export function AccountPage() {
   return (
     <div className="editorial-page">
       <div className="editorial-shell">
-        <div className="editorial-card px-4 pb-4 pt-5">
+        <div className="rounded-[18px] bg-primary px-4 pb-4 pt-5 text-white">
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--color-primary-soft)]">
-              <svg className="w-7 h-7 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <div className="p34k-signal flex h-14 w-14 items-center justify-center rounded-full">
+              <svg className="w-7 h-7 text-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
               </svg>
             </div>
@@ -97,11 +97,11 @@ export function AccountPage() {
                 </>
               ) : (
                 <>
-                  <p className="editorial-kicker">{t("nav.account")}</p>
-                  <h1 className="mt-1 text-xl font-semibold text-foreground truncate">
+                  <p className="editorial-kicker text-white/65">{t("nav.account")}</p>
+                  <h1 className="mt-1 text-xl font-semibold text-white truncate">
                     {telegramUsername ? `@${telegramUsername}` : t("account.traderFallback")}
                   </h1>
-                  <p className="editorial-mono mt-1 text-sm text-muted truncate">
+                  <p className="editorial-mono mt-1 text-sm text-white/70 truncate">
                     {walletAddress ? formatAddress(walletAddress) : ""} · VIP {user?.vipTier ?? 0}
                   </p>
                 </>

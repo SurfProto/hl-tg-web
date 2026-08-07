@@ -99,7 +99,7 @@ function PositionCard({
   return (
     <div
       onClick={() => navigate(`/coin/${encodeURIComponent(position.coin)}`)}
-      className="editorial-card p-4"
+      className="overflow-hidden rounded-[18px] border border-border bg-white p-4 transition-colors active:bg-surface"
     >
       {/* Header Row */}
       <div className="flex items-center justify-between gap-3 mb-3">
@@ -171,7 +171,7 @@ function PositionCard({
               ),
             });
           }}
-          className="flex-shrink-0 rounded-full border border-border bg-[var(--color-primary-soft)] px-3 py-2 text-xs font-semibold text-foreground transition-colors active:bg-[var(--color-primary-soft-strong)]"
+          className="flex-shrink-0 rounded-lg border border-border bg-surface px-3 py-2 text-xs font-semibold text-foreground transition-colors active:bg-[var(--color-primary-soft-strong)]"
         >
           TP/SL
         </button>
@@ -182,7 +182,7 @@ function PositionCard({
             haptics.light();
             onTradeMore(position.coin, isLong ? "long" : "short");
           }}
-          className="flex-shrink-0 rounded-full border border-border bg-[var(--color-primary-soft)] px-3 py-2 text-xs font-semibold text-foreground transition-colors active:bg-[var(--color-primary-soft-strong)]"
+          className="flex-shrink-0 rounded-lg border border-border bg-surface px-3 py-2 text-xs font-semibold text-foreground transition-colors active:bg-[var(--color-primary-soft-strong)]"
         >
           {t("positions.addMargin")}
         </button>
@@ -193,7 +193,7 @@ function PositionCard({
             onClosePosition(position.coin, displayName);
           }}
           disabled={pendingCloseCoin === position.coin}
-          className="flex-1 rounded-full bg-[#10161f] px-4 py-2 text-xs font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
+          className="flex-1 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
         >
           {pendingCloseCoin === position.coin
             ? t("common.closing")
@@ -250,7 +250,7 @@ function OpenOrderCard({
           : t("coinDetail.sellButton");
 
   return (
-    <div className="rounded-2xl border border-separator bg-white p-4">
+    <div className="rounded-[18px] border border-separator bg-white p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <TokenIcon coin={orderCoin.split("/")[0]} size={32} />
@@ -303,7 +303,7 @@ function PositionsEmptyState() {
   const { t } = useTranslation();
 
   return (
-    <div className="rounded-2xl border border-separator bg-white p-10 text-center">
+    <div className="rounded-[18px] border border-separator bg-white p-10 text-center">
       <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-surface">
         <svg
           className="h-7 w-7 text-muted"
@@ -327,7 +327,7 @@ function PositionsEmptyState() {
       </p>
       <button
         onClick={() => navigate("/")}
-        className="mt-5 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-white transition-colors active:bg-primary-dark"
+        className="mt-5 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-white transition-colors active:bg-primary-dark"
       >
         {t("positions.startTrading")}
       </button>
@@ -411,16 +411,16 @@ export function PositionsPage() {
         <p className="editorial-kicker">{t("nav.positions")}</p>
         <h1 className="editorial-heading text-foreground">{t("nav.positions")}</h1>
         {positions.length > 0 && (
-          <div className="editorial-card mt-4 flex gap-6 px-4 py-4">
+          <div className="mt-4 flex gap-6 rounded-[18px] bg-primary px-4 py-4 text-white">
             <div className="flex-1">
-              <div className="editorial-stat-label">{t("positions.unrealizedPnl")}</div>
-              <div className={`editorial-mono mt-2 text-[2rem] font-semibold ${totalUnrealizedPnl >= 0 ? "text-positive" : "text-negative"}`}>
+              <div className="editorial-stat-label text-white/65">{t("positions.unrealizedPnl")}</div>
+              <div className={`editorial-mono mt-2 text-[2rem] font-semibold ${totalUnrealizedPnl >= 0 ? "text-signal" : "text-white"}`}>
                 {formatPnl(totalUnrealizedPnl)}
               </div>
             </div>
             <div className="flex-1 text-right">
-              <div className="editorial-stat-label">{t("positions.margin")}</div>
-              <div className="editorial-mono mt-2 text-[2rem] font-semibold text-foreground">
+              <div className="editorial-stat-label text-white/65">{t("positions.margin")}</div>
+              <div className="editorial-mono mt-2 text-[2rem] font-semibold text-white">
                 {formatUsd(totalMargin)}
               </div>
             </div>
@@ -543,7 +543,7 @@ export function PositionsPage() {
               return (
                 <div
                   key={`${fill.hash}-${index}`}
-                  className="rounded-2xl border border-separator bg-white p-4"
+                  className="rounded-[18px] border border-separator bg-white p-4"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3">

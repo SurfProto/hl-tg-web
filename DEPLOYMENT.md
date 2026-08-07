@@ -29,11 +29,22 @@ cp .env.example .env
 # Privy
 VITE_PRIVY_APP_ID=your_privy_app_id
 VITE_TELEGRAM_BOT_USERNAME=your_bot_username
-PROFILE_PRIVY_APP_ID=
-PRIVY_APP_SECRET=your_server_only_privy_app_secret
 
 # Hyperliquid
 VITE_HYPERLIQUID_TESTNET=false
+
+# Fast market/account read cache
+UPSTASH_REDIS_REST_URL=your_upstash_redis_rest_url
+UPSTASH_REDIS_REST_TOKEN=your_upstash_redis_rest_token
+# Vercel Marketplace may provision these legacy KV aliases instead.
+KV_REST_API_URL=your_vercel_kv_rest_url
+KV_REST_API_TOKEN=your_vercel_kv_rest_token
+EDGE_CONFIG=your_vercel_edge_config_connection_string
+MARKET_POLICY_JSON=
+MARKET_TELEGRAM_BOT_TOKEN=
+MARKET_PREVIEW_BYPASS_SECRET=
+PROFILE_PRIVY_APP_ID=
+PRIVY_APP_SECRET=your_server_only_privy_app_secret
 
 # Builder Code
 VITE_BUILDER_ADDRESS=0xYOUR_BUILDER_ADDRESS
@@ -80,6 +91,14 @@ vercel env add VITE_PRIVY_APP_ID
 vercel env add VITE_HYPERLIQUID_TESTNET
 vercel env add VITE_BUILDER_ADDRESS
 vercel env add VITE_BUILDER_FEE
+vercel env add UPSTASH_REDIS_REST_URL
+vercel env add UPSTASH_REDIS_REST_TOKEN
+# Or use the Vercel Marketplace aliases if those were provisioned:
+vercel env add KV_REST_API_URL
+vercel env add KV_REST_API_TOKEN
+vercel env add TELEGRAM_BOT_TOKEN
+vercel env add SUPABASE_URL
+vercel env add SUPABASE_SERVICE_ROLE_KEY
 vercel env add PROFILE_PRIVY_APP_ID
 vercel env add PRIVY_APP_SECRET
 ```
@@ -104,11 +123,28 @@ vercel --prod
    - `VITE_HYPERLIQUID_TESTNET`
    - `VITE_BUILDER_ADDRESS`
    - `VITE_BUILDER_FEE`
+   - `UPSTASH_REDIS_REST_URL`
+   - `UPSTASH_REDIS_REST_TOKEN`
+   - `KV_REST_API_URL` and `KV_REST_API_TOKEN` are also supported when Vercel Marketplace provisions KV-style aliases
+   - `TELEGRAM_BOT_TOKEN` or `MARKET_TELEGRAM_BOT_TOKEN`
    - `PROFILE_PRIVY_APP_ID` (falls back to `VITE_PRIVY_APP_ID`)
    - `PRIVY_APP_SECRET` (server-only; never expose as a `VITE_` variable)
+   - `SUPABASE_URL`
+   - `SUPABASE_SERVICE_ROLE_KEY`
 6. Click "Deploy"
 
-### Profile Identity Boundary
+### Fast Market And Account Reads
+
+Public market reads are served through `/api/market/*` and do not require
+Telegram or Privy auth. They use Redis for short-lived cache, rate-limit
+counters, and refresh locks. If Redis env vars are missing, routes fall back to
+in-memory storage for local development only.
+
+Protected account reads are served through `/api/account/*`. These routes
+require a valid Privy bearer token and Telegram Mini App init data, then resolve
+the wallet server-side from Supabase by `privy_user_id`. They never trust a
+wallet address supplied by the client and always send private no-store cache
+headers.
 
 Profile bootstrap fetches the Privy user on the server. The only canonical
 trading/rewards wallet stored in `users.wallet_address` is the Privy-managed
@@ -149,6 +185,9 @@ wallet and email mismatches; it intentionally exits nonzero while Telegram
 bindings still require manual confirmation. Re-verify those Telegram
 associations separately before treating the identity audit as closed.
 
+Optional `MARKET_POLICY_JSON` can override low-churn policy values such as TTLs,
+major symbols, rate limits, or emergency upstream disable flags. Leave it empty
+to use code defaults.
 
 ### Vercel Function Performance
 

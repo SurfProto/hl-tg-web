@@ -1,11 +1,4 @@
-import {
-  type ComponentType,
-  Suspense,
-  lazy,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -27,24 +20,6 @@ import { log } from "../lib/logger";
 import { getHomeMarketDisplayState } from "./home-market-state";
 import { getHomeMarketViewState } from "./home-state";
 
-function lazyNamedModule<T extends Record<string, ComponentType<any>>>(
-  loader: () => Promise<T>,
-  exportName: keyof T,
-) {
-  return lazy(async () => {
-    const module = await loader();
-    return { default: module[exportName] as ComponentType<any> };
-  });
-}
-
-const SearchSheet = lazyNamedModule(
-  () => import("../components/SearchSheet"),
-  "SearchSheet",
-);
-const AllMarketsSheet = lazyNamedModule(
-  () => import("../components/AllMarketsSheet"),
-  "AllMarketsSheet",
-);
 const HOME_ROW_COUNT = 6;
 const DEFERRED_ROUTE_PREFETCHERS = [
   () => import("./TradePage"),
@@ -59,8 +34,7 @@ export function HomePage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedSubCategory, setSelectedSubCategory] =
     useState<MarketSubCategory | null>(null);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [allMarketsOpen, setAllMarketsOpen] = useState(false);
+  const [query, setQuery] = useState("");
 
   const {
     data: markets,
@@ -164,6 +138,14 @@ export function HomePage() {
       );
     }
 
+    if (query.trim()) {
+      const normalizedQuery = query.trim().toLowerCase();
+      result = result.filter(({ market }) => {
+        const marketIdentity = `${market.name} ${getMarketDisplayName(market)}`.toLowerCase();
+        return marketIdentity.includes(normalizedQuery);
+      });
+    }
+
     return [...result].sort((left, right) => {
       const leftVolume = marketStats?.[left.market.name]?.dayNtlVlm ?? 0;
       const rightVolume = marketStats?.[right.market.name]?.dayNtlVlm ?? 0;
@@ -176,27 +158,37 @@ export function HomePage() {
         getMarketDisplayName(right.market),
       );
     });
-  }, [enriched, marketStats, selectedCategory, selectedSubCategory]);
-
-  const visibleMarkets = sortedFiltered.slice(0, HOME_ROW_COUNT);
+  }, [enriched, marketStats, query, selectedCategory, selectedSubCategory]);
 
   return (
     <div className="editorial-page pb-6">
       <BalanceHero />
 
-      <div className="px-4 pb-2 pt-7">
-        <p className="editorial-kicker">{t("nav.markets")}</p>
-      </div>
-
-      <div className="px-4 pb-3 flex items-end justify-between gap-3">
+      <div className="px-4 pb-3 pt-7">
         <h2 className="editorial-section-title">{t("nav.markets")}</h2>
-        <button
-          type="button"
-          onClick={() => setAllMarketsOpen(true)}
-          className="editorial-button-ghost"
-        >
-          {t("home.seeAll")}
-        </button>
+        <label htmlFor="home-market-search" className="sr-only">
+          {t("home.ariaSearch")}
+        </label>
+        <div className="relative mt-4">
+          <svg
+            className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-5-5m2-6a8 8 0 11-16 0 8 8 0 0116 0z" />
+          </svg>
+          <input
+            id="home-market-search"
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t("search.placeholder")}
+            className="p34k-input"
+            aria-label={t("home.ariaSearch")}
+          />
+        </div>
       </div>
 
       <div className="px-4 mb-3">
@@ -239,9 +231,9 @@ export function HomePage() {
       )}
 
       <div className="px-4">
-        <div className="editorial-card overflow-hidden px-2 py-2">
+        <div className="overflow-hidden rounded-[18px] border border-border bg-white">
         {homeMarketViewState === "loading" ? (
-          <div className="space-y-2">
+          <div className="divide-y divide-separator">
             {Array.from({ length: HOME_ROW_COUNT }, (_, index) => (
               <MarketListItemSkeleton key={index} />
             ))}
@@ -265,7 +257,7 @@ export function HomePage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {visibleMarkets.map(({ market }) => {
+            {sortedFiltered.map(({ market }) => {
               const coin = market.name;
               const displayName = getMarketDisplayName(market);
               const iconCoin = getMarketBaseAsset(market);
@@ -302,55 +294,6 @@ export function HomePage() {
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={() => setSearchOpen(true)}
-        className="fixed floating-above-bottom-nav right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-[0_18px_36px_rgba(78,123,255,0.32)] transition-colors active:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-        aria-label={t("home.ariaSearch")}
-      >
-        <svg
-          className="w-5 h-5"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"
-          />
-        </svg>
-      </button>
-
-      {searchOpen && (
-        <Suspense fallback={null}>
-          <SearchSheet
-            isOpen={searchOpen}
-            onClose={() => setSearchOpen(false)}
-            onSelect={(coin: string) =>
-              navigate(`/coin/${encodeURIComponent(coin)}`)
-            }
-          />
-        </Suspense>
-      )}
-
-      {allMarketsOpen && (
-        <Suspense fallback={null}>
-          <AllMarketsSheet
-            isOpen={allMarketsOpen}
-            onClose={() => setAllMarketsOpen(false)}
-            markets={sortedFiltered}
-            marketStats={marketStats}
-            marketStatsError={marketStatsQueryFailed}
-            onSelect={(coin: string) => {
-              setAllMarketsOpen(false);
-              navigate(`/coin/${encodeURIComponent(coin)}`);
-            }}
-          />
-        </Suspense>
-      )}
     </div>
   );
 }

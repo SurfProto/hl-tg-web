@@ -5,16 +5,16 @@ export function UnifiedAccountBanner() {
   const { t } = useTranslation();
 
   return (
-    <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left">
-      <p className="text-sm font-semibold text-amber-900">
+    <div className="mt-5 rounded-[18px] border border-primary/15 bg-[var(--color-primary-soft)] px-4 py-3 text-left">
+      <p className="text-sm font-semibold text-foreground">
         {t("unifiedBanner.title")}
       </p>
-      <p className="mt-1 text-xs leading-relaxed text-amber-800">
+      <p className="mt-1 text-xs leading-relaxed text-[var(--color-text-secondary)]">
         {t("unifiedBanner.description")}
       </p>
       <Link
         to="/account"
-        className="mt-3 inline-flex rounded-full bg-white px-3 py-2 text-xs font-semibold text-amber-900 transition-colors active:bg-amber-100"
+        className="mt-3 inline-flex rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white transition-colors active:bg-primary-dark"
       >
         {t("unifiedBanner.cta")}
       </Link>

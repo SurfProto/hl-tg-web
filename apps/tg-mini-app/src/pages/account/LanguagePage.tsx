@@ -33,16 +33,17 @@ export function LanguagePage() {
   }, [getAccessToken, language]);
 
   return (
-    <div className="min-h-full bg-background px-4 py-5 space-y-4">
-      <h1 className="text-2xl font-bold text-foreground">{t('language.title')}</h1>
+    <div className="editorial-page px-4 py-5 space-y-4">
+      <p className="editorial-kicker">{t('nav.account')}</p>
+      <h1 className="editorial-heading text-foreground">{t('language.title')}</h1>
       <div className="space-y-3">
         {LANGUAGES.map((option) => (
           <button
             key={option.key}
             onClick={() => setLanguage(option.key)}
-            className={`flex w-full items-center justify-between rounded-2xl border px-4 py-4 text-left shadow-sm transition-colors ${
+            className={`flex w-full items-center justify-between rounded-[18px] border px-4 py-4 text-left transition-colors ${
               language === option.key
-                ? 'border-primary bg-blue-50'
+                ? 'border-primary bg-[var(--color-primary-soft)]'
                 : 'border-separator bg-white'
             }`}
           >

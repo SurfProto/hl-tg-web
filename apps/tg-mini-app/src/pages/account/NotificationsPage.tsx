@@ -69,11 +69,12 @@ export function NotificationsPage() {
   };
 
   return (
-    <div className="min-h-full bg-background px-4 py-5 space-y-4">
-      <h1 className="text-2xl font-bold text-foreground">{t('notifications.title')}</h1>
+    <div className="editorial-page px-4 py-5 space-y-4">
+      <p className="editorial-kicker">{t('nav.account')}</p>
+      <h1 className="editorial-heading text-foreground">{t('notifications.title')}</h1>
       <p className="text-sm text-muted">{t('notifications.description')}</p>
 
-      <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
+      <div className="rounded-[18px] border border-separator bg-white p-4">
         <p className="text-sm font-semibold text-foreground">
           {deliveryState === 'blocked'
             ? t('notifications.deliveryBlockedTitle')
@@ -94,7 +95,7 @@ export function NotificationsPage() {
         </p>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-separator bg-white shadow-sm">
+      <div className="overflow-hidden rounded-[18px] border border-separator bg-white">
         {([
           ['liquidation_alerts', t('notifications.liquidationAlerts')],
           ['order_fills', t('notifications.orderFills')],
@@ -106,7 +107,7 @@ export function NotificationsPage() {
             className={`flex w-full items-center justify-between px-4 py-4 text-left ${index < 2 ? 'border-b border-separator' : ''}`}
           >
             <span className="text-sm font-semibold text-foreground">{label}</span>
-            <span className={`inline-flex h-7 w-12 items-center rounded-full p-1 transition-colors ${prefs[key] ? 'bg-primary justify-end' : 'bg-gray-200 justify-start'}`}>
+            <span className={`inline-flex h-7 w-12 items-center rounded-full p-1 transition-colors ${prefs[key] ? 'bg-primary justify-end' : 'bg-separator justify-start'}`}>
               <span className="h-5 w-5 rounded-full bg-white shadow-sm" />
             </span>
           </button>

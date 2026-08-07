@@ -51,7 +51,7 @@ export function NumPad({ value, onChange, maxDecimals = 2 }: NumPadProps) {
               ? t('numPad.delete')
               : t('numPad.enterKey', { key })
           }
-          className="flex items-center justify-center min-h-[56px] rounded-xl bg-gray-50 active:bg-gray-200 transition-colors select-none"
+          className="flex items-center justify-center min-h-[56px] rounded-xl bg-surface active:bg-[var(--color-primary-soft-strong)] transition-colors select-none"
         >
           {key === '\u232b' ? (
             <svg className="w-5 h-5 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">

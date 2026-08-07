@@ -54,6 +54,22 @@ function formatUsdParts(value: number): { integer: string; decimal: string } {
 
 const LEVERAGE_OPTIONS = [1, 2, 5, 10, 20, 25, 50];
 
+type TradeFlowStep = "draft" | "review" | "success";
+
+interface ReviewedTrade {
+  order: Order;
+  protectionEnabled: boolean;
+  stopLossPx: number | null;
+  takeProfitPx: number | null;
+  estimatedProtectionSize: number;
+  liquidationPx: number | null;
+}
+
+interface TradeResult {
+  protectionWarning: boolean;
+  detail?: string;
+}
+
 export function TradePage() {
   const { symbol: rawSymbol = "BTC" } = useParams<{ symbol: string }>();
   const symbol = decodeURIComponent(rawSymbol);
@@ -75,6 +91,9 @@ export function TradePage() {
   const [protectionDraft, setProtectionDraft] = useState<ProtectionDraft>(
     EMPTY_PROTECTION_DRAFT,
   );
+  const [flowStep, setFlowStep] = useState<TradeFlowStep>("draft");
+  const [reviewedTrade, setReviewedTrade] = useState<ReviewedTrade | null>(null);
+  const [tradeResult, setTradeResult] = useState<TradeResult | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [setupVisible, setSetupVisible] = useState(false);
   const setupWalletRef = useRef<string | null>(null);
@@ -386,7 +405,7 @@ export function TradePage() {
     }
   };
 
-  const handlePrimaryAction = async () => {
+  const handleReviewOrder = () => {
     setSubmitError(null);
 
     if (!validation.isValid) {
@@ -417,6 +436,32 @@ export function TradePage() {
       }
     }
 
+    const order: Order = {
+      coin: symbol,
+      side: activeSide,
+      sizeUsd: amountNum,
+      orderType,
+      reduceOnly: false,
+      leverage,
+      marketType: "perp" as const,
+      ...(orderType === "limit" && { limitPx: limitPriceNum, tif }),
+    };
+
+    haptics.light();
+    setReviewedTrade({
+      order,
+      protectionEnabled: orderType === "market" && protectionEnabled,
+      stopLossPx,
+      takeProfitPx,
+      estimatedProtectionSize,
+      liquidationPx,
+    });
+    setFlowStep("review");
+  };
+
+  const handleConfirmOrder = async () => {
+    if (!reviewedTrade) return;
+    setSubmitError(null);
     haptics.medium();
 
     if (authenticated) {
@@ -431,40 +476,30 @@ export function TradePage() {
       }
     }
 
-    const order: Order = {
-      coin: symbol,
-      side: activeSide,
-      sizeUsd: amountNum,
-      orderType,
-      reduceOnly: false,
-      leverage,
-      marketType: "perp" as const,
-      ...(orderType === "limit" && { limitPx: limitPriceNum, tif }),
-    };
-
-    const sideLabel = activeSide === "buy" ? t("common.long") : t("common.short");
+    const sideLabel =
+      reviewedTrade.order.side === "buy" ? t("common.long") : t("common.short");
 
     try {
-      await placeOrder.mutateAsync(order);
+      await placeOrder.mutateAsync(reviewedTrade.order);
 
-      if (orderType === "market" && protectionEnabled) {
+      if (reviewedTrade.protectionEnabled) {
         try {
           await upsertPositionProtection.mutateAsync({
             coin: symbol,
-            stopLossPx: protectionDraft.stopLossEnabled ? stopLossPx : null,
-            takeProfitPx: protectionDraft.takeProfitEnabled
-              ? takeProfitPx
-              : null,
-            sizeHint: estimatedProtectionSize * (activeSide === "buy" ? 1 : -1),
+            stopLossPx: reviewedTrade.stopLossPx,
+            takeProfitPx: reviewedTrade.takeProfitPx,
+            sizeHint:
+              reviewedTrade.estimatedProtectionSize *
+              (reviewedTrade.order.side === "buy" ? 1 : -1),
             skipCancelExisting: true,
           });
           haptics.success();
           toast.success(t("trade.orderPlacedWithProtection", { side: sideLabel }));
-          navigate(-1);
+          setTradeResult({ protectionWarning: false });
+          setFlowStep("success");
           return;
         } catch (error) {
-          haptics.error();
-          toast.error(
+          const detail =
             error instanceof Error
               ? t("trade.orderPlacedProtectionFailed", {
                   side: sideLabel,
@@ -472,28 +507,133 @@ export function TradePage() {
                 })
               : t("trade.orderPlacedProtectionFailedGeneric", {
                   side: sideLabel,
-                }),
-          );
-          navigate("/positions");
+                });
+          haptics.error();
+          toast.error(detail);
+          setTradeResult({ protectionWarning: true, detail });
+          setFlowStep("success");
           return;
         }
       }
 
       haptics.success();
       toast.success(t("trade.orderPlaced", { side: sideLabel }));
-      navigate(-1);
+      setTradeResult({ protectionWarning: false });
+      setFlowStep("success");
     } catch (error) {
       haptics.error();
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : t("trade.orderFailed"),
-      );
+      const detail = error instanceof Error ? error.message : t("trade.orderFailed");
+      toast.error(detail);
+      setSubmitError(detail);
     }
   };
 
   const amountParts = formatUsdParts(amountNum);
   const btcEquivalent = currentPrice ? (amountNum / currentPrice).toFixed(4) : "0.0000";
+
+  if (flowStep === "success" && reviewedTrade && tradeResult) {
+    return (
+      <div className="editorial-page flex min-h-full flex-col px-4 py-5">
+        <div className="flex flex-1 flex-col items-center justify-center text-center">
+          <div className={`flex h-16 w-16 items-center justify-center rounded-full ${tradeResult.protectionWarning ? "bg-negative/10 text-negative" : "p34k-signal"}`}>
+            {tradeResult.protectionWarning ? "!" : "OK"}
+          </div>
+          <p className="editorial-kicker mt-6">{t("trade.orderResult")}</p>
+          <h1 className="editorial-heading mt-2 text-foreground">
+            {tradeResult.protectionWarning
+              ? t("trade.protectionWarningTitle")
+              : t("trade.orderPlacedTitle")}
+          </h1>
+          <p className="mt-3 max-w-[18rem] text-sm leading-relaxed text-muted">
+            {tradeResult.protectionWarning
+              ? t("trade.protectionWarningBody")
+              : t("trade.orderPlacedBody")}
+          </p>
+        </div>
+        <div className="space-y-3 bottom-dock-safe">
+          <button type="button" onClick={() => navigate("/positions")} className="editorial-button-primary w-full">
+            {t("trade.viewPositions")}
+          </button>
+          <button type="button" onClick={() => navigate("/")} className="editorial-button-secondary w-full">
+            {t("trade.returnHome")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (flowStep === "review" && reviewedTrade) {
+    const reviewedSide =
+      reviewedTrade.order.side === "buy" ? t("common.long") : t("common.short");
+    const reviewedLeverage = reviewedTrade.order.leverage ?? 1;
+
+    return (
+      <div className="editorial-page flex min-h-full flex-col">
+        <header className="px-4 pb-4 pt-5">
+          <p className="editorial-kicker">{t("trade.reviewOrder")}</p>
+          <h1 className="editorial-heading mt-2">{t("trade.reviewOrder")}</h1>
+        </header>
+        <div className="flex-1 px-4">
+          <div className="editorial-card overflow-hidden px-4 py-1">
+            {[
+              [t("trade.market"), displayName],
+              [t("trade.side"), reviewedSide],
+              [t("trade.orderType"), reviewedTrade.order.orderType.toUpperCase()],
+              [t("trade.size"), `$${reviewedTrade.order.sizeUsd.toLocaleString()}`],
+              [t("trade.leverage"), `${reviewedLeverage}x`],
+              [t("trade.margin"), `$${(reviewedTrade.order.sizeUsd / reviewedLeverage).toFixed(2)}`],
+              [t("trade.fee"), `$${(reviewedTrade.order.sizeUsd * 0.0005).toFixed(2)}`],
+              [t("trade.liq"), reviewedTrade.liquidationPx != null ? formatPrice(reviewedTrade.liquidationPx) : "-"],
+              ...(reviewedTrade.order.orderType === "limit"
+                ? [
+                    [t("trade.limitPrice"), formatPrice(reviewedTrade.order.limitPx ?? 0)],
+                    [t("trade.timeInForce"), reviewedTrade.order.tif ?? "GTC"],
+                  ]
+                : []),
+              ...(reviewedTrade.protectionEnabled
+                ? [
+                    ["SL / TP", protectionSummary.join(" / ") || t("common.unavailable")],
+                  ]
+                : []),
+            ].map(([label, value]) => (
+              <div key={label} className="flex items-center justify-between border-b border-separator py-4 last:border-b-0">
+                <span className="editorial-stat-label">{label}</span>
+                <span className="editorial-mono text-sm font-semibold text-foreground">{value}</span>
+              </div>
+            ))}
+          </div>
+          {reviewedTrade.order.orderType === "limit" ? (
+            <p className="mt-4 rounded-xl bg-surface px-4 py-3 text-xs leading-relaxed text-muted">
+              {t("trade.addProtectionAfterFills")}
+            </p>
+          ) : null}
+          {submitError ? <p className="mt-4 text-center text-sm text-negative">{submitError}</p> : null}
+        </div>
+        <div className="border-t border-separator bg-white px-4 pt-3 bottom-dock-safe">
+          <button type="button" onClick={handleConfirmOrder} disabled={isPending} className="editorial-button-primary w-full disabled:opacity-40">
+            {isPending ? t("trade.placingOrder") : t("trade.confirmOrder")}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setSubmitError(null);
+              setFlowStep("draft");
+            }}
+            className="mt-2 w-full py-3 text-sm font-semibold text-primary"
+          >
+            {t("trade.editOrder")}
+          </button>
+        </div>
+        <TradingSetupSheet
+          isOpen={setupVisible}
+          onClose={() => setSetupVisible(false)}
+          setup={tradingSetup}
+          isExpired={tradingStatus.isAgentExpired}
+          status={tradingStatus}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="editorial-page flex h-full flex-col">
@@ -516,6 +656,27 @@ export function TradePage() {
           </button>
         </div>
       </header>
+
+      <div className="px-4 pb-4">
+        <div className="flex rounded-xl bg-surface p-1">
+          {(["market", "limit"] as const).map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => {
+                setSubmitError(null);
+                setStep("amount");
+                setOrderType(type);
+              }}
+              className={`flex-1 rounded-lg py-2.5 text-sm font-semibold capitalize ${
+                orderType === type ? "bg-white text-primary" : "text-muted"
+              }`}
+            >
+              {type === "market" ? t("trade.orderTypeMarket") : t("trade.orderTypeLimit")}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Buy/Sell Toggle */}
       <div className="px-4 pb-4">
@@ -671,6 +832,24 @@ export function TradePage() {
             </span>
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={() => setProtectionOpen(true)}
+          className="editorial-card mt-4 flex w-full items-center justify-between p-4 text-left"
+        >
+          <div>
+            <span className="editorial-stat-label">{t("trade.protection")}</span>
+            <p className="mt-1 max-w-[15rem] text-sm text-muted">
+              {orderType === "limit"
+                ? t("trade.addProtectionAfterFills")
+                : t("trade.optionalSlTp")}
+            </p>
+          </div>
+          <span className="editorial-mono text-xs font-semibold text-primary">
+            {protectionSummary.length > 0 ? protectionSummary.join(" / ") : t("common.add")}
+          </span>
+        </button>
       </div>
 
       {/* NumPad */}
@@ -688,7 +867,7 @@ export function TradePage() {
       <div className="flex-none border-t border-separator bg-white/92 px-4 pt-2 pb-4 backdrop-blur-md bottom-dock-safe">
         <button
           type="button"
-          onClick={handlePrimaryAction}
+          onClick={handleReviewOrder}
           disabled={isSubmitDisabled}
           className={`w-full rounded-full py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40 ${
             activeSide === "buy"
@@ -696,9 +875,7 @@ export function TradePage() {
               : "bg-[#10161f] shadow-[0_18px_36px_rgba(15,23,42,0.22)]"
           }`}
         >
-          {isPending
-            ? t("trade.placingOrder")
-            : `${activeSide === "buy" ? t("common.long") : t("common.short")} ${baseToken} · ${leverage}× · $${amountNum.toLocaleString()}`}
+          {t("trade.reviewOrder")}
         </button>
 
         {validation.reason && !submitError && (

@@ -78,7 +78,7 @@ function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: str
         opacity: visible ? 1 : 0,
         transform: visible ? 'translateY(0)' : 'translateY(12px)',
       }}
-      className={`pointer-events-auto flex items-start gap-3 rounded-xl border-l-4 bg-white px-4 py-3 shadow-lg ${borderColor}`}
+      className={`pointer-events-auto flex items-start gap-3 rounded-xl border bg-white px-4 py-3 shadow-[0_12px_30px_rgba(17,22,43,0.08)] ${borderColor}`}
     >
       <ToastIcon type={toast.type} />
       <p className="flex-1 text-sm font-medium text-foreground">{toast.message}</p>

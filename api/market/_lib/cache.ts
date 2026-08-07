@@ -1,4 +1,10 @@
-import { redisDel, redisGet, redisSet, redisSetNx, __resetRedisMemoryForTests } from "./redis";
+import {
+  redisDelIfMatches,
+  redisGet,
+  redisSet,
+  redisSetNx,
+  __resetRedisMemoryForTests,
+} from "./redis";
 import type { ResponseMeta } from "./response";
 
 interface CachedValue<T> {
@@ -141,7 +147,10 @@ export async function readThroughCache<T>({
 
     throw error;
   } finally {
-    await redisDel(lockKey);
+    // Release only our own lock. If fetchFresh outran lockSeconds the lock has
+    // already expired and may belong to another request by now; deleting it
+    // would let a third request in and defeat the point of holding it.
+    await redisDelIfMatches(lockKey, lockValue);
   }
 }
 

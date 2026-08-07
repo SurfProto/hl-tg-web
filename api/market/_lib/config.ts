@@ -67,7 +67,13 @@ export function getMarketPolicy(env: Record<string, string | undefined> = proces
 
   try {
     return deepMergePolicy(DEFAULT_MARKET_POLICY, JSON.parse(raw) as Partial<MarketPolicy>);
-  } catch {
+  } catch (error) {
+    // Falling back to defaults is the right runtime behaviour, but doing it
+    // silently means a typo in the policy blob looks like it took effect.
+    console.error(
+      "MARKET_POLICY_JSON is not valid JSON; using DEFAULT_MARKET_POLICY.",
+      error instanceof Error ? error.message : error,
+    );
     return DEFAULT_MARKET_POLICY;
   }
 }

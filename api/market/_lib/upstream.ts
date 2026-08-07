@@ -1,3 +1,4 @@
+import { fetchWithTimeout, UpstreamTimeoutError } from "../../_lib/fetch-with-timeout";
 import { HttpError } from "./response";
 
 interface MarketStats {
@@ -50,11 +51,19 @@ function parseNumber(value: unknown) {
 }
 
 async function postInfo<T>(network: Network, body: Record<string, unknown>): Promise<T> {
-  const response = await fetch(apiUrl(network), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(apiUrl(network), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    if (error instanceof UpstreamTimeoutError) {
+      throw new HttpError(504, "UPSTREAM_TIMEOUT", "Hyperliquid upstream timed out");
+    }
+    throw error;
+  }
 
   if (!response.ok) {
     throw new HttpError(502, "UPSTREAM_ERROR", `Hyperliquid upstream failed: ${response.status}`);

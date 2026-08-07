@@ -6,6 +6,7 @@ import type {
   RewardLedgerEntry,
   WeeklyRaffleSnapshot,
 } from "../../../packages/types/src";
+import { fetchWithTimeout } from "../../_lib/fetch-with-timeout";
 import { HttpError } from "../../onramp/_lib/http";
 import {
   buildQuestSnapshot,
@@ -102,7 +103,7 @@ function buildReferralSummary(
 }
 
 async function getFillSummaries(config: RewardsConfig, walletAddress: string, seasonStart: string) {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     config.hyperliquidTestnet
       ? "https://api.hyperliquid-testnet.xyz/info"
       : "https://api.hyperliquid.xyz/info",

@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "../../_lib/fetch-with-timeout";
 import { getSymbolCurrencies, type OnrampConfig } from "./config";
 import { normalizeOrderState } from "./normalize";
 import type { OnrampOrderStatus } from "./types";
@@ -77,7 +78,7 @@ function buildHeaders(config: OnrampConfig, extra?: Record<string, string>) {
 }
 
 async function supabaseRequest<T>(config: OnrampConfig, path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${config.supabaseUrl}/rest/v1/${path}`, init);
+  const response = await fetchWithTimeout(`${config.supabaseUrl}/rest/v1/${path}`, init);
   if (!response.ok) {
     const body = await response.text();
     throw new Error(`Supabase request failed: ${response.status} ${body}`);

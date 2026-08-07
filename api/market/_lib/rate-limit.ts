@@ -5,12 +5,35 @@ function sanitizeKey(value: string) {
   return value.replace(/[^a-zA-Z0-9:._-]/g, "_").slice(0, 160);
 }
 
+function headerValue(request: any, name: string): string | undefined {
+  const raw = request.headers?.[name] ?? request.headers?.[name.toUpperCase()];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+/**
+ * Resolve the client IP for rate limiting.
+ *
+ * Never take the *first* X-Forwarded-For entry: a client can send its own XFF
+ * header and the proxy appends the real address to the end, so the first entry
+ * is attacker-controlled and rotating it defeats the limit entirely. Prefer
+ * x-real-ip, which Vercel sets itself, and fall back to the last XFF hop.
+ */
 export function getRequestIp(request: any) {
-  const forwarded = request.headers?.["x-forwarded-for"] ?? request.headers?.["X-Forwarded-For"];
-  const value = Array.isArray(forwarded) ? forwarded[0] : forwarded;
-  return typeof value === "string" && value.trim()
-    ? value.split(",")[0].trim()
-    : "unknown";
+  const realIp = headerValue(request, "x-real-ip");
+  if (realIp) {
+    return realIp;
+  }
+
+  const forwarded = headerValue(request, "x-forwarded-for");
+  if (forwarded) {
+    const hops = forwarded.split(",").map((hop) => hop.trim()).filter(Boolean);
+    if (hops.length > 0) {
+      return hops[hops.length - 1];
+    }
+  }
+
+  return "unknown";
 }
 
 export async function enforceRateLimit(args: {

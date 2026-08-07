@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { fetchWithTimeout } from "../../_lib/fetch-with-timeout";
 import { buildTransactionLedgerEntries } from "./ledger";
 import type { PlatformConfig } from "./config";
 import type {
@@ -92,7 +93,7 @@ function buildHeaders(config: PlatformConfig, extra?: Record<string, string>) {
 }
 
 async function supabaseRequest<T>(config: PlatformConfig, path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${config.supabaseUrl}/rest/v1/${path}`, init);
+  const response = await fetchWithTimeout(`${config.supabaseUrl}/rest/v1/${path}`, init);
   if (!response.ok) {
     const body = await response.text();
     throw new Error(`Supabase request failed: ${response.status} ${body}`);

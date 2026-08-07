@@ -1,3 +1,6 @@
+import { toErrorBody } from "../../_lib/error-response";
+import { HttpError } from "../../_lib/http-error";
+
 export type CacheState = "hit" | "miss" | "stale";
 export type CacheSource = "memory" | "redis" | "upstream";
 
@@ -8,19 +11,7 @@ export interface ResponseMeta {
   ttlSeconds: number;
 }
 
-export class HttpError extends Error {
-  statusCode: number;
-  code: string;
-  details?: unknown;
-
-  constructor(statusCode: number, code: string, message: string, details?: unknown) {
-    super(message);
-    this.name = "HttpError";
-    this.statusCode = statusCode;
-    this.code = code;
-    this.details = details;
-  }
-}
+export { HttpError };
 
 export function ensureGet(request: any) {
   if (request.method !== "GET") {
@@ -69,23 +60,8 @@ export function jsonSuccess<T>(
 }
 
 export function jsonError(response: any, error: unknown) {
-  if (error instanceof HttpError) {
-    response.status(error.statusCode).json({
-      success: false,
-      error: error.message,
-      code: error.code,
-      details: error.details ?? null,
-    });
-    return;
-  }
-
-  const message = error instanceof Error ? error.message : "Unexpected server error";
-  response.status(500).json({
-    success: false,
-    error: message,
-    code: "INTERNAL_ERROR",
-    details: null,
-  });
+  const { statusCode, body } = toErrorBody(error);
+  response.status(statusCode).json(body);
 }
 
 export async function withRoute(response: any, handler: () => Promise<void>) {

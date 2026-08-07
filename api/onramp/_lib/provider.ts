@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "../../_lib/fetch-with-timeout";
 import type { OnrampConfig } from "./config";
 import { getSymbolCurrencies } from "./config";
 import { HttpError } from "./http";
@@ -92,7 +93,7 @@ async function providerRequest<T>(
     url.search = searchParams.toString();
   }
 
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method: input.method,
     headers: {
       "Content-Type": "application/json",

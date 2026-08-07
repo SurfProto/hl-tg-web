@@ -1,4 +1,9 @@
-import { createPublicKey, createVerify, type KeyObject } from "node:crypto";
+import {
+  createPublicKey,
+  createVerify,
+  type JsonWebKey,
+  type KeyObject,
+} from "node:crypto";
 
 import { fetchWithTimeout } from "../../_lib/fetch-with-timeout";
 import { HttpError } from "./http";
@@ -71,7 +76,10 @@ function hasExpectedAudience(payload: PrivyJwtPayload, expectedAppId: string | n
   return payload.aud === expectedAppId;
 }
 
-function assertPayloadClaims(payload: PrivyJwtPayload, expectedAppId: string | null) {
+function assertPayloadClaims(
+  payload: PrivyJwtPayload,
+  expectedAppId: string | null,
+): asserts payload is PrivyJwtPayload & { sub: string } {
   const now = Math.floor(Date.now() / 1000);
   const validIssuer = payload.iss === "privy.io" || payload.iss === "https://auth.privy.io";
 

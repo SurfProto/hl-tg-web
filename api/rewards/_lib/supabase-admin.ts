@@ -57,7 +57,7 @@ interface SupabaseDepositRow {
   provider_touched_at: string | null;
 }
 
-interface RewardLedgerInsertInput {
+export interface RewardLedgerInsertInput {
   amount: number;
   asset: string | null;
   description: string;

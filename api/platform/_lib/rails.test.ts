@@ -42,9 +42,10 @@ describe("routeQuote", () => {
       ],
     });
 
-    expect(quote.railId).toBe("fast-cheap");
-    expect(quote.totalFee).toBe(450);
-    expect(quote.netAmount).toBe(99550);
+    expect(quote).not.toBeNull();
+    expect(quote?.railId).toBe("fast-cheap");
+    expect(quote?.totalFee).toBe(450);
+    expect(quote?.netAmount).toBe(99550);
   });
 
   it("falls back around disabled and degraded rails", () => {
@@ -100,7 +101,8 @@ describe("routeQuote", () => {
       ],
     });
 
-    expect(quote.railId).toBe("healthy");
+    expect(quote).not.toBeNull();
+    expect(quote?.railId).toBe("healthy");
   });
 
   it("returns no route when the corridor is unsupported", () => {

@@ -37,6 +37,7 @@ import {
   upsertUserPoints,
   upsertWeeklyReward,
   updateRewardLedgerStatus,
+  type RewardLedgerInsertInput,
   type RewardsUserRow,
 } from "./supabase-admin";
 
@@ -164,7 +165,7 @@ function buildQuestRewardEntries(args: {
   seasonId: string;
   userId: string;
   weekStart: string;
-}) {
+}): RewardLedgerInsertInput[] {
   const definitions: Record<
     QuestId,
     { description: string; rewards: Array<{ amount: number; kind: RewardKind; asset: string | null }> }
@@ -219,7 +220,7 @@ function buildReferralBonusEntries(args: {
   seasonId: string;
   userId: string;
   weekStart: string;
-}) {
+}): RewardLedgerInsertInput[] {
   return [
     {
       amount: 5,

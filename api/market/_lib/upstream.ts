@@ -19,7 +19,7 @@ interface PortfolioHistoryPoint {
   value: number;
 }
 
-interface PortfolioPeriodData {
+export interface PortfolioPeriodData {
   period: PortfolioRange;
   accountValueHistory: PortfolioHistoryPoint[];
   pnlHistory: PortfolioHistoryPoint[];

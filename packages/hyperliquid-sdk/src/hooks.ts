@@ -3,6 +3,7 @@ import {
   useFundWallet,
   usePrivy,
   useSendTransaction,
+  useToken,
   useWallets,
 } from "@privy-io/react-auth";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
@@ -44,6 +45,19 @@ import type {
   WsMessage,
 } from "@repo/types";
 import { USDC_ARBITRUM, HL_BRIDGE_ARBITRUM } from "./constants";
+import {
+  fetchAccountFills,
+  fetchAccountOrders,
+  fetchAccountPortfolio,
+  fetchAccountSnapshot,
+  fetchEdgeAssetCtx,
+  fetchEdgeCandles,
+  fetchEdgeMarketPrice,
+  fetchEdgeMarketStats,
+  fetchEdgeMarkets,
+  fetchEdgeMids,
+  fetchEdgeOrderbook,
+} from "./edge-proxy";
 
 const publicClientCache = new Map<"mainnet" | "testnet", HyperliquidClient>();
 const STABLE_SWAP_ASSETS = getSupportedStableAssets();
@@ -491,11 +505,10 @@ export function useHyperliquid() {
  * Hook to fetch market data
  */
 export function useMarketData() {
-  const { client } = usePublicHyperliquid();
-
   return useQuery({
     queryKey: ["markets"],
-    queryFn: () => client.getMarkets(),
+    queryFn: () => fetchEdgeMarkets(),
+    placeholderData: (previousData) => previousData,
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 }
@@ -525,18 +538,18 @@ export function useMids() {
 
   return useQuery({
     queryKey: ["mids"],
-    queryFn: () => client.getMids(),
+    queryFn: () => fetchEdgeMids(),
+    placeholderData: (previousData) => previousData,
     refetchInterval: 10_000, // Fallback polling; WS handles real-time updates
   });
 }
 
 export function useMarketPrice(coin: string) {
-  const { client } = usePublicHyperliquid();
-
   return useQuery<number | null>({
     queryKey: ["marketPrice", coin],
-    queryFn: () => client.getMarketPrice(coin),
+    queryFn: () => fetchEdgeMarketPrice(coin),
     enabled: !!coin,
+    placeholderData: (previousData) => previousData,
     staleTime: 2_000,
     refetchInterval: 10_000,
   });
@@ -546,12 +559,11 @@ export function useMarketPrice(coin: string) {
  * Hook to fetch orderbook
  */
 export function useOrderbook(coin: string) {
-  const { client } = usePublicHyperliquid();
-
   return useQuery({
     queryKey: ["orderbook", coin],
-    queryFn: () => client.getOrderbook(coin),
+    queryFn: () => fetchEdgeOrderbook(coin),
     enabled: !!coin,
+    placeholderData: (previousData) => previousData,
     refetchInterval: 2000, // Refetch every 2 seconds
   });
 }
@@ -560,12 +572,11 @@ export function useOrderbook(coin: string) {
  * Hook to fetch candles
  */
 export function useCandles(coin: string, interval: string = "1h") {
-  const { client } = usePublicHyperliquid();
-
   return useQuery({
     queryKey: ["candles", coin, interval],
-    queryFn: () => client.getCandles(coin, interval),
+    queryFn: () => fetchEdgeCandles(coin, interval),
     enabled: !!coin,
+    placeholderData: (previousData) => previousData,
     staleTime: 1000 * 60, // 1 minute
   });
 }
@@ -579,14 +590,22 @@ export function useUserState() {
   const { client } = useHyperliquid();
   const queryClient = useQueryClient();
   const { user } = usePrivy();
+  const { getAccessToken } = useToken();
   const walletAddress = user?.wallet?.address ?? null;
   const prefersUnifiedAccount =
     walletAddress != null ? getUnifiedPreference(walletAddress) : false;
 
   const query = useQuery({
     queryKey: ["userState"],
-    queryFn: () => client?.getUserState(),
-    enabled: !!client,
+    queryFn: async () => {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        throw new Error("Missing access token");
+      }
+      return (await fetchAccountSnapshot(accessToken)).userState;
+    },
+    enabled: Boolean(user?.id),
+    placeholderData: (previousData) => previousData,
     refetchInterval: 30_000, // Fallback polling; WS events trigger refetch in real-time
   });
 
@@ -827,12 +846,20 @@ export function useModifyOrder() {
  * Hook to fetch open orders
  */
 export function useOpenOrders() {
-  const { client } = useHyperliquid();
+  const { user } = usePrivy();
+  const { getAccessToken } = useToken();
 
   return useQuery({
     queryKey: ["openOrders"],
-    queryFn: () => client?.getOpenOrders(),
-    enabled: !!client,
+    queryFn: async () => {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        throw new Error("Missing access token");
+      }
+      return fetchAccountOrders(accessToken);
+    },
+    enabled: Boolean(user?.id),
+    placeholderData: (previousData) => previousData,
     refetchInterval: 5000,
   });
 }
@@ -841,12 +868,20 @@ export function useOpenOrders() {
  * Hook to fetch fills
  */
 export function useFills() {
-  const { client } = useHyperliquid();
+  const { user } = usePrivy();
+  const { getAccessToken } = useToken();
 
   return useQuery({
     queryKey: ["fills"],
-    queryFn: () => client?.getFills(),
-    enabled: !!client,
+    queryFn: async () => {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        throw new Error("Missing access token");
+      }
+      return fetchAccountFills(accessToken);
+    },
+    enabled: Boolean(user?.id),
+    placeholderData: (previousData) => previousData,
     refetchInterval: 10000,
   });
 }
@@ -955,12 +990,20 @@ export function usePortfolio() {
  * Hook to fetch spot account balance (HL L1 spot)
  */
 export function useSpotBalance() {
-  const { client } = useHyperliquid();
+  const { user } = usePrivy();
+  const { getAccessToken } = useToken();
 
   return useQuery({
     queryKey: ["spotBalance"],
-    queryFn: () => client?.getSpotBalance(),
-    enabled: !!client,
+    queryFn: async () => {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        throw new Error("Missing access token");
+      }
+      return (await fetchAccountSnapshot(accessToken)).spotBalance;
+    },
+    enabled: Boolean(user?.id),
+    placeholderData: (previousData) => previousData,
     refetchInterval: 5000,
   });
 }
@@ -1573,18 +1616,12 @@ export function useSetUnifiedAccount() {
 }
 
 export function useHip3DexAbstractionApproval() {
-  const { client } = useHyperliquid();
+  const userStateQuery = useUserState();
 
-  return useQuery({
-    queryKey: ["userState", "hip3DexAbstraction"],
-    queryFn: async () => {
-      if (!client) throw new Error("Client not connected");
-      const accountState = await client.getUserState();
-      return Boolean(accountState.hip3DexAbstractionEnabled);
-    },
-    enabled: !!client,
-    staleTime: 30_000,
-  });
+  return {
+    ...userStateQuery,
+    data: Boolean(userStateQuery.data?.hip3DexAbstractionEnabled),
+  };
 }
 
 export function useSetHip3DexAbstraction() {
@@ -1982,11 +2019,10 @@ export function useWebSocket() {
  * Data is extracted from the already-fetched metaAndAssetCtxs response — zero additional network cost on first call.
  */
 export function useMarketStats() {
-  const { client } = usePublicHyperliquid();
-
   return useQuery<Record<string, MarketStats>>({
     queryKey: ["marketStats"],
-    queryFn: () => client.getMarketStats(),
+    queryFn: () => fetchEdgeMarketStats(),
+    placeholderData: (previousData) => previousData,
     staleTime: 30_000,
     refetchInterval: 30_000,
   });
@@ -1996,12 +2032,11 @@ export function useMarketStats() {
  * Hook to fetch asset context for a single coin (OI, funding, 24h vol, mark price).
  */
 export function useAssetCtx(coin: string) {
-  const { client } = usePublicHyperliquid();
-
   return useQuery<AssetCtx | null>({
     queryKey: ["assetCtx", coin],
-    queryFn: () => client.getAssetCtx(coin),
+    queryFn: () => fetchEdgeAssetCtx(coin),
     enabled: !!coin,
+    placeholderData: (previousData) => previousData,
     staleTime: 30_000,
   });
 }
@@ -2010,29 +2045,39 @@ export function useAssetCtx(coin: string) {
  * Hook to fetch portfolio value history for area chart display.
  */
 export function usePortfolioPeriod(period: PortfolioRange = "7d") {
-  const { client } = useHyperliquid();
+  const { user } = usePrivy();
+  const { getAccessToken } = useToken();
 
   return useQuery<PortfolioPeriodData>({
     queryKey: ["portfolioPeriod", period],
-    queryFn: () => {
-      if (!client) throw new Error("Client not connected");
-      return client.getPortfolioPeriod(period);
+    queryFn: async () => {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        throw new Error("Missing access token");
+      }
+      return fetchAccountPortfolio(accessToken, period);
     },
-    enabled: !!client,
+    enabled: Boolean(user?.id),
+    placeholderData: (previousData) => previousData,
     staleTime: 60_000,
   });
 }
 
 export function usePortfolioHistory(period: PortfolioRange = "7d") {
-  const { client } = useHyperliquid();
+  const { user } = usePrivy();
+  const { getAccessToken } = useToken();
 
   return useQuery<PortfolioHistoryPoint[]>({
     queryKey: ["portfolioHistory", period],
-    queryFn: () => {
-      if (!client) throw new Error("Client not connected");
-      return client.getPortfolioHistory(period);
+    queryFn: async () => {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        throw new Error("Missing access token");
+      }
+      return (await fetchAccountPortfolio(accessToken, period)).accountValueHistory;
     },
-    enabled: !!client,
+    enabled: Boolean(user?.id),
+    placeholderData: (previousData) => previousData,
     staleTime: 60_000,
   });
 }

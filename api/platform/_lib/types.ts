@@ -19,7 +19,32 @@ export type RiskFlag =
   | "device_mismatch"
   | "chargeback_history"
   | "blockchain_exposure"
-  | "high_risk_country";
+  | "high_risk_country"
+  // No usable screening record. Absence of evidence is not a clean result, so
+  // this routes to review instead of quietly scoring zero.
+  | "unscreened";
+
+export interface UserRiskProfile {
+  userId: string;
+  sanctionsMatch: boolean;
+  pepMatch: boolean;
+  adverseMedia: boolean;
+  chargebackHistory: boolean;
+  blockchainExposure: boolean;
+  screenedAt: string | null;
+}
+
+export interface VelocitySnapshot {
+  transactionCount24h: number;
+  grossAmount24h: number;
+}
+
+export interface ReferenceRate {
+  fiatCurrency: string;
+  cryptoAsset: string;
+  rate: number;
+  observedAt: string;
+}
 
 export interface PaymentRail {
   id: string;
@@ -34,6 +59,8 @@ export interface PaymentRail {
   settlementDelayMinutes: number;
   health: RailHealth;
   enabled: boolean;
+  minAmount?: number | null;
+  maxAmount?: number | null;
 }
 
 export interface RoutedQuote {
@@ -60,6 +87,8 @@ export interface RiskDecisionInput {
   direction: PlatformDirection;
   paymentMethod: PaymentMethod;
   riskFlags: RiskFlag[];
+  /** Corridor is on the prohibited list — reject outright, no review path. */
+  prohibitedCorridor?: boolean;
 }
 
 export interface RiskDecision {

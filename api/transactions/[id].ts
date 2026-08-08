@@ -16,8 +16,13 @@ export default async function handler(request: any, response: any) {
       throw new HttpError(400, "BAD_REQUEST", "Transaction id is required");
     }
 
+    // Require positive ownership. The old check was
+    //   transaction.userId && transaction.userId !== user?.id
+    // which short-circuits when userId is null, and user_id is
+    // `on delete set null` — so deleting a user made their transactions
+    // readable by any authenticated caller.
     const transaction = await getPlatformTransaction(config, transactionId);
-    if (!transaction || (transaction.userId && transaction.userId !== user?.id)) {
+    if (!transaction || !user || transaction.userId !== user.id) {
       throw new HttpError(404, "TRANSACTION_NOT_FOUND", "Transaction not found");
     }
 

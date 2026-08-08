@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildTransactionLedgerEntries, sumLedgerEntries } from "./ledger";
+import { buildReversalEntries, buildTransactionLedgerEntries, sumLedgerEntries } from "./ledger";
 
 describe("buildTransactionLedgerEntries", () => {
   it("creates a balanced canonical ledger for successful onramp money movement", () => {
@@ -26,7 +26,7 @@ describe("buildTransactionLedgerEntries", () => {
     expect(sumLedgerEntries(entries, "USDT")).toBe(0);
   });
 
-  it("marks failed transactions with reversal metadata and no value movement", () => {
+  it("posts nothing for a transaction that never succeeded", () => {
     const entries = buildTransactionLedgerEntries({
       transactionId: "txn_2",
       direction: "offramp",
@@ -38,12 +38,42 @@ describe("buildTransactionLedgerEntries", () => {
       status: "failed",
     });
 
-    expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({
-      account: "memo:failed_transaction",
-      debit: 0,
-      credit: 0,
-      metadata: { direction: "offramp", status: "failed" },
+    expect(entries).toEqual([]);
+  });
+});
+
+describe("buildReversalEntries", () => {
+  it("unwinds a booked transaction so both currencies net back to zero", () => {
+    const original = buildTransactionLedgerEntries({
+      transactionId: "txn_3",
+      direction: "offramp",
+      grossAmount: 1000,
+      feeAmount: 25,
+      fiatCurrency: "KZT",
+      cryptoAmount: 10,
+      cryptoAsset: "USDT",
+      status: "settled",
     });
+
+    const reversal = buildReversalEntries(original);
+    const combined = [...original, ...reversal];
+
+    // Each contra-entry mirrors its original with debit and credit swapped.
+    expect(reversal).toHaveLength(original.length);
+    reversal.forEach((entry, index) => {
+      expect(entry.account).toBe(original[index].account);
+      expect(entry.currency).toBe(original[index].currency);
+      expect(entry.debit).toBe(original[index].credit);
+      expect(entry.credit).toBe(original[index].debit);
+      expect(entry.idempotencyKey).toBe(`${original[index].idempotencyKey}:reversal`);
+    });
+
+    // The old behaviour wrote a zero-value memo row and left the originals
+    // booked, so a failed transaction still showed money as moved.
+    expect(sumLedgerEntries(combined, "KZT")).toBe(0);
+    expect(sumLedgerEntries(combined, "USDT")).toBe(0);
+    expect(
+      combined.filter((entry) => entry.account === "treasury:crypto_inventory"),
+    ).toHaveLength(2);
   });
 });

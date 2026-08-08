@@ -1,15 +1,17 @@
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import { fetchWithTimeout } from "../../_lib/fetch-with-timeout";
 import { buildTransactionLedgerEntries } from "./ledger";
 import type { PlatformConfig } from "./config";
 import type {
-  LedgerEntry,
   PaymentRail,
   PlatformTransaction,
+  ReferenceRate,
   RiskDecision,
   RiskAction,
   TransactionStatus,
+  UserRiskProfile,
+  VelocitySnapshot,
 } from "./types";
 
 interface PlatformUserRow {
@@ -31,6 +33,8 @@ interface PaymentRailRow {
   settlement_delay_minutes: number;
   health: PaymentRail["health"];
   enabled: boolean;
+  min_amount?: string | number | null;
+  max_amount?: string | number | null;
 }
 
 interface PlatformTransactionRow {
@@ -73,7 +77,9 @@ interface CreatePlatformTransactionInput {
   providerOrderId?: string | null;
   railId?: string | null;
   riskAction: RiskAction;
+  riskCaseRequired: boolean;
   riskReasonCode: string;
+  riskScore: number;
   status: TransactionStatus;
   userId?: string | null;
 }
@@ -125,6 +131,8 @@ function mapRailRow(row: PaymentRailRow): PaymentRail {
     fixedFee: Number(row.fixed_fee ?? 0),
     health: row.health,
     id: row.id,
+    maxAmount: row.max_amount == null ? null : Number(row.max_amount),
+    minAmount: row.min_amount == null ? null : Number(row.min_amount),
     paymentMethod: row.payment_method,
     percentageFeeBps: row.percentage_fee_bps,
     provider: row.provider,
@@ -159,6 +167,120 @@ function mapTransactionRow(row: PlatformTransactionRow): PlatformTransaction {
   };
 }
 
+export async function getUserRiskProfile(
+  config: PlatformConfig,
+  userId: string,
+): Promise<UserRiskProfile | null> {
+  const rows = await supabaseRequest<
+    Array<{
+      user_id: string;
+      sanctions_match: boolean;
+      pep_match: boolean;
+      adverse_media: boolean;
+      chargeback_history: boolean;
+      blockchain_exposure: boolean;
+      screened_at: string | null;
+    }>
+  >(
+    config,
+    `user_risk_profiles?user_id=eq.${encodeURIComponent(userId)}&select=*`,
+    { headers: buildHeaders(config) },
+  );
+
+  const row = rows[0];
+  if (!row) {
+    return null;
+  }
+
+  return {
+    adverseMedia: row.adverse_media,
+    blockchainExposure: row.blockchain_exposure,
+    chargebackHistory: row.chargeback_history,
+    pepMatch: row.pep_match,
+    sanctionsMatch: row.sanctions_match,
+    screenedAt: row.screened_at,
+    userId: row.user_id,
+  };
+}
+
+/**
+ * Rolling 24h totals for the user, used to derive the velocity_spike flag.
+ * Only settled-ish states count — a rejected attempt should not inflate the
+ * customer's own velocity, but a held one should.
+ */
+export async function getUserVelocity(
+  config: PlatformConfig,
+  userId: string,
+): Promise<VelocitySnapshot> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const rows = await supabaseRequest<Array<{ gross_amount: string | number }>>(
+    config,
+    `platform_transactions?user_id=eq.${encodeURIComponent(userId)}` +
+      `&created_at=gte.${encodeURIComponent(since)}` +
+      `&status=in.(created,authorized,held,processing,settled)` +
+      `&select=gross_amount`,
+    { headers: buildHeaders(config) },
+  );
+
+  return {
+    grossAmount24h: rows.reduce((sum, row) => sum + Number(row.gross_amount ?? 0), 0),
+    transactionCount24h: rows.length,
+  };
+}
+
+export async function getReferenceRate(
+  config: PlatformConfig,
+  fiatCurrency: string,
+  cryptoAsset: string,
+): Promise<ReferenceRate | null> {
+  const rows = await supabaseRequest<
+    Array<{ fiat_currency: string; crypto_asset: string; rate: string | number; observed_at: string }>
+  >(
+    config,
+    `fx_reference_rates?fiat_currency=eq.${encodeURIComponent(fiatCurrency)}` +
+      `&crypto_asset=eq.${encodeURIComponent(cryptoAsset)}&select=*`,
+    { headers: buildHeaders(config) },
+  );
+
+  const row = rows[0];
+  if (!row) {
+    return null;
+  }
+
+  return {
+    cryptoAsset: row.crypto_asset,
+    fiatCurrency: row.fiat_currency,
+    observedAt: row.observed_at,
+    rate: Number(row.rate),
+  };
+}
+
+/**
+ * Resolve a merchant from its API key.
+ *
+ * merchantId used to be read from the request body, so any authenticated user
+ * could attribute transactions and webhook events to any merchant. The key is
+ * compared by SHA-256 hash, which is what merchant_api_keys stores.
+ */
+export async function getMerchantByApiKey(config: PlatformConfig, apiKey: string) {
+  const keyHash = createHash("sha256").update(apiKey).digest("hex");
+  const rows = await supabaseRequest<
+    Array<{ merchant_id: string; status: string; merchants: { id: string; status: string } | null }>
+  >(
+    config,
+    `merchant_api_keys?key_hash=eq.${encodeURIComponent(keyHash)}&status=eq.active` +
+      `&select=merchant_id,status,merchants(id,status)`,
+    { headers: buildHeaders(config) },
+  );
+
+  const row = rows[0];
+  if (!row || row.merchants?.status !== "active") {
+    return null;
+  }
+
+  return { id: row.merchant_id };
+}
+
 export async function getPlatformUserByPrivyUserId(config: PlatformConfig, privyUserId: string) {
   const rows = await supabaseRequest<PlatformUserRow[]>(
     config,
@@ -186,103 +308,93 @@ export async function getPlatformTransaction(config: PlatformConfig, transaction
   return rows[0] ? mapTransactionRow(rows[0]) : null;
 }
 
-async function getPlatformTransactionByIdempotencyKey(config: PlatformConfig, idempotencyKey: string) {
-  const rows = await supabaseRequest<PlatformTransactionRow[]>(
-    config,
-    `platform_transactions?idempotency_key=eq.${encodeURIComponent(idempotencyKey)}&select=*`,
-    { headers: buildHeaders(config) },
-  );
-  return rows[0] ? mapTransactionRow(rows[0]) : null;
-}
+/**
+ * Create a transaction, its ledger entries, its risk decision and any risk case
+ * in a single database transaction.
+ *
+ * This used to be three sequential PostgREST calls behind a read-then-insert
+ * idempotency check. Concurrent requests with the same key both missed the
+ * read and both inserted, and a failure between calls left a transaction with
+ * no ledger or no recorded decision. The RPC does the conflict handling in
+ * Postgres and returns the existing row when the key is already taken.
+ */
+export async function createPlatformTransaction(
+  config: PlatformConfig,
+  input: CreatePlatformTransactionInput,
+): Promise<PlatformTransaction> {
+  const ledgerEntries = buildTransactionLedgerEntries({
+    cryptoAmount: input.cryptoAmount,
+    cryptoAsset: input.cryptoAsset,
+    direction: input.direction,
+    feeAmount: input.feeAmount,
+    fiatCurrency: input.fiatCurrency,
+    grossAmount: input.grossAmount,
+    status: input.status,
+    // The database assigns the real id; entries are keyed off it inside the
+    // function, so this placeholder is never persisted.
+    transactionId: "pending",
+  });
 
-async function insertLedgerEntries(config: PlatformConfig, entries: LedgerEntry[]) {
-  if (entries.length === 0) {
-    return;
-  }
-
-  await supabaseRequest<unknown[]>(
+  const row = await supabaseRequest<PlatformTransactionRow>(
     config,
-    "transaction_ledger_entries?on_conflict=idempotency_key&select=id",
+    "rpc/create_platform_transaction",
     {
-      body: JSON.stringify(
-        entries.map((entry) => ({
+      body: JSON.stringify({
+        p_country: input.country,
+        p_crypto_amount: input.cryptoAmount,
+        p_crypto_asset: input.cryptoAsset,
+        p_direction: input.direction,
+        p_fee_amount: input.feeAmount,
+        p_fiat_currency: input.fiatCurrency,
+        p_gross_amount: input.grossAmount,
+        p_idempotency_key: input.idempotencyKey,
+        p_ledger_entries: ledgerEntries.map((entry) => ({
           account: entry.account,
           credit: entry.credit,
           currency: entry.currency,
           debit: entry.debit,
-          idempotency_key: entry.idempotencyKey,
           metadata: entry.metadata,
-          transaction_id: entry.transactionId,
         })),
-      ),
-      headers: buildHeaders(config, {
-        Prefer: "resolution=merge-duplicates,return=representation",
-      }),
-      method: "POST",
-    },
-  );
-}
-
-export async function upsertPlatformTransactionWithLedger(
-  config: PlatformConfig,
-  input: CreatePlatformTransactionInput,
-) {
-  const existing = await getPlatformTransactionByIdempotencyKey(config, input.idempotencyKey);
-  if (existing) {
-    return existing;
-  }
-
-  const transactionId = randomUUID();
-  const now = new Date().toISOString();
-  const rows = await supabaseRequest<PlatformTransactionRow[]>(
-    config,
-    "platform_transactions?select=*",
-    {
-      body: JSON.stringify({
-        country: input.country,
-        crypto_amount: input.cryptoAmount,
-        crypto_asset: input.cryptoAsset,
-        direction: input.direction,
-        fee_amount: input.feeAmount,
-        fiat_currency: input.fiatCurrency,
-        gross_amount: input.grossAmount,
-        id: transactionId,
-        idempotency_key: input.idempotencyKey,
-        merchant_id: input.merchantId ?? null,
-        metadata: input.metadata ?? {},
-        payment_method: input.paymentMethod,
-        provider: input.provider ?? null,
-        provider_order_id: input.providerOrderId ?? null,
-        rail_id: input.railId ?? null,
-        risk_action: input.riskAction,
-        risk_reason_code: input.riskReasonCode,
-        status: input.status,
-        updated_at: now,
-        user_id: input.userId ?? null,
+        p_merchant_id: input.merchantId ?? null,
+        p_metadata: input.metadata ?? {},
+        p_payment_method: input.paymentMethod,
+        p_provider: input.provider ?? null,
+        p_provider_order_id: input.providerOrderId ?? null,
+        p_rail_id: input.railId ?? null,
+        p_risk_action: input.riskAction,
+        p_risk_case_required: input.riskCaseRequired,
+        p_risk_reason_code: input.riskReasonCode,
+        p_risk_score: input.riskScore,
+        p_status: input.status,
+        p_user_id: input.userId ?? null,
       }),
       headers: buildHeaders(config, { Prefer: "return=representation" }),
       method: "POST",
     },
   );
 
-  const transaction = mapTransactionRow(rows[0]);
-  await insertLedgerEntries(
-    config,
-    buildTransactionLedgerEntries({
-      cryptoAmount: input.cryptoAmount,
-      cryptoAsset: input.cryptoAsset,
-      direction: input.direction,
-      feeAmount: input.feeAmount,
-      fiatCurrency: input.fiatCurrency,
-      grossAmount: input.grossAmount,
-      status: input.status,
-      transactionId: transaction.id,
-    }),
-  );
-
-  return transaction;
+  return mapTransactionRow(row);
 }
 
+/**
+ * Book contra-entries for a transaction that failed or was reversed.
+ *
+ * Previously a failed transaction only got a zero-value memo row and its
+ * original debits and credits stayed on the books.
+ */
+export async function reversePlatformTransaction(
+  config: PlatformConfig,
+  transactionId: string,
+  status: Extract<TransactionStatus, "failed" | "reversed">,
+) {
+  await supabaseRequest<null>(config, "rpc/reverse_platform_transaction", {
+    body: JSON.stringify({ p_status: status, p_transaction_id: transactionId }),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
+}
+
+/** Record a decision that is not attached to a transaction (dry-run scoring). */
 export async function persistRiskDecision(
   config: PlatformConfig,
   transactionId: string | null,
@@ -340,9 +452,16 @@ export async function listSettlements(config: PlatformConfig, merchantId: string
   });
 }
 
+/**
+ * Insert a webhook event, ignoring replays.
+ *
+ * Returns null when event_id is already present, which the route treats as a
+ * duplicate rather than an error.
+ */
 export async function persistWebhookEvent(
   config: PlatformConfig,
   input: {
+    eventId: string;
     eventType: string;
     merchantId: string | null;
     payload: Record<string, unknown>;
@@ -351,16 +470,19 @@ export async function persistWebhookEvent(
 ) {
   const rows = await supabaseRequest<unknown[]>(
     config,
-    "merchant_webhook_events?select=*",
+    "merchant_webhook_events?on_conflict=event_id&select=*",
     {
       body: JSON.stringify({
+        event_id: input.eventId,
         event_type: input.eventType,
         merchant_id: input.merchantId,
         payload: input.payload,
         signature_valid: input.signatureValid,
         status: input.signatureValid ? "accepted" : "rejected",
       }),
-      headers: buildHeaders(config, { Prefer: "return=representation" }),
+      headers: buildHeaders(config, {
+        Prefer: "resolution=ignore-duplicates,return=representation",
+      }),
       method: "POST",
     },
   );

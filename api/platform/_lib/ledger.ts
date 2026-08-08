@@ -27,18 +27,31 @@ export function sumLedgerEntries(entries: LedgerEntry[], currency: string): numb
   );
 }
 
+/**
+ * Contra-entries that unwind a set of postings.
+ *
+ * Reversing means swapping debit and credit, not writing a memo. The previous
+ * behaviour recorded a zero-value `memo:failed_transaction` row and left the
+ * original postings in place, so a failed transaction still showed as money
+ * moved.
+ */
+export function buildReversalEntries(entries: LedgerEntry[]): LedgerEntry[] {
+  return entries.map((original) => ({
+    account: original.account,
+    credit: original.debit,
+    currency: original.currency,
+    debit: original.credit,
+    idempotencyKey: `${original.idempotencyKey}:reversal`,
+    metadata: { ...original.metadata, reversalOf: original.idempotencyKey },
+    transactionId: original.transactionId,
+  }));
+}
+
 export function buildTransactionLedgerEntries(input: BuildLedgerInput): LedgerEntry[] {
   if (input.status === "failed" || input.status === "reversed") {
-    return [
-      entry({
-        account: `memo:${input.status}_transaction`,
-        credit: 0,
-        currency: input.fiatCurrency,
-        debit: 0,
-        metadata: { direction: input.direction, status: input.status },
-        transactionId: input.transactionId,
-      }),
-    ];
+    // A transaction that never succeeded has nothing to post. Reversals of an
+    // already-booked transaction go through buildReversalEntries instead.
+    return [];
   }
 
   const netFiat = Number((input.grossAmount - input.feeAmount).toFixed(2));

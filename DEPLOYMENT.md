@@ -1,5 +1,69 @@
 # Deployment Guide
 
+## Connecting the repo to Vercel (Git Integration)
+
+One-time setup. Vercel builds from the repository root — the root `vercel.json`
+is canonical.
+
+1. In the Vercel dashboard: **Add New → Project → Import** `SurfProto/hl-tg-web`.
+2. Leave **Root Directory** as the repository root. Do **not** set it to
+   `apps/tg-mini-app`; that excludes the root `api/*` Functions from the
+   deployment. Build Command, Output Directory, Install Command and Framework
+   all come from `vercel.json`, so leave the dashboard fields untouched.
+3. **Before the first production deploy**, set the Production Branch to a branch
+   that does not exist yet: **Settings → Git → Production Branch →** `production`.
+   Every push, including `main`, then produces a Preview deployment and nothing
+   reaches production. Switch it back to `main` when you are ready to go live.
+4. Add the environment variables below (Settings → Environment Variables). The
+   `VITE_*` values are read at build time and baked into the bundle, so a
+   missing one ships as an empty string rather than failing.
+5. Push a branch and confirm the Preview deployment builds.
+
+### Required environment variables
+
+Server-side (Functions):
+
+| Variable | Notes |
+| --- | --- |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Server-only. Never expose as `VITE_*`. |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Or the `KV_REST_API_URL` / `KV_REST_API_TOKEN` aliases Vercel Marketplace provisions. Without these, caching and rate limiting silently degrade to per-instance memory. |
+| `TELEGRAM_BOT_TOKEN` or `MARKET_TELEGRAM_BOT_TOKEN` | Verifies Mini App init data. |
+| `PRIVY_APP_SECRET`, `PROFILE_PRIVY_APP_ID` | Server-only; `PROFILE_PRIVY_APP_ID` falls back to `VITE_PRIVY_APP_ID`. |
+| `PRIVY_JWKS_URL` or `PRIVY_VERIFICATION_KEY` | Access-token verification. One is required. |
+| `CRON_SECRET` | Authorises the weekly raffle cron. |
+| `PLATFORM_ADMIN_KEY`, `PLATFORM_WEBHOOK_SECRET`, `PLATFORM_QUOTE_SECRET` | Platform routes. `PLATFORM_QUOTE_SECRET` falls back to the webhook secret; use a separate key. |
+| `PLATFORM_HIGH_RISK_COUNTRIES`, `PLATFORM_PROHIBITED_COUNTRIES` | Comma-separated ISO codes. Optional. |
+| `REWARDS_ADMIN_KEY`, `REWARDS_TREASURY_PRIVATE_KEY`, `REWARDS_RAFFLE_PRIZES_USDC` | Rewards. `REWARDS_RAFFLE_PRIZES_USDC` must list at least as many prizes as the winner count or the raffle refuses to draw. |
+| `ONRAMP_*` | See the on-ramp section below. |
+| `MARKET_POLICY_JSON`, `MARKET_PREVIEW_BYPASS_SECRET` | Optional. The preview bypass only takes effect locally — Vercel sets `NODE_ENV=production` on Preview deployments too. |
+
+Build-time (`VITE_*`, baked into the bundle): `VITE_PRIVY_APP_ID`,
+`VITE_TELEGRAM_BOT_USERNAME`, `VITE_HYPERLIQUID_TESTNET`,
+`VITE_BUILDER_ADDRESS`, `VITE_BUILDER_FEE`, `VITE_SUPABASE_URL`,
+`VITE_SUPABASE_ANON_KEY`, `VITE_ONRAMP_URL`, `VITE_LEGAL_TERMS_URL`,
+`VITE_LEGAL_PRIVACY_URL`, `VITE_SUPPORT_EMAIL`, `VITE_SUPPORT_FAQ_URL`,
+`VITE_SUPPORT_BUG_URL`, `VITE_SUPPORT_SURVEY_URL`,
+`VITE_SUPPORT_TWITTER_URL`.
+
+### Migration ordering before going live
+
+Apply these to Supabase **before** switching the Production Branch to `main`:
+
+1. `supabase/migrations/005_platform_hardening.sql`
+2. `supabase/migrations/006_weekly_raffle_runs.sql`
+
+006 is not optional. `runWeeklyRaffle` calls `rpc/claim_weekly_raffle_run`; if
+that function is absent the cron returns 500 every Monday at 00:05 UTC. That is
+an existing feature regressing, not a new one failing.
+
+Then seed:
+
+- `fx_reference_rates` — one row per `(fiat_currency, crypto_asset)` corridor.
+  `/api/quotes` returns `422 NO_REFERENCE_RATE` for an unpriced corridor rather
+  than guessing.
+- `user_risk_profiles` — screening results. A user with no row, or one screened
+  more than 180 days ago, is treated as unscreened and routed to review.
+
 ## Prerequisites
 
 1. **Vercel Account**: Sign up at [vercel.com](https://vercel.com)

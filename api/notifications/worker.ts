@@ -1,9 +1,30 @@
 import { HttpError, json, withJsonRoute } from "../onramp/_lib/http";
 import { getNotificationWorkerConfig } from "../../apps/notification-worker/src/config";
-import { createHyperliquidMarketDataService } from "../../apps/notification-worker/src/hyperliquid";
-import { runNotificationWorkerOnce } from "../../apps/notification-worker/src/run-once";
-import { createSupabaseNotificationRepository } from "../../apps/notification-worker/src/supabase";
-import { createTelegramClient } from "../../apps/notification-worker/src/telegram";
+
+/**
+ * The worker's dependencies are imported on demand, not at module scope.
+ *
+ * createHyperliquidMarketDataService pulls in the whole 2,400-line
+ * HyperliquidClient and its viem graph. Loading that eagerly meant an
+ * unauthorised request — the common case for a public endpoint — paid the full
+ * cold-start cost before it could return 401. Earlier commits (see "Lazy-load
+ * rewards Hyperliquid client") applied the same fix to the rewards routes.
+ */
+async function loadWorkerDependencies() {
+  const [hyperliquid, runOnce, supabase, telegram] = await Promise.all([
+    import("../../apps/notification-worker/src/hyperliquid"),
+    import("../../apps/notification-worker/src/run-once"),
+    import("../../apps/notification-worker/src/supabase"),
+    import("../../apps/notification-worker/src/telegram"),
+  ]);
+
+  return {
+    createHyperliquidMarketDataService: hyperliquid.createHyperliquidMarketDataService,
+    createSupabaseNotificationRepository: supabase.createSupabaseNotificationRepository,
+    createTelegramClient: telegram.createTelegramClient,
+    runNotificationWorkerOnce: runOnce.runNotificationWorkerOnce,
+  };
+}
 
 function ensureCronRequest(request: any) {
   if (request.method !== "GET") {
@@ -30,6 +51,13 @@ export default async function handler(request: any, response: any) {
       NOTIFICATION_RUN_ONCE: "true",
     });
     const now = new Date();
+
+    const {
+      createHyperliquidMarketDataService,
+      createSupabaseNotificationRepository,
+      createTelegramClient,
+      runNotificationWorkerOnce,
+    } = await loadWorkerDependencies();
 
     await runNotificationWorkerOnce({
       repository: createSupabaseNotificationRepository({

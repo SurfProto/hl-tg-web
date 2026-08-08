@@ -1,4 +1,6 @@
 import { fetchWithTimeout, UpstreamTimeoutError } from "../../_lib/fetch-with-timeout";
+import { readThroughCache } from "./cache";
+import { getMarketPolicy } from "./config";
 import { HttpError } from "./response";
 
 interface MarketStats {
@@ -167,17 +169,48 @@ export async function fetchMarkets(network: Network) {
   };
 }
 
+/**
+ * Read the market universe through the shared cache.
+ *
+ * resolveMarket used to call fetchMarkets directly, so every depth or candle
+ * cache miss re-fetched spotMeta, metaAndAssetCtxs, perpDexs and one
+ * metaAndAssetCtxs per HIP-3 dex just to turn a symbol into a name. The
+ * universe is already cached under `market:markets` with a 300s TTL.
+ */
+async function getCachedMarkets(network: Network) {
+  const { data } = await readThroughCache({
+    key: `${network}:market:markets`,
+    ttlSeconds: getMarketPolicy().ttlSeconds.markets,
+    fetchFresh: () => fetchMarkets(network),
+  });
+  return data;
+}
+
+async function getCachedStats(network: Network) {
+  const { data } = await readThroughCache({
+    key: `${network}:market:stats`,
+    ttlSeconds: getMarketPolicy().ttlSeconds.stats,
+    fetchFresh: () => fetchStats(network),
+  });
+  return data;
+}
+
+async function getCachedMids(network: Network) {
+  const { data } = await readThroughCache({
+    key: `${network}:market:mids`,
+    ttlSeconds: getMarketPolicy().ttlSeconds.mids,
+    fetchFresh: () => fetchMids(network),
+  });
+  return data;
+}
+
 async function resolveMarket(network: Network, symbol: string): Promise<ResolvedMarket> {
   const normalized = symbol.trim().toUpperCase();
   if (!normalized) {
     throw new HttpError(400, "INVALID_SYMBOL", "Missing symbol");
   }
 
-  if (normalized.includes(":")) {
-    return { name: symbol };
-  }
-
-  const markets = await fetchMarkets(network);
+  const markets = await getCachedMarkets(network);
   const market = [...markets.perp, ...markets.spot].find(
     (candidate: any) =>
       candidate.name?.toUpperCase() === normalized ||
@@ -188,24 +221,33 @@ async function resolveMarket(network: Network, symbol: string): Promise<Resolved
     throw new HttpError(404, "MARKET_NOT_FOUND", "Market not found");
   }
 
+  // Always return the upstream's own casing. Returning the caller's string for
+  // dex-qualified symbols meant `dex:btc` and `dex:BTC` produced separate cache
+  // entries pointing at differently-cased upstream calls.
   return { name: market.name };
 }
 
 export async function fetchMids(network: Network) {
   const perpDexs = await getPerpDexs(network);
-  const [baseMids, ...dexMids] = await Promise.all([
+  // Base mids are required; per-dex mids are best-effort. A bare Promise.all
+  // over all of them meant one flaky HIP-3 dex failed the whole response, while
+  // fetchMarkets and fetchStats already tolerated per-dex failures.
+  const [baseMids, dexMids] = await Promise.all([
     postInfo<Record<string, string>>(network, { type: "allMids" }),
-    ...perpDexs.map(({ dex }) =>
-      postInfo<Record<string, string>>(network, { type: "allMids", dex }).then(
-        (mids) => ({ dex, mids }),
+    Promise.all(
+      perpDexs.map(({ dex }) =>
+        postInfo<Record<string, string>>(network, { type: "allMids", dex })
+          .then((mids) => ({ dex, mids }))
+          .catch(() => null),
       ),
     ),
   ]);
 
   const merged = { ...baseMids };
-  for (const { dex, mids } of dexMids) {
-    Object.entries(mids).forEach(([coin, price]) => {
-      merged[`${dex}:${bareName(coin)}`] = price;
+  for (const entry of dexMids) {
+    if (!entry) continue;
+    Object.entries(entry.mids).forEach(([coin, price]) => {
+      merged[`${entry.dex}:${bareName(coin)}`] = price;
     });
   }
   return merged;
@@ -271,14 +313,22 @@ export async function fetchStats(network: Network): Promise<Record<string, Marke
   return result;
 }
 
+/**
+ * One coin's mark price.
+ *
+ * Reads the cached stats and mids aggregates. Calling fetchStats directly meant
+ * a single ticker miss fired metaAndAssetCtxs + spotMetaAndAssetCtxs + perpDexs
+ * + one metaAndAssetCtxs per HIP-3 dex, then possibly allMids per dex on top —
+ * ten or more upstream requests to return one number.
+ */
 export async function fetchTicker(network: Network, symbol: string): Promise<number | null> {
-  const stats = await fetchStats(network);
+  const stats = await getCachedStats(network);
   const direct = stats[symbol] ?? stats[symbol.toUpperCase()];
   if (direct?.markPx) {
     return direct.markPx;
   }
 
-  const mids = await fetchMids(network);
+  const mids = await getCachedMids(network);
   const mid = parseNumber(mids[symbol] ?? mids[symbol.toUpperCase()]);
   return mid > 0 ? mid : null;
 }
@@ -308,13 +358,42 @@ export async function fetchDepth(network: Network, symbol: string, limit: number
   };
 }
 
+// How many candles to ask for, whatever the interval. A fixed 7-day window
+// meant ~10,080 candles at 1m and 7 points at 1d, so the interval selector could
+// not produce a usable range at either end.
+const CANDLE_TARGET_COUNT = 300;
+
+const INTERVAL_MINUTES: Record<string, number> = {
+  "1m": 1,
+  "3m": 3,
+  "5m": 5,
+  "15m": 15,
+  "30m": 30,
+  "1h": 60,
+  "2h": 120,
+  "4h": 240,
+  "8h": 480,
+  "12h": 720,
+  "1d": 1_440,
+  "3d": 4_320,
+  "1w": 10_080,
+  "1M": 43_200,
+};
+
+export function getCandleWindowMs(interval: string): number {
+  const minutes = INTERVAL_MINUTES[interval] ?? 60;
+  return minutes * CANDLE_TARGET_COUNT * 60 * 1000;
+}
+
 export async function fetchCandles(network: Network, symbol: string, interval: string) {
   const resolved = await resolveMarket(network, symbol);
-  const startTime = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const endTime = Date.now();
+  const startTime = endTime - getCandleWindowMs(interval);
   const raw = await postInfo<any[]>(network, {
     type: "candleSnapshot",
     req: {
       coin: resolved.name,
+      endTime,
       interval,
       startTime,
     },

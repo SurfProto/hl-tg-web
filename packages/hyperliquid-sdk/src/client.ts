@@ -757,8 +757,9 @@ export class HyperliquidClient {
     market: CachedMarket,
     referencePrice: number,
     availableBalance?: number,
+    options?: { requireBalance?: boolean },
   ): OrderValidationResult {
-    return validateOrderInput(order, market, referencePrice, availableBalance);
+    return validateOrderInput(order, market, referencePrice, availableBalance, options);
   }
 
   private generateCloid(): `0x${string}` {
@@ -1186,6 +1187,9 @@ export class HyperliquidClient {
       market,
       referencePrice,
       options?.availableBalance,
+      // This is the pre-flight check a UI calls to decide whether to enable
+      // submit, so an unknown balance must not read as valid.
+      { requireBalance: true },
     );
   }
 

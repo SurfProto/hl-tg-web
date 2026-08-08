@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useState } from "react";
+import React, { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -265,6 +265,23 @@ export function TelegramAuthGate({
       }
     })();
   }, [authenticated, getAccessToken, ready, user]);
+
+  // Drop every cached query when the signed-in account changes.
+  //
+  // Account queries are keyed by Privy user id, which is enough to stop one
+  // account reading another's cache entry, but the entries themselves would
+  // otherwise linger in memory for the rest of the session. Clearing on change
+  // means a sign-out leaves nothing behind.
+  const previousUserId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!ready) return;
+
+    const currentUserId = authenticated ? (user?.id ?? null) : null;
+    if (previousUserId.current !== null && previousUserId.current !== currentUserId) {
+      queryClient.clear();
+    }
+    previousUserId.current = currentUserId;
+  }, [authenticated, ready, user?.id]);
 
   if (!ready) {
     return (

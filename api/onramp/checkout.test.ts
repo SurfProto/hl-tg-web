@@ -42,13 +42,34 @@ describe("POST /api/onramp/checkout", () => {
       {
         method: "POST",
         headers: { authorization: "Bearer token" },
-        body: { amount: 1000, payoutAddress },
+        body: { amount: 1000, idempotencyKey: "key-1", payoutAddress },
       },
       response,
     );
 
     expect(mocks.createAndPersistOrder).toHaveBeenCalledWith(
-      expect.objectContaining({ payoutAddress }),
+      expect.objectContaining({ idempotencyKey: "key-1", payoutAddress }),
+    );
+  });
+
+  // Without a key a retry starts a second real payment order, so the request is
+  // refused rather than defaulted.
+  it("refuses a checkout with no idempotency key", async () => {
+    const response = createResponse();
+
+    await handler(
+      {
+        method: "POST",
+        headers: { authorization: "Bearer token" },
+        body: { amount: 1000, payoutAddress: "TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE" },
+      },
+      response,
+    );
+
+    expect(mocks.createAndPersistOrder).not.toHaveBeenCalled();
+    expect(response.status).toHaveBeenCalledWith(400);
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "IDEMPOTENCY_KEY_REQUIRED" }),
     );
   });
 
@@ -59,7 +80,11 @@ describe("POST /api/onramp/checkout", () => {
       {
         method: "POST",
         headers: { authorization: "Bearer token" },
-        body: { amount: 1000, payoutAddress: "TNotAValidTronAddress" },
+        body: {
+          amount: 1000,
+          idempotencyKey: "key-1",
+          payoutAddress: "TNotAValidTronAddress",
+        },
       },
       response,
     );

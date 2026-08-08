@@ -189,10 +189,11 @@ export async function checkoutOnramp(
   accessToken: string,
   amount: number,
   payoutAddress: string,
+  idempotencyKey: string,
 ): Promise<{ state: OnrampAppState; order: OnrampOrderStatus }> {
   return requestJson<{ state: OnrampAppState; order: OnrampOrderStatus }>("/api/onramp/checkout", accessToken, {
     method: "POST",
-    body: JSON.stringify({ amount, payoutAddress }),
+    body: JSON.stringify({ amount, idempotencyKey, payoutAddress }),
   });
 }
 

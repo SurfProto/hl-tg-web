@@ -61,6 +61,12 @@ describe("/api/account/snapshot", () => {
       wallet_address: "0xserver",
     });
     mocks.rateLimitAccount.mockResolvedValue(undefined);
+    // requireAccountContext now checks the verified Telegram user against the
+    // profile's linked telegram_id, so the stub has to return one.
+    mocks.requireTelegramInitData.mockReturnValue({
+      authDate: Math.floor(Date.now() / 1000),
+      user: { id: 555, first_name: "Test" },
+    });
     mocks.readThroughCache.mockImplementation(async ({ fetchFresh }) => ({
       data: await fetchFresh(),
       meta: {
@@ -95,6 +101,7 @@ describe("/api/account/snapshot", () => {
 
     expect(mocks.requirePrivySession).toHaveBeenCalled();
     expect(mocks.requireTelegramInitData).toHaveBeenCalledWith(expect.any(Object));
+    expect(mocks.getProfileByPrivyUserId).toHaveBeenCalled();
     expect(mocks.getAccountSnapshot).toHaveBeenCalledWith({
       testnet: false,
       walletAddress: "0xserver",

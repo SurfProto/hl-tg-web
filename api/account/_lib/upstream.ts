@@ -1,5 +1,3 @@
-import { HyperliquidClient } from "../../../packages/hyperliquid-sdk/src/client";
-
 import { mapPortfolioPeriod } from "../../market/_lib/upstream";
 
 interface AccountReadArgs {
@@ -7,7 +5,19 @@ interface AccountReadArgs {
   testnet: boolean;
 }
 
-function createClient(args: AccountReadArgs) {
+/**
+ * Load HyperliquidClient on demand.
+ *
+ * Importing it at module scope pulls ~2,400 lines plus the viem graph into every
+ * /api/account/* function, so requests that never reach a read — a rejected
+ * token, a rate limit, a missing profile — still paid the cold-start cost.
+ * Earlier commits (d58a5d4, 1a10330, f9572a7) fixed the same eager-import
+ * pattern in the rewards routes after it crashed in production.
+ */
+async function createClient(args: AccountReadArgs) {
+  const { HyperliquidClient } = await import(
+    "../../../packages/hyperliquid-sdk/src/client"
+  );
   return new HyperliquidClient({
     masterAccountAddress: args.walletAddress,
     walletAddress: args.walletAddress,
@@ -16,7 +26,7 @@ function createClient(args: AccountReadArgs) {
 }
 
 export async function getAccountSnapshot(args: AccountReadArgs) {
-  const client = createClient(args);
+  const client = await createClient(args);
   const [userState, spotBalance] = await Promise.all([
     client.getUserState({ fresh: true }),
     client.getSpotBalance(),
@@ -25,14 +35,14 @@ export async function getAccountSnapshot(args: AccountReadArgs) {
 }
 
 export async function getAccountOrders(args: AccountReadArgs) {
-  return createClient(args).getOpenOrders();
+  return (await createClient(args)).getOpenOrders();
 }
 
 export async function getAccountFills(args: AccountReadArgs) {
-  return createClient(args).getFills();
+  return (await createClient(args)).getFills();
 }
 
 export async function getAccountPortfolio(args: AccountReadArgs & { period: string }) {
-  const portfolio = await createClient(args).getPortfolio();
+  const portfolio = await (await createClient(args)).getPortfolio();
   return mapPortfolioPeriod(portfolio, args.period);
 }

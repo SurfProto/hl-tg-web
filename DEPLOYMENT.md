@@ -187,7 +187,41 @@ associations separately before treating the identity audit as closed.
 
 Optional `MARKET_POLICY_JSON` can override low-churn policy values such as TTLs,
 major symbols, rate limits, or emergency upstream disable flags. Leave it empty
-to use code defaults.
+to use code defaults. A parse failure is logged and the defaults are used.
+
+If the Redis variables are absent the market and account routes fall back to a
+per-instance in-memory store. In serverless that makes the cache useless and the
+rate limiter bypassable by spreading requests across instances, so the fallback
+logs an error when `NODE_ENV=production`. Treat it as a misconfiguration, not a
+supported mode.
+
+### Platform Orchestration
+
+The merchant payments routes (`/api/quotes`, `/api/transactions`,
+`/api/settlements`, `/api/risk/decision`, `/api/webhooks`) need migrations 004,
+005 and 006 applied, plus:
+
+- `PLATFORM_ADMIN_KEY` — gates the operator-only routes.
+- `PLATFORM_WEBHOOK_SECRET` — HMAC key for inbound merchant webhooks.
+- `PLATFORM_QUOTE_SECRET` — signs quote tokens. Falls back to the webhook secret
+  for compatibility; use a separate key.
+- `PLATFORM_HIGH_RISK_COUNTRIES`, `PLATFORM_PROHIBITED_COUNTRIES` —
+  comma-separated ISO codes.
+
+Two things must be populated before the routes will serve traffic:
+
+- `fx_reference_rates` — one row per `(fiat_currency, crypto_asset)` corridor.
+  `/api/quotes` derives the crypto amount from this and returns
+  `422 NO_REFERENCE_RATE` rather than guessing when a corridor is missing.
+- `user_risk_profiles` — screening results, maintained out of band by
+  compliance. A user with no row, or one screened more than 180 days ago, is
+  treated as unscreened and routed to review rather than allowed.
+
+Clients call `/api/quotes` first and pass the returned `quoteToken` to
+`/api/transactions`. Amounts in the transaction request body are ignored; the
+token is the only source of the priced values, and it expires after 120 seconds.
+Merchants identify themselves with `x-merchant-api-key`, whose SHA-256 hash must
+match a row in `merchant_api_keys`.
 
 ### Vercel Function Performance
 

@@ -8,6 +8,7 @@ import { getUserByPrivyUserId } from "./_lib/supabase-admin";
 
 interface CheckoutBody {
   amount?: number | string;
+  idempotencyKey?: string;
   payoutAddress?: string;
 }
 
@@ -28,6 +29,15 @@ export default async function handler(request: any, response: any) {
     const body = parseJsonBody<CheckoutBody>(request);
     const amount = parseAmount(body.amount);
     const payoutAddress = parsePayoutAddress(body.payoutAddress, config.network);
+
+    // Required, not optional: without it a retry starts a second real payment
+    // order. Clients should reuse the same key for the same checkout attempt.
+    const idempotencyKey =
+      typeof body.idempotencyKey === "string" ? body.idempotencyKey.trim() : "";
+    if (!idempotencyKey) {
+      throw new HttpError(400, "IDEMPOTENCY_KEY_REQUIRED", "idempotencyKey is required");
+    }
+
     await assertAmountWithinOnrampLimits(config, amount);
     const order = await createAndPersistOrder({
       config,
@@ -37,6 +47,7 @@ export default async function handler(request: any, response: any) {
         kycId: user.kyc_id,
       },
       amount,
+      idempotencyKey,
       payoutAddress,
     });
 

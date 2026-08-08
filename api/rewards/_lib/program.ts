@@ -17,6 +17,8 @@ import {
 import { getRewardsConfig, type RewardsConfig } from "./config";
 import {
   applyReferralCodeIfEligible,
+  claimWeeklyRaffleRun,
+  completeWeeklyRaffleRun,
   ensureReferralCode,
   getExistingVolumeXpFillKeys,
   getFundedReferralStats,
@@ -336,18 +338,38 @@ function buildWeeklyRaffleSnapshot(args: {
   } satisfies WeeklyRaffleSnapshot;
 }
 
+/**
+ * Uniform index in [0, limit).
+ *
+ * `getRandomValues()[0] % limit` is biased towards low indices whenever limit
+ * does not divide 2^32, which is not acceptable for a draw that pays out real
+ * USDC. Rejection sampling discards the values in the final partial bucket. The
+ * old Math.random() fallback is gone: on Node 20 globalThis.crypto is always
+ * present, so it was unreachable, and a non-cryptographic prize draw should
+ * fail rather than quietly happen.
+ */
 function randomIndex(limit: number) {
   if (limit <= 1) {
     return 0;
   }
 
-  if (globalThis.crypto?.getRandomValues) {
-    const values = new Uint32Array(1);
-    globalThis.crypto.getRandomValues(values);
-    return values[0] % limit;
+  if (!globalThis.crypto?.getRandomValues) {
+    throw new Error("Secure randomness is unavailable; refusing to draw raffle winners");
   }
 
-  return Math.floor(Math.random() * limit);
+  const values = new Uint32Array(1);
+  const range = 2 ** 32;
+  const limitOfUnbiasedRange = range - (range % limit);
+
+  // Expected iterations < 2 for any limit.
+  for (let attempt = 0; attempt < 64; attempt += 1) {
+    globalThis.crypto.getRandomValues(values);
+    if (values[0] < limitOfUnbiasedRange) {
+      return values[0] % limit;
+    }
+  }
+
+  throw new Error("Failed to draw an unbiased random index");
 }
 
 function drawWinners<T>(entries: T[], count: number) {
@@ -645,6 +667,48 @@ export async function runWeeklyRaffle(
     };
   }
 
+  // Prizes are handed out by draw index, so a short prize list silently paid
+  // later winners nothing. Refuse before drawing rather than after.
+  if (config.rafflePrizeAmounts.length < config.weeklyWinnerCount) {
+    throw new HttpError(
+      500,
+      "RAFFLE_MISCONFIGURED",
+      `rafflePrizeAmounts has ${config.rafflePrizeAmounts.length} entries but weeklyWinnerCount is ${config.weeklyWinnerCount}`,
+    );
+  }
+
+  // Claim the week before drawing. The read above is not enough on its own:
+  // two concurrent runs both saw no winners and both drew, and the per-user
+  // ledger idempotency key merged the two draws instead of rejecting one.
+  const claimed = await claimWeeklyRaffleRun(config, season.id, weekStart);
+  if (!claimed) {
+    return {
+      alreadyRunning: true,
+      seasonId: season.id,
+      weekStart,
+      winners: [],
+    };
+  }
+
+  try {
+    return await drawWeeklyRaffle(config, season, weekStart);
+  } catch (error) {
+    await completeWeeklyRaffleRun(
+      config,
+      season.id,
+      weekStart,
+      0,
+      error instanceof Error ? error.message : "Weekly raffle failed",
+    );
+    throw error;
+  }
+}
+
+async function drawWeeklyRaffle(
+  config: RewardsConfig,
+  season: { id: string },
+  weekStart: string,
+) {
   const weeklyRows = await getWeeklyVolumeRows(config, season.id, weekStart);
   const users = await getUsersByIds(
     config,
@@ -737,13 +801,17 @@ export async function runWeeklyRaffle(
     }
   }
 
+  const winners = await getRewardLedgerEntriesBySource(config, {
+    seasonId: season.id,
+    source: "weekly_raffle",
+    weekStart,
+  });
+
+  await completeWeeklyRaffleRun(config, season.id, weekStart, winners.length);
+
   return {
     seasonId: season.id,
     weekStart,
-    winners: await getRewardLedgerEntriesBySource(config, {
-      seasonId: season.id,
-      source: "weekly_raffle",
-      weekStart,
-    }),
+    winners,
   };
 }

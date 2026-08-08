@@ -1,13 +1,26 @@
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import type { OnrampConfig } from "./config";
-import { confirmOnrampOrder, createOnrampPreorder, getOnrampOrder } from "./provider";
+import { confirmOnrampOrder, createOnrampPreorder } from "./provider";
 import { toOrderStatus } from "./responses";
-import { persistOrder } from "./supabase-admin";
+import { getOwnedOrder, persistOrder } from "./supabase-admin";
 import type { OnrampOrderStatus } from "./types";
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Derive a stable provider-facing order id from the caller's idempotency key.
+ *
+ * The id used to be a fresh randomUUID() on every call, so a double-tap or a
+ * client retry created a *second real payment order* with the provider. Deriving
+ * it means a retry presents the same external id and can be matched instead.
+ *
+ * Hashed with the user id so one account cannot guess or collide with another's.
+ */
+export function deriveExternalOrderId(userId: string, idempotencyKey: string): string {
+  const digest = createHash("sha256")
+    .update(`${userId}:${idempotencyKey}`)
+    .digest("hex")
+    .slice(0, 32);
+  return `onramp_${digest}`;
 }
 
 export async function createAndPersistOrder(input: {
@@ -18,9 +31,18 @@ export async function createAndPersistOrder(input: {
     kycId: string | null;
   };
   amount: number;
+  idempotencyKey: string;
   payoutAddress: string;
 }): Promise<OnrampOrderStatus> {
-  const externalOrderId = `onramp_${randomUUID()}`;
+  const externalOrderId = deriveExternalOrderId(input.user.id, input.idempotencyKey);
+
+  // Return the existing order rather than starting another one. Checked before
+  // touching the provider, because that call moves real money.
+  const existing = await getOwnedOrder(input.config, input.user.id, { externalOrderId });
+  if (existing) {
+    return existing;
+  }
+
   const preorder = await createOnrampPreorder(input.config, {
     address: input.payoutAddress,
     amount: input.amount,
@@ -29,37 +51,37 @@ export async function createAndPersistOrder(input: {
     userKycId: input.user.kycId ?? input.user.id,
   });
 
-  let confirmed = await confirmOnrampOrder(input.config, preorder.id);
-
-  // TODO: Replace this short invoice poll with the hosted KYC + provider webhook phase.
-  if (!confirmed.invoice_url) {
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      await sleep(1500);
-      confirmed = await getOnrampOrder(input.config, { orderId: confirmed.id });
-      if (confirmed.invoice_url) {
-        break;
-      }
-    }
-  }
-
+  const confirmed = await confirmOnrampOrder(input.config, preorder.id);
   const order = toOrderStatus(input.config, confirmed);
 
-  return persistOrder(input.config, {
-    userId: input.user.id,
-    walletAddress: input.payoutAddress,
-    email: input.user.email,
-    providerOrderId: confirmed.id,
-    externalOrderId: confirmed.external_order_id,
-    serviceId: confirmed.service_id,
-    providerState: confirmed.state,
-    payinAmount: confirmed.payin_amount,
-    payoutAmount: confirmed.payout_amount,
-    feeAmount: confirmed.fee ?? null,
-    invoiceUrl: confirmed.invoice_url,
-    invoiceUrlExpiresAt: confirmed.invoice_url_expires_at,
-    providerCreatedAt: confirmed.created_at,
-    providerTouchedAt: confirmed.touched_at,
-    errorCode: order.errorCode,
-    errorMessage: order.errorMessage,
-  });
+  try {
+    return await persistOrder(input.config, {
+      userId: input.user.id,
+      walletAddress: input.payoutAddress,
+      email: input.user.email,
+      providerOrderId: confirmed.id,
+      externalOrderId: confirmed.external_order_id,
+      serviceId: confirmed.service_id,
+      providerState: confirmed.state,
+      payinAmount: confirmed.payin_amount,
+      payoutAmount: confirmed.payout_amount,
+      feeAmount: confirmed.fee ?? null,
+      invoiceUrl: confirmed.invoice_url,
+      invoiceUrlExpiresAt: confirmed.invoice_url_expires_at,
+      providerCreatedAt: confirmed.created_at,
+      providerTouchedAt: confirmed.touched_at,
+      errorCode: order.errorCode,
+      errorMessage: order.errorMessage,
+    });
+  } catch (error) {
+    // A live provider order now exists with no local record. Log the identifiers
+    // needed to reconcile it before rethrowing — previously this failure left no
+    // trace of the orphaned order at all.
+    console.error("[onramp] Order created with provider but not persisted", {
+      externalOrderId,
+      providerOrderId: confirmed.id,
+      userId: input.user.id,
+    });
+    throw error;
+  }
 }

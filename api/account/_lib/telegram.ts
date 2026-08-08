@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+import { constantTimeEquals } from "../../_lib/secret-compare";
 import { HttpError } from "../../onramp/_lib/http";
 
 interface TelegramUser {
@@ -86,16 +87,20 @@ export function verifyTelegramInitData(
 export function requireTelegramInitData(
   request: any,
   env: Record<string, string | undefined> = process.env,
-) {
+): VerifiedTelegramInitData {
   const previewBypassSecret = env.MARKET_PREVIEW_BYPASS_SECRET?.trim();
   const bypass = getPreviewBypass(request);
+  // NOTE: Vercel sets NODE_ENV=production on preview deployments too, so despite
+  // the name this only takes effect for local development. That is the safe
+  // behaviour; widening it to preview deployments would need a deliberate
+  // decision, since the bypass skips identity verification entirely.
   if (
     env.NODE_ENV !== "production" &&
     previewBypassSecret &&
     typeof bypass === "string" &&
-    bypass === previewBypassSecret
+    constantTimeEquals(bypass, previewBypassSecret)
   ) {
-    return { authDate: Math.floor(Date.now() / 1000) };
+    return { authDate: Math.floor(Date.now() / 1000), user: undefined };
   }
 
   const botToken =

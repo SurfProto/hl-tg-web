@@ -69,10 +69,12 @@ describe("/api/transactions", () => {
     mocks.rateLimitPlatform.mockResolvedValue(undefined);
     mocks.getPlatformUserByPrivyUserId.mockResolvedValue({ id: "user-1" });
     mocks.getMerchantByApiKey.mockResolvedValue(null);
-    mocks.createPlatformTransaction.mockImplementation(async (_config, input) => ({
-      id: "txn-1",
-      ...input,
-    }));
+    mocks.createPlatformTransaction.mockImplementation(
+      async (_config: unknown, input: Record<string, unknown>) => ({
+        id: "txn-1",
+        ...input,
+      }),
+    );
   });
 
   it("books the amounts from the signed quote, not from the request body", async () => {

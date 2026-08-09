@@ -37,10 +37,12 @@ describe("POST /api/webhooks", () => {
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-role-key");
     vi.stubEnv("PLATFORM_WEBHOOK_SECRET", SECRET);
     mocks.getMerchantByApiKey.mockResolvedValue(null);
-    mocks.persistWebhookEvent.mockImplementation(async (_c, input) => ({
-      id: "evt-1",
-      ...input,
-    }));
+    mocks.persistWebhookEvent.mockImplementation(
+      async (_config: unknown, input: Record<string, unknown>) => ({
+        id: "evt-1",
+        ...input,
+      }),
+    );
   });
 
   /**

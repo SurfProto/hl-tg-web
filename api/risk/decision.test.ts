@@ -63,7 +63,9 @@ describe("/api/risk/decision", () => {
     mocks.isProhibitedCorridor.mockReturnValue(false);
     mocks.getUserRiskProfile.mockResolvedValue(cleanProfile());
     mocks.getUserVelocity.mockResolvedValue({ grossAmount24h: 0, transactionCount24h: 0 });
-    mocks.persistRiskDecision.mockImplementation(async (_c, _t, decision) => decision);
+    mocks.persistRiskDecision.mockImplementation(
+      async (_config: unknown, _transactionId: string | null, decision: unknown) => decision,
+    );
   });
 
   it("rejects a request without the admin key", async () => {

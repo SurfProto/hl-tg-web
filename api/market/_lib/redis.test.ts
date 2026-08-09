@@ -31,6 +31,22 @@ describe("redis env configuration", () => {
     __resetRedisMemoryForTests();
   });
 
+  it("ignores a half-configured provider rather than mixing credentials", async () => {
+    // A leftover URL from a deleted Upstash database, with only the newly added
+    // integration's token present. Pairing these would authenticate nothing.
+    process.env.UPSTASH_REDIS_REST_URL = "https://deleted.upstash.io";
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+
+    await redisGet("market:test");
+
+    expect(fetch).toHaveBeenCalledWith(
+      "https://kv.example.com",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer kv-token" }),
+      }),
+    );
+  });
+
   it("uses Vercel KV marketplace env aliases for Redis REST calls", async () => {
     const result = await redisGet("market:test");
 

@@ -17,13 +17,30 @@ function now() {
 
 let warnedAboutMissingRedis = false;
 
+/**
+ * Resolve the URL and token as a matched pair from a single provider.
+ *
+ * These used to be resolved independently, so a half-configured provider could
+ * pair one source's URL with another's token — e.g. a leftover
+ * UPSTASH_REDIS_REST_URL from a deleted database combined with the
+ * KV_REST_API_TOKEN a freshly added integration just wrote. That authenticates
+ * nothing and fails in a confusing way. Take the first pair that is complete.
+ */
 function getRedisConfig() {
-  const url =
-    process.env.UPSTASH_REDIS_REST_URL?.trim() ||
-    process.env.KV_REST_API_URL?.trim();
-  const token =
-    process.env.UPSTASH_REDIS_REST_TOKEN?.trim() ||
-    process.env.KV_REST_API_TOKEN?.trim();
+  const candidates: Array<{ url?: string; token?: string }> = [
+    {
+      url: process.env.UPSTASH_REDIS_REST_URL?.trim(),
+      token: process.env.UPSTASH_REDIS_REST_TOKEN?.trim(),
+    },
+    {
+      url: process.env.KV_REST_API_URL?.trim(),
+      token: process.env.KV_REST_API_TOKEN?.trim(),
+    },
+  ];
+
+  const complete = candidates.find((candidate) => candidate.url && candidate.token);
+  const url = complete?.url;
+  const token = complete?.token;
 
   if (!url || !token) {
     // The in-memory fallback is per-instance. In serverless that makes the

@@ -9,6 +9,13 @@ build/
 .next/
 out/
 *.tsbuildinfo
+.turbo/
+
+# Vendored tooling (a local pnpm install, ~23MB)
+.codex-tools/
+
+# Screenshots and other local review output
+artifacts/
 
 # Environment variables
 .env

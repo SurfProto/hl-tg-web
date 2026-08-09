@@ -312,9 +312,11 @@ export function TradePage() {
         minNotionalUsd: selectedMarket.minNotionalUsd,
         minBaseSize: selectedMarket.minBaseSize,
         szDecimals: selectedMarket.szDecimals,
+        maxLeverage: selectedMarket.maxLeverage,
       },
       validationReferencePrice,
       validationAvailableBalance,
+      { requireBalance: true },
     );
   }, [
     amount,

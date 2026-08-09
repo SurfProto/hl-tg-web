@@ -1,3 +1,4 @@
+import { constantTimeEquals } from "../_lib/secret-compare";
 import { ensureMethod, HttpError, json, parseJsonBody, withJsonRoute } from "../onramp/_lib/http";
 import { getRewardsConfig } from "./_lib/config";
 import { runWeeklyRaffle } from "./_lib/program";
@@ -12,14 +13,14 @@ export default async function handler(request: any, response: any) {
     if (request.method === "GET") {
       const cronSecret = process.env.CRON_SECRET;
       const authorization = request.headers?.authorization ?? request.headers?.Authorization;
-      if (!cronSecret || authorization !== `Bearer ${cronSecret}`) {
+      if (!cronSecret || !constantTimeEquals(authorization, `Bearer ${cronSecret}`)) {
         throw new HttpError(401, "UNAUTHORIZED", "Missing or invalid cron authorization");
       }
     } else {
       ensureMethod(request, "POST");
 
       const adminKey = request.headers["x-rewards-admin-key"] ?? request.headers["X-REWARDS-ADMIN-KEY"];
-      if (!config.rewardsAdminKey || adminKey !== config.rewardsAdminKey) {
+      if (!config.rewardsAdminKey || !constantTimeEquals(adminKey, config.rewardsAdminKey)) {
         throw new HttpError(401, "UNAUTHORIZED", "Missing or invalid rewards admin key");
       }
     }

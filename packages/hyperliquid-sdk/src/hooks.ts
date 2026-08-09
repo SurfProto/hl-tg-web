@@ -3,6 +3,7 @@ import {
   useFundWallet,
   usePrivy,
   useSendTransaction,
+  useToken,
   useWallets,
 } from "@privy-io/react-auth";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
@@ -44,6 +45,20 @@ import type {
   WsMessage,
 } from "@repo/types";
 import { USDC_ARBITRUM, HL_BRIDGE_ARBITRUM } from "./constants";
+import {
+  fetchAccountFills,
+  fetchAccountOrders,
+  fetchAccountPortfolio,
+  fetchAccountSnapshot,
+  type AccountSnapshot,
+  fetchEdgeAssetCtx,
+  fetchEdgeCandles,
+  fetchEdgeMarketPrice,
+  fetchEdgeMarketStats,
+  fetchEdgeMarkets,
+  fetchEdgeMids,
+  fetchEdgeOrderbook,
+} from "./edge-proxy";
 
 const publicClientCache = new Map<"mainnet" | "testnet", HyperliquidClient>();
 const STABLE_SWAP_ASSETS = getSupportedStableAssets();
@@ -446,6 +461,24 @@ function usePublicHyperliquid() {
 }
 
 /**
+ * The current account's cache scope.
+ *
+ * Account-scoped queries used to be keyed on a bare string — ["userState"],
+ * ["openOrders"], ["fills"] — with nothing identifying whose data it was. After
+ * a logout and a login as someone else, React Query served the previous user's
+ * balances and orders straight from cache, and `placeholderData` rendered them
+ * as if current instead of showing a loading state.
+ *
+ * Appending this to the key fixes that. It goes at the *end* so the ~40
+ * existing `invalidateQueries({ queryKey: ["userState"] })` calls keep matching
+ * by prefix.
+ */
+export function useAccountScope(): string | null {
+  const { user } = usePrivy();
+  return user?.id ?? null;
+}
+
+/**
  * Hook to get the Hyperliquid client instance.
  * Instance is memoized by (walletAddress, provider, testnet) — a new client is
  * created only when one of those changes (e.g. logout → login as a different user).
@@ -491,11 +524,10 @@ export function useHyperliquid() {
  * Hook to fetch market data
  */
 export function useMarketData() {
-  const { client } = usePublicHyperliquid();
-
   return useQuery({
     queryKey: ["markets"],
-    queryFn: () => client.getMarkets(),
+    queryFn: () => fetchEdgeMarkets(),
+    placeholderData: (previousData) => previousData,
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 }
@@ -525,17 +557,24 @@ export function useMids() {
 
   return useQuery({
     queryKey: ["mids"],
-    queryFn: () => client.getMids(),
+    queryFn: () => fetchEdgeMids(),
+    placeholderData: (previousData) => previousData,
     refetchInterval: 10_000, // Fallback polling; WS handles real-time updates
   });
 }
 
+/**
+ * Hook to fetch the mark price for one coin.
+ *
+ * Deliberately no placeholderData. `(previousData) => previousData` carries the
+ * last *query's* data across a key change, so switching BTC → ETH rendered
+ * BTC's price under the ETH heading with no loading state — and a user could
+ * size an order against it. Consumers get undefined while the new coin loads.
+ */
 export function useMarketPrice(coin: string) {
-  const { client } = usePublicHyperliquid();
-
   return useQuery<number | null>({
     queryKey: ["marketPrice", coin],
-    queryFn: () => client.getMarketPrice(coin),
+    queryFn: () => fetchEdgeMarketPrice(coin),
     enabled: !!coin,
     staleTime: 2_000,
     refetchInterval: 10_000,
@@ -543,14 +582,13 @@ export function useMarketPrice(coin: string) {
 }
 
 /**
- * Hook to fetch orderbook
+ * Hook to fetch orderbook. No placeholderData, for the same reason as
+ * useMarketPrice.
  */
 export function useOrderbook(coin: string) {
-  const { client } = usePublicHyperliquid();
-
   return useQuery({
     queryKey: ["orderbook", coin],
-    queryFn: () => client.getOrderbook(coin),
+    queryFn: () => fetchEdgeOrderbook(coin),
     enabled: !!coin,
     refetchInterval: 2000, // Refetch every 2 seconds
   });
@@ -560,13 +598,44 @@ export function useOrderbook(coin: string) {
  * Hook to fetch candles
  */
 export function useCandles(coin: string, interval: string = "1h") {
-  const { client } = usePublicHyperliquid();
-
   return useQuery({
     queryKey: ["candles", coin, interval],
-    queryFn: () => client.getCandles(coin, interval),
+    queryFn: () => fetchEdgeCandles(coin, interval),
     enabled: !!coin,
+    // No placeholderData: it would draw the previous coin's candles under the
+    // new coin's heading.
     staleTime: 1000 * 60, // 1 minute
+  });
+}
+
+/**
+ * The one query behind /api/account/snapshot.
+ *
+ * useUserState and useSpotBalance both used to fetch this endpoint under their
+ * own keys and their own refetch intervals (30s and 5s), so every account
+ * fetched the same payload twice and spent the per-user rate limit on it. They
+ * now select out of this single query.
+ */
+export function useAccountSnapshot<TSelected = AccountSnapshot>(
+  select?: (snapshot: AccountSnapshot) => TSelected,
+) {
+  const { getAccessToken } = useToken();
+  const scope = useAccountScope();
+
+  return useQuery({
+    queryKey: ["userState", scope],
+    queryFn: async (): Promise<AccountSnapshot> => {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        throw new Error("Missing access token");
+      }
+      return fetchAccountSnapshot(accessToken);
+    },
+    enabled: Boolean(scope),
+    // No placeholderData on account queries: it would render the previously
+    // fetched account's figures while the new one loads.
+    refetchInterval: 5_000,
+    select,
   });
 }
 
@@ -583,12 +652,7 @@ export function useUserState() {
   const prefersUnifiedAccount =
     walletAddress != null ? getUnifiedPreference(walletAddress) : false;
 
-  const query = useQuery({
-    queryKey: ["userState"],
-    queryFn: () => client?.getUserState(),
-    enabled: !!client,
-    refetchInterval: 30_000, // Fallback polling; WS events trigger refetch in real-time
-  });
+  const query = useAccountSnapshot((snapshot) => snapshot.userState);
 
   // Trigger a refetch whenever a user event arrives (fills, order updates, funding, etc.)
   // This cuts balance/position update latency from up to 30s → ~100-300ms.
@@ -651,7 +715,8 @@ export function usePlaceSpotOrder() {
       return client.placeSpotOrder(order);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["spotBalance"] });
+      // spotBalance is a select over the userState snapshot query now.
+      queryClient.invalidateQueries({ queryKey: ["userState"] });
       queryClient.invalidateQueries({ queryKey: ["userState"] });
       queryClient.invalidateQueries({ queryKey: ["openOrders"] });
       queryClient.invalidateQueries({ queryKey: ["fills"] });
@@ -756,6 +821,10 @@ export function useClosePosition() {
 export function useCancelOrder() {
   const { client } = useHyperliquid();
   const queryClient = useQueryClient();
+  const scope = useAccountScope();
+  // Exact key — setQueryData does not do prefix matching, so the optimistic
+  // write has to target the same scoped key useOpenOrders reads.
+  const openOrdersKey = ["openOrders", scope] as const;
 
   return useMutation({
     mutationFn: ({ coin, oid }: { coin: string; oid: number }) => {
@@ -763,16 +832,16 @@ export function useCancelOrder() {
       return client.cancelOrder(coin, oid);
     },
     onMutate: async ({ oid }) => {
-      await queryClient.cancelQueries({ queryKey: ["openOrders"] });
-      const previous = queryClient.getQueryData<OpenOrder[]>(["openOrders"]);
-      queryClient.setQueryData<OpenOrder[]>(["openOrders"], (old) =>
+      await queryClient.cancelQueries({ queryKey: openOrdersKey });
+      const previous = queryClient.getQueryData<OpenOrder[]>(openOrdersKey);
+      queryClient.setQueryData<OpenOrder[]>(openOrdersKey, (old) =>
         old?.filter((o) => o.oid !== oid) ?? [],
       );
       return { previous };
     },
     onError: (_err, _vars, context) => {
       if (context?.previous !== undefined) {
-        queryClient.setQueryData(["openOrders"], context.previous);
+        queryClient.setQueryData(openOrdersKey, context.previous);
       }
     },
     onSuccess: () => {
@@ -827,12 +896,19 @@ export function useModifyOrder() {
  * Hook to fetch open orders
  */
 export function useOpenOrders() {
-  const { client } = useHyperliquid();
+  const { getAccessToken } = useToken();
+  const scope = useAccountScope();
 
   return useQuery({
-    queryKey: ["openOrders"],
-    queryFn: () => client?.getOpenOrders(),
-    enabled: !!client,
+    queryKey: ["openOrders", scope],
+    queryFn: async () => {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        throw new Error("Missing access token");
+      }
+      return fetchAccountOrders(accessToken);
+    },
+    enabled: Boolean(scope),
     refetchInterval: 5000,
   });
 }
@@ -841,12 +917,19 @@ export function useOpenOrders() {
  * Hook to fetch fills
  */
 export function useFills() {
-  const { client } = useHyperliquid();
+  const { getAccessToken } = useToken();
+  const scope = useAccountScope();
 
   return useQuery({
-    queryKey: ["fills"],
-    queryFn: () => client?.getFills(),
-    enabled: !!client,
+    queryKey: ["fills", scope],
+    queryFn: async () => {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        throw new Error("Missing access token");
+      }
+      return fetchAccountFills(accessToken);
+    },
+    enabled: Boolean(scope),
     refetchInterval: 10000,
   });
 }
@@ -952,17 +1035,13 @@ export function usePortfolio() {
 }
 
 /**
- * Hook to fetch spot account balance (HL L1 spot)
+ * Hook to fetch spot account balance (HL L1 spot).
+ *
+ * Selects from the shared snapshot query rather than fetching
+ * /api/account/snapshot again on its own 5s timer.
  */
 export function useSpotBalance() {
-  const { client } = useHyperliquid();
-
-  return useQuery({
-    queryKey: ["spotBalance"],
-    queryFn: () => client?.getSpotBalance(),
-    enabled: !!client,
-    refetchInterval: 5000,
-  });
+  return useAccountSnapshot((snapshot) => snapshot.spotBalance);
 }
 
 /**
@@ -979,7 +1058,8 @@ export function useUsdClassTransfer() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["userState"] });
-      queryClient.invalidateQueries({ queryKey: ["spotBalance"] });
+      // spotBalance is a select over the userState snapshot query now.
+      queryClient.invalidateQueries({ queryKey: ["userState"] });
     },
   });
 }
@@ -1354,7 +1434,8 @@ export function useStableSwap() {
       };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["spotBalance"] });
+      // spotBalance is a select over the userState snapshot query now.
+      queryClient.invalidateQueries({ queryKey: ["userState"] });
       queryClient.invalidateQueries({ queryKey: ["userState"] });
       queryClient.invalidateQueries({ queryKey: ["openOrders"] });
       queryClient.invalidateQueries({ queryKey: ["fills"] });
@@ -1573,18 +1654,12 @@ export function useSetUnifiedAccount() {
 }
 
 export function useHip3DexAbstractionApproval() {
-  const { client } = useHyperliquid();
+  const userStateQuery = useUserState();
 
-  return useQuery({
-    queryKey: ["userState", "hip3DexAbstraction"],
-    queryFn: async () => {
-      if (!client) throw new Error("Client not connected");
-      const accountState = await client.getUserState();
-      return Boolean(accountState.hip3DexAbstractionEnabled);
-    },
-    enabled: !!client,
-    staleTime: 30_000,
-  });
+  return {
+    ...userStateQuery,
+    data: Boolean(userStateQuery.data?.hip3DexAbstractionEnabled),
+  };
 }
 
 export function useSetHip3DexAbstraction() {
@@ -1765,7 +1840,8 @@ export function useSetupTrading(_target?: { isHip3?: boolean } | null) {
     onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["agentApproval"] });
       queryClient.invalidateQueries({ queryKey: ["userState"] });
-      queryClient.invalidateQueries({ queryKey: ["spotBalance"] });
+      // spotBalance is a select over the userState snapshot query now.
+      queryClient.invalidateQueries({ queryKey: ["userState"] });
       queryClient.invalidateQueries({ queryKey: ["builderFeeApproval"] });
     },
   });
@@ -1982,11 +2058,10 @@ export function useWebSocket() {
  * Data is extracted from the already-fetched metaAndAssetCtxs response — zero additional network cost on first call.
  */
 export function useMarketStats() {
-  const { client } = usePublicHyperliquid();
-
   return useQuery<Record<string, MarketStats>>({
     queryKey: ["marketStats"],
-    queryFn: () => client.getMarketStats(),
+    queryFn: () => fetchEdgeMarketStats(),
+    placeholderData: (previousData) => previousData,
     staleTime: 30_000,
     refetchInterval: 30_000,
   });
@@ -1996,12 +2071,11 @@ export function useMarketStats() {
  * Hook to fetch asset context for a single coin (OI, funding, 24h vol, mark price).
  */
 export function useAssetCtx(coin: string) {
-  const { client } = usePublicHyperliquid();
-
   return useQuery<AssetCtx | null>({
     queryKey: ["assetCtx", coin],
-    queryFn: () => client.getAssetCtx(coin),
+    queryFn: () => fetchEdgeAssetCtx(coin),
     enabled: !!coin,
+    // No placeholderData: coin-scoped, see useMarketPrice.
     staleTime: 30_000,
   });
 }
@@ -2010,29 +2084,37 @@ export function useAssetCtx(coin: string) {
  * Hook to fetch portfolio value history for area chart display.
  */
 export function usePortfolioPeriod(period: PortfolioRange = "7d") {
-  const { client } = useHyperliquid();
+  const { getAccessToken } = useToken();
+  const scope = useAccountScope();
 
   return useQuery<PortfolioPeriodData>({
-    queryKey: ["portfolioPeriod", period],
-    queryFn: () => {
-      if (!client) throw new Error("Client not connected");
-      return client.getPortfolioPeriod(period);
+    queryKey: ["portfolioPeriod", period, scope],
+    queryFn: async () => {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        throw new Error("Missing access token");
+      }
+      return fetchAccountPortfolio(accessToken, period);
     },
-    enabled: !!client,
+    enabled: Boolean(scope),
     staleTime: 60_000,
   });
 }
 
 export function usePortfolioHistory(period: PortfolioRange = "7d") {
-  const { client } = useHyperliquid();
+  const { getAccessToken } = useToken();
+  const scope = useAccountScope();
 
   return useQuery<PortfolioHistoryPoint[]>({
-    queryKey: ["portfolioHistory", period],
-    queryFn: () => {
-      if (!client) throw new Error("Client not connected");
-      return client.getPortfolioHistory(period);
+    queryKey: ["portfolioHistory", period, scope],
+    queryFn: async () => {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        throw new Error("Missing access token");
+      }
+      return (await fetchAccountPortfolio(accessToken, period)).accountValueHistory;
     },
-    enabled: !!client,
+    enabled: Boolean(scope),
     staleTime: 60_000,
   });
 }

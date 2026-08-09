@@ -47,11 +47,12 @@ describe("onramp client", () => {
       Response.json({ success: true, data: {} }),
     );
 
-    await checkoutOnramp("token_123", 1000, "TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE");
+    await checkoutOnramp("token_123", 1000, "TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE", "key-1");
 
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(JSON.parse(String(init.body))).toEqual({
       amount: 1000,
+      idempotencyKey: "key-1",
       payoutAddress: "TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE",
     });
   });

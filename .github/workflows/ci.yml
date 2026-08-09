@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Installs the pnpm version pinned by package.json's packageManager field.
+      # Needed on PATH rather than via corepack shims, because `turbo test`
+      # resolves the package manager binary itself.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm exec tsc --noEmit -p tsconfig.json
+
+      # Runs the workspace suites via turbo *and* the api/ suite. api/ is not a
+      # pnpm workspace package, so turbo — which only walks apps/* and
+      # packages/* — never picked it up and ~90 tests were dead. See
+      # vitest.api.config.ts.
+      - name: Test
+        run: pnpm test

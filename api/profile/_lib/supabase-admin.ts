@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "../../_lib/fetch-with-timeout";
 import { type ProfileConfig } from "./config";
 import { HttpError } from "../../onramp/_lib/http";
 
@@ -59,7 +60,7 @@ async function supabaseRequest<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const response = await fetch(`${config.supabaseUrl}/rest/v1/${path}`, init);
+  const response = await fetchWithTimeout(`${config.supabaseUrl}/rest/v1/${path}`, init);
   if (!response.ok) {
     const body = await response.text();
     throw new Error(`Supabase request failed: ${response.status} ${body}`);

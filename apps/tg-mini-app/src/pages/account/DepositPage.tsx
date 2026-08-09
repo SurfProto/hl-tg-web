@@ -105,6 +105,19 @@ export function DepositPage() {
   const returnExternalOrderId =
     new URLSearchParams(window.location.search).get("onramp_external_order_id");
 
+  // Idempotency key for the on-ramp checkout, stable for as long as the amount
+  // and destination are unchanged. A double-tap or a retry after a network blip
+  // reuses it and the server returns the order it already created instead of
+  // starting a second real payment.
+  const checkoutKeyRef = useRef<{ signature: string; key: string } | null>(null);
+  const getCheckoutIdempotencyKey = (amount: number, payoutAddress: string) => {
+    const signature = `${amount}:${payoutAddress}`;
+    if (checkoutKeyRef.current?.signature !== signature) {
+      checkoutKeyRef.current = { key: crypto.randomUUID(), signature };
+    }
+    return checkoutKeyRef.current.key;
+  };
+
   const [view, setView] = useState<DepositView>(
     returnExternalOrderId ? "fiat" : "choice",
   );
@@ -363,7 +376,12 @@ export function DepositPage() {
         throw new Error(t("deposit.authRequired"));
       }
 
-      const response = await checkoutOnramp(accessToken, amount, resolvedPayoutAddress!);
+      const response = await checkoutOnramp(
+        accessToken,
+        amount,
+        resolvedPayoutAddress!,
+        getCheckoutIdempotencyKey(amount, resolvedPayoutAddress!),
+      );
       const nextActiveOrder = getActiveOnrampOrder(response.order);
       setOrder(nextActiveOrder);
       setFiatState(nextActiveOrder ? response.state : "ready");

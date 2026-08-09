@@ -1,5 +1,69 @@
 # Deployment Guide
 
+## Connecting the repo to Vercel (Git Integration)
+
+One-time setup. Vercel builds from the repository root — the root `vercel.json`
+is canonical.
+
+1. In the Vercel dashboard: **Add New → Project → Import** `SurfProto/hl-tg-web`.
+2. Leave **Root Directory** as the repository root. Do **not** set it to
+   `apps/tg-mini-app`; that excludes the root `api/*` Functions from the
+   deployment. Build Command, Output Directory, Install Command and Framework
+   all come from `vercel.json`, so leave the dashboard fields untouched.
+3. **Before the first production deploy**, set the Production Branch to a branch
+   that does not exist yet: **Settings → Git → Production Branch →** `production`.
+   Every push, including `main`, then produces a Preview deployment and nothing
+   reaches production. Switch it back to `main` when you are ready to go live.
+4. Add the environment variables below (Settings → Environment Variables). The
+   `VITE_*` values are read at build time and baked into the bundle, so a
+   missing one ships as an empty string rather than failing.
+5. Push a branch and confirm the Preview deployment builds.
+
+### Required environment variables
+
+Server-side (Functions):
+
+| Variable | Notes |
+| --- | --- |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Server-only. Never expose as `VITE_*`. |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Or the `KV_REST_API_URL` / `KV_REST_API_TOKEN` aliases Vercel Marketplace provisions. Without these, caching and rate limiting silently degrade to per-instance memory. |
+| `TELEGRAM_BOT_TOKEN` or `MARKET_TELEGRAM_BOT_TOKEN` | Verifies Mini App init data. |
+| `PRIVY_APP_SECRET`, `PROFILE_PRIVY_APP_ID` | Server-only; `PROFILE_PRIVY_APP_ID` falls back to `VITE_PRIVY_APP_ID`. |
+| `PRIVY_JWKS_URL` or `PRIVY_VERIFICATION_KEY` | Access-token verification. One is required. |
+| `CRON_SECRET` | Authorises the weekly raffle cron. |
+| `PLATFORM_ADMIN_KEY`, `PLATFORM_WEBHOOK_SECRET`, `PLATFORM_QUOTE_SECRET` | Platform routes. `PLATFORM_QUOTE_SECRET` falls back to the webhook secret; use a separate key. |
+| `PLATFORM_HIGH_RISK_COUNTRIES`, `PLATFORM_PROHIBITED_COUNTRIES` | Comma-separated ISO codes. Optional. |
+| `REWARDS_ADMIN_KEY`, `REWARDS_TREASURY_PRIVATE_KEY`, `REWARDS_RAFFLE_PRIZES_USDC` | Rewards. `REWARDS_RAFFLE_PRIZES_USDC` must list at least as many prizes as the winner count or the raffle refuses to draw. |
+| `ONRAMP_*` | See the on-ramp section below. |
+| `MARKET_POLICY_JSON`, `MARKET_PREVIEW_BYPASS_SECRET` | Optional. The preview bypass only takes effect locally — Vercel sets `NODE_ENV=production` on Preview deployments too. |
+
+Build-time (`VITE_*`, baked into the bundle): `VITE_PRIVY_APP_ID`,
+`VITE_TELEGRAM_BOT_USERNAME`, `VITE_HYPERLIQUID_TESTNET`,
+`VITE_BUILDER_ADDRESS`, `VITE_BUILDER_FEE`, `VITE_SUPABASE_URL`,
+`VITE_SUPABASE_ANON_KEY`, `VITE_ONRAMP_URL`, `VITE_LEGAL_TERMS_URL`,
+`VITE_LEGAL_PRIVACY_URL`, `VITE_SUPPORT_EMAIL`, `VITE_SUPPORT_FAQ_URL`,
+`VITE_SUPPORT_BUG_URL`, `VITE_SUPPORT_SURVEY_URL`,
+`VITE_SUPPORT_TWITTER_URL`.
+
+### Migration ordering before going live
+
+Apply these to Supabase **before** switching the Production Branch to `main`:
+
+1. `supabase/migrations/005_platform_hardening.sql`
+2. `supabase/migrations/006_weekly_raffle_runs.sql`
+
+006 is not optional. `runWeeklyRaffle` calls `rpc/claim_weekly_raffle_run`; if
+that function is absent the cron returns 500 every Monday at 00:05 UTC. That is
+an existing feature regressing, not a new one failing.
+
+Then seed:
+
+- `fx_reference_rates` — one row per `(fiat_currency, crypto_asset)` corridor.
+  `/api/quotes` returns `422 NO_REFERENCE_RATE` for an unpriced corridor rather
+  than guessing.
+- `user_risk_profiles` — screening results. A user with no row, or one screened
+  more than 180 days ago, is treated as unscreened and routed to review.
+
 ## Prerequisites
 
 1. **Vercel Account**: Sign up at [vercel.com](https://vercel.com)
@@ -29,11 +93,22 @@ cp .env.example .env
 # Privy
 VITE_PRIVY_APP_ID=your_privy_app_id
 VITE_TELEGRAM_BOT_USERNAME=your_bot_username
-PROFILE_PRIVY_APP_ID=
-PRIVY_APP_SECRET=your_server_only_privy_app_secret
 
 # Hyperliquid
 VITE_HYPERLIQUID_TESTNET=false
+
+# Fast market/account read cache
+UPSTASH_REDIS_REST_URL=your_upstash_redis_rest_url
+UPSTASH_REDIS_REST_TOKEN=your_upstash_redis_rest_token
+# Vercel Marketplace may provision these legacy KV aliases instead.
+KV_REST_API_URL=your_vercel_kv_rest_url
+KV_REST_API_TOKEN=your_vercel_kv_rest_token
+EDGE_CONFIG=your_vercel_edge_config_connection_string
+MARKET_POLICY_JSON=
+MARKET_TELEGRAM_BOT_TOKEN=
+MARKET_PREVIEW_BYPASS_SECRET=
+PROFILE_PRIVY_APP_ID=
+PRIVY_APP_SECRET=your_server_only_privy_app_secret
 
 # Builder Code
 VITE_BUILDER_ADDRESS=0xYOUR_BUILDER_ADDRESS
@@ -80,6 +155,14 @@ vercel env add VITE_PRIVY_APP_ID
 vercel env add VITE_HYPERLIQUID_TESTNET
 vercel env add VITE_BUILDER_ADDRESS
 vercel env add VITE_BUILDER_FEE
+vercel env add UPSTASH_REDIS_REST_URL
+vercel env add UPSTASH_REDIS_REST_TOKEN
+# Or use the Vercel Marketplace aliases if those were provisioned:
+vercel env add KV_REST_API_URL
+vercel env add KV_REST_API_TOKEN
+vercel env add TELEGRAM_BOT_TOKEN
+vercel env add SUPABASE_URL
+vercel env add SUPABASE_SERVICE_ROLE_KEY
 vercel env add PROFILE_PRIVY_APP_ID
 vercel env add PRIVY_APP_SECRET
 ```
@@ -104,11 +187,28 @@ vercel --prod
    - `VITE_HYPERLIQUID_TESTNET`
    - `VITE_BUILDER_ADDRESS`
    - `VITE_BUILDER_FEE`
+   - `UPSTASH_REDIS_REST_URL`
+   - `UPSTASH_REDIS_REST_TOKEN`
+   - `KV_REST_API_URL` and `KV_REST_API_TOKEN` are also supported when Vercel Marketplace provisions KV-style aliases
+   - `TELEGRAM_BOT_TOKEN` or `MARKET_TELEGRAM_BOT_TOKEN`
    - `PROFILE_PRIVY_APP_ID` (falls back to `VITE_PRIVY_APP_ID`)
    - `PRIVY_APP_SECRET` (server-only; never expose as a `VITE_` variable)
+   - `SUPABASE_URL`
+   - `SUPABASE_SERVICE_ROLE_KEY`
 6. Click "Deploy"
 
-### Profile Identity Boundary
+### Fast Market And Account Reads
+
+Public market reads are served through `/api/market/*` and do not require
+Telegram or Privy auth. They use Redis for short-lived cache, rate-limit
+counters, and refresh locks. If Redis env vars are missing, routes fall back to
+in-memory storage for local development only.
+
+Protected account reads are served through `/api/account/*`. These routes
+require a valid Privy bearer token and Telegram Mini App init data, then resolve
+the wallet server-side from Supabase by `privy_user_id`. They never trust a
+wallet address supplied by the client and always send private no-store cache
+headers.
 
 Profile bootstrap fetches the Privy user on the server. The only canonical
 trading/rewards wallet stored in `users.wallet_address` is the Privy-managed
@@ -149,6 +249,43 @@ wallet and email mismatches; it intentionally exits nonzero while Telegram
 bindings still require manual confirmation. Re-verify those Telegram
 associations separately before treating the identity audit as closed.
 
+Optional `MARKET_POLICY_JSON` can override low-churn policy values such as TTLs,
+major symbols, rate limits, or emergency upstream disable flags. Leave it empty
+to use code defaults. A parse failure is logged and the defaults are used.
+
+If the Redis variables are absent the market and account routes fall back to a
+per-instance in-memory store. In serverless that makes the cache useless and the
+rate limiter bypassable by spreading requests across instances, so the fallback
+logs an error when `NODE_ENV=production`. Treat it as a misconfiguration, not a
+supported mode.
+
+### Platform Orchestration
+
+The merchant payments routes (`/api/quotes`, `/api/transactions`,
+`/api/settlements`, `/api/risk/decision`, `/api/webhooks`) need migrations 004,
+005 and 006 applied, plus:
+
+- `PLATFORM_ADMIN_KEY` — gates the operator-only routes.
+- `PLATFORM_WEBHOOK_SECRET` — HMAC key for inbound merchant webhooks.
+- `PLATFORM_QUOTE_SECRET` — signs quote tokens. Falls back to the webhook secret
+  for compatibility; use a separate key.
+- `PLATFORM_HIGH_RISK_COUNTRIES`, `PLATFORM_PROHIBITED_COUNTRIES` —
+  comma-separated ISO codes.
+
+Two things must be populated before the routes will serve traffic:
+
+- `fx_reference_rates` — one row per `(fiat_currency, crypto_asset)` corridor.
+  `/api/quotes` derives the crypto amount from this and returns
+  `422 NO_REFERENCE_RATE` rather than guessing when a corridor is missing.
+- `user_risk_profiles` — screening results, maintained out of band by
+  compliance. A user with no row, or one screened more than 180 days ago, is
+  treated as unscreened and routed to review rather than allowed.
+
+Clients call `/api/quotes` first and pass the returned `quoteToken` to
+`/api/transactions`. Amounts in the transaction request body are ignored; the
+token is the only source of the priced values, and it expires after 120 seconds.
+Merchants identify themselves with `x-merchant-api-key`, whose SHA-256 hash must
+match a row in `merchant_api_keys`.
 
 ### Vercel Function Performance
 

@@ -1,4 +1,5 @@
 import type { LeaderboardEntry, RewardKind, RewardLedgerEntry } from "../../../packages/types/src";
+import { fetchWithTimeout } from "../../_lib/fetch-with-timeout";
 import type { RewardsConfig } from "./config";
 
 export interface RewardsUserRow {
@@ -56,7 +57,7 @@ interface SupabaseDepositRow {
   provider_touched_at: string | null;
 }
 
-interface RewardLedgerInsertInput {
+export interface RewardLedgerInsertInput {
   amount: number;
   asset: string | null;
   description: string;
@@ -109,7 +110,7 @@ async function supabaseRequest<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const response = await fetch(`${config.supabaseUrl}/rest/v1/${path}`, init);
+  const response = await fetchWithTimeout(`${config.supabaseUrl}/rest/v1/${path}`, init);
   if (!response.ok) {
     const body = await response.text();
     throw new Error(`Supabase request failed: ${response.status} ${body}`);
@@ -634,6 +635,44 @@ export async function upsertWeeklyReward(config: RewardsConfig, input: {
   );
 
   return rows[0];
+}
+
+/**
+ * Take exclusive ownership of a week's raffle draw.
+ *
+ * Returns false when another runner already holds it. See migration
+ * 006_weekly_raffle_runs.sql for why the pre-draw winners check was not enough.
+ */
+export async function claimWeeklyRaffleRun(
+  config: RewardsConfig,
+  seasonId: string,
+  weekStart: string,
+): Promise<boolean> {
+  const claimed = await supabaseRequest<boolean>(config, "rpc/claim_weekly_raffle_run", {
+    body: JSON.stringify({ p_season_id: seasonId, p_week_start: weekStart }),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
+  return claimed === true;
+}
+
+export async function completeWeeklyRaffleRun(
+  config: RewardsConfig,
+  seasonId: string,
+  weekStart: string,
+  winnerCount: number,
+  error: string | null = null,
+): Promise<void> {
+  await supabaseRequest<null>(config, "rpc/complete_weekly_raffle_run", {
+    body: JSON.stringify({
+      p_error: error,
+      p_season_id: seasonId,
+      p_week_start: weekStart,
+      p_winner_count: winnerCount,
+    }),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
 }
 
 export async function getWeeklyVolumeRows(

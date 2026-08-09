@@ -6,7 +6,18 @@ export interface OrderValidationMarket {
   minNotionalUsd: number;
   minBaseSize: number;
   szDecimals: number;
+  /** Exchange cap. Orders above it are rejected upstream, so reject here too. */
+  maxLeverage?: number;
 }
+
+/**
+ * Headroom left for fees when checking an order against the available balance.
+ *
+ * Sizing to exactly the available balance leaves nothing for the builder fee or
+ * the exchange taker fee, so the order passed local validation and was then
+ * rejected by the exchange.
+ */
+const FEE_BUFFER_RATIO = 0.005;
 
 function stripTrailingZeros(value: string): string {
   if (!value.includes('.')) return value;
@@ -50,11 +61,20 @@ export function formatOrderSize(
   return formatted;
 }
 
+export interface ValidateOrderOptions {
+  /**
+   * Treat a missing or non-finite availableBalance as a validation failure.
+   * Set this wherever the result gates a submit control.
+   */
+  requireBalance?: boolean;
+}
+
 export function validateOrderInput(
   order: Order,
   market: OrderValidationMarket,
   referencePrice: number,
   availableBalance?: number,
+  options: ValidateOrderOptions = {},
 ): OrderValidationResult {
   const minSizeUsd = market.minNotionalUsd;
   const leverage = market.marketType === 'spot' ? 1 : Math.max(order.leverage ?? 1, 1);
@@ -89,9 +109,41 @@ export function validateOrderInput(
     };
   }
 
-  if (Number.isFinite(availableBalance) && availableBalance != null) {
+  // The exchange caps leverage per market. Nothing checked it here, so an
+  // out-of-range value made minMarginUsd and the balance check meaninglessly
+  // small and the order failed at the exchange instead.
+  if (
+    market.marketType !== 'spot' &&
+    market.maxLeverage != null &&
+    Number.isFinite(market.maxLeverage) &&
+    leverage > market.maxLeverage
+  ) {
+    return {
+      isValid: false,
+      minMarginUsd,
+      minSizeUsd,
+      reason: `Maximum leverage for ${market.name} is ${market.maxLeverage}x.`,
+    };
+  }
+
+  const balanceKnown = availableBalance != null && Number.isFinite(availableBalance);
+
+  // Callers that gate a submit button pass requireBalance so an unknown balance
+  // is an explicit failure rather than a silently skipped check. The order
+  // construction path inside the client has no balance to hand and relies on the
+  // exchange's own margin check, so it leaves this off.
+  if (options.requireBalance && !balanceKnown) {
+    return {
+      isValid: false,
+      minMarginUsd,
+      minSizeUsd,
+      reason: 'Balance unavailable. Try again in a moment.',
+    };
+  }
+
+  if (balanceKnown) {
     const requiredBalance = market.marketType === 'spot' ? order.sizeUsd : order.sizeUsd / leverage;
-    if (requiredBalance > availableBalance) {
+    if (requiredBalance * (1 + FEE_BUFFER_RATIO) > (availableBalance as number)) {
       return {
         isValid: false,
         minMarginUsd,

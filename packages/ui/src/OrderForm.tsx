@@ -110,6 +110,7 @@ export function OrderForm({
       },
       referencePrice,
       availableBalance,
+      { requireBalance: true },
     );
   }, [availableBalance, coin, currentPrice, isSpot, leverage, minBaseSize, minNotionalUsd, orderType, orderValue, price, reduceOnly, resolvedSzDecimals, side, size]);
 

@@ -10,6 +10,20 @@ export {
   validateOrderInput,
 } from "./order-validation";
 export type { OrderValidationMarket } from "./order-validation";
+export {
+  fetchAccountFills,
+  fetchAccountOrders,
+  fetchAccountPortfolio,
+  fetchAccountSnapshot,
+  fetchEdgeAssetCtx,
+  fetchEdgeCandles,
+  fetchEdgeMarketPrice,
+  fetchEdgeMarketStats,
+  fetchEdgeMarkets,
+  fetchEdgeMids,
+  fetchEdgeOrderbook,
+} from "./edge-proxy";
+export type { AccountSnapshot } from "./edge-proxy";
 
 // Hooks
 export {

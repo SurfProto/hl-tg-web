@@ -1,5 +1,11 @@
-import { createPublicKey, createVerify, type KeyObject } from "node:crypto";
+import {
+  createPublicKey,
+  createVerify,
+  type JsonWebKey,
+  type KeyObject,
+} from "node:crypto";
 
+import { fetchWithTimeout } from "../../_lib/fetch-with-timeout";
 import { HttpError } from "./http";
 
 interface PrivyJwtHeader {
@@ -27,6 +33,9 @@ export interface PrivySession {
 }
 
 const JWKS_TTL_MS = 5 * 60 * 1000;
+// Cap whatever Cache-Control the JWKS endpoint sends. Honouring a long max-age
+// means a Privy key rotation locks every user out until the cache expires.
+const JWKS_MAX_TTL_MS = 10 * 60 * 1000;
 const jwksCache = new Map<string, { expiresAt: number; keys: JsonWebKey[] }>();
 
 function decodeBase64Url(value: string): Buffer {
@@ -67,7 +76,10 @@ function hasExpectedAudience(payload: PrivyJwtPayload, expectedAppId: string | n
   return payload.aud === expectedAppId;
 }
 
-function assertPayloadClaims(payload: PrivyJwtPayload, expectedAppId: string | null) {
+function assertPayloadClaims(
+  payload: PrivyJwtPayload,
+  expectedAppId: string | null,
+): asserts payload is PrivyJwtPayload & { sub: string } {
   const now = Math.floor(Date.now() / 1000);
   const validIssuer = payload.iss === "privy.io" || payload.iss === "https://auth.privy.io";
 
@@ -90,16 +102,17 @@ function getMaxAgeMs(cacheControl: string | null): number {
   }
 
   const seconds = Number(match[1]);
-  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : JWKS_TTL_MS;
+  const requested = Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : JWKS_TTL_MS;
+  return Math.min(requested, JWKS_MAX_TTL_MS);
 }
 
-async function fetchJwks(jwksUrl: string): Promise<JsonWebKey[]> {
+async function fetchJwks(jwksUrl: string, forceRefresh = false): Promise<JsonWebKey[]> {
   const cached = jwksCache.get(jwksUrl);
-  if (cached && cached.expiresAt > Date.now()) {
+  if (!forceRefresh && cached && cached.expiresAt > Date.now()) {
     return cached.keys;
   }
 
-  const response = await fetch(jwksUrl);
+  const response = await fetchWithTimeout(jwksUrl);
   if (!response.ok) {
     throw new HttpError(500, "PRIVY_AUTH_MISCONFIGURED", "Privy JWKS request failed");
   }
@@ -123,18 +136,15 @@ async function fetchJwks(jwksUrl: string): Promise<JsonWebKey[]> {
   return payload.keys;
 }
 
-function getVerificationKeyFromJwks(header: PrivyJwtHeader, keys: JsonWebKey[]): KeyObject {
-  const jwk =
-    (header.kid
-      ? keys.find((candidate) => candidate.kid === header.kid)
-      : keys.length === 1
-        ? keys[0]
-        : undefined) ?? null;
-
-  if (!jwk) {
-    throw new HttpError(401, "UNAUTHORIZED", "Missing or invalid access token");
+function findJwk(header: PrivyJwtHeader, keys: JsonWebKey[]): JsonWebKey | null {
+  if (header.kid) {
+    return keys.find((candidate) => candidate.kid === header.kid) ?? null;
   }
 
+  return keys.length === 1 ? keys[0] : null;
+}
+
+function importJwk(jwk: JsonWebKey): KeyObject {
   try {
     return createPublicKey({ key: jwk, format: "jwk" });
   } catch {
@@ -165,8 +175,20 @@ async function getVerificationKey(header: PrivyJwtHeader): Promise<KeyObject> {
     );
   }
 
-  const keys = await fetchJwks(jwksUrl);
-  return getVerificationKeyFromJwks(header, keys);
+  const jwk = findJwk(header, await fetchJwks(jwksUrl));
+  if (jwk) {
+    return importJwk(jwk);
+  }
+
+  // Unknown kid usually means Privy rotated its signing keys since we cached
+  // the set. Refetch once before rejecting, otherwise every request 401s until
+  // the cache expires.
+  const rotated = findJwk(header, await fetchJwks(jwksUrl, true));
+  if (!rotated) {
+    throw new HttpError(401, "UNAUTHORIZED", "Missing or invalid access token");
+  }
+
+  return importJwk(rotated);
 }
 
 function verifyJwtSignature(accessToken: string, key: KeyObject) {

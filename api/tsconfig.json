@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "//": [
+    "Vercel compiles each api/**/*.ts entrypoint with the local TypeScript and",
+    "the nearest tsconfig (see the build log: 'Using TypeScript ... (local",
+    "user-provided)' once per function). The root tsconfig sets module: ESNext",
+    "for typechecking, so Vercel emitted `import` statements into .js files.",
+    "Nothing declares \"type\": \"module\" for that path, so Node loaded them as",
+    "CommonJS and every function died at module load with:",
+    "  SyntaxError: Cannot use import statement outside a module",
+    "",
+    "Declaring \"type\": \"module\" instead would not help: the emitted code keeps",
+    "extensionless relative specifiers (./_lib/config) that real Node ESM",
+    "rejects. CommonJS resolves them natively.",
+    "",
+    "Plain CommonJS rather than node16: node16 additionally demands explicit",
+    "'.js' extensions on every relative import and rejects type-only imports of",
+    "ESM packages from CJS, which would mean touching most files in here for no",
+    "runtime benefit."
+  ],
+  "extends": "../packages/config/tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "types": ["node"],
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "noEmit": true
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["**/*.test.ts"]
+}

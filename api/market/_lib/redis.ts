@@ -43,35 +43,87 @@ function getRedisConfig() {
   return { url, token };
 }
 
+/**
+ * A cache must not be able to take down the endpoint it accelerates.
+ *
+ * Redis being *absent* already degraded to memory, but Redis being present and
+ * unreachable threw straight out of readThroughCache and 500'd the request —
+ * which is the failure that actually happens in production. A stale
+ * UPSTASH_REDIS_REST_URL pointing at a deleted database (ENOTFOUND) took every
+ * market and account route down.
+ *
+ * Errors are surfaced in the logs but never to the caller: reads report a miss,
+ * writes are dropped, and the request continues against upstream.
+ */
+class RedisUnavailableError extends Error {}
+
+let redisFailures = 0;
+const REDIS_FAILURE_LOG_LIMIT = 3;
+
+function noteRedisFailure(operation: string, error: unknown) {
+  redisFailures += 1;
+  // Log the first few per instance rather than once per request; a broken cache
+  // on a hot path would otherwise flood the logs.
+  if (redisFailures <= REDIS_FAILURE_LOG_LIMIT) {
+    const reason = error instanceof Error ? (error.message ?? String(error)) : String(error);
+    const cause = (error as { cause?: { message?: string } })?.cause?.message;
+    console.error(
+      `Redis ${operation} failed; continuing without cache: ${reason}` +
+        (cause ? ` (${cause})` : "") +
+        (redisFailures === REDIS_FAILURE_LOG_LIMIT ? " [further Redis errors suppressed]" : ""),
+    );
+  }
+}
+
 async function redisCommand<T = unknown>(command: unknown[]): Promise<T | null> {
   const config = getRedisConfig();
   if (!config) {
     return null;
   }
 
-  const response = await fetchWithTimeout(
-    config.url,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.token}`,
-        "Content-Type": "application/json",
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(
+      config.url,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(command),
       },
-      body: JSON.stringify(command),
-    },
-    REDIS_TIMEOUT_MS,
-  );
+      REDIS_TIMEOUT_MS,
+    );
+  } catch (error) {
+    noteRedisFailure(String(command[0]), error);
+    throw new RedisUnavailableError("Redis is unreachable");
+  }
 
   if (!response.ok) {
-    throw new Error(`Redis command failed: ${response.status}`);
+    noteRedisFailure(String(command[0]), new Error(`HTTP ${response.status}`));
+    throw new RedisUnavailableError(`Redis command failed: ${response.status}`);
   }
 
   const payload = (await response.json()) as { result?: T; error?: string };
   if (payload.error) {
-    throw new Error(payload.error);
+    noteRedisFailure(String(command[0]), new Error(payload.error));
+    throw new RedisUnavailableError(payload.error);
   }
 
   return payload.result ?? null;
+}
+
+/** Run a Redis command, degrading to `fallback` if the server is unreachable. */
+async function tolerate<T>(operation: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof RedisUnavailableError) {
+      return fallback;
+    }
+    throw error;
+  }
 }
 
 function readMemory(key: string): string | null {
@@ -98,7 +150,8 @@ export async function redisGet(key: string): Promise<{ value: string | null; sou
     return { value: readMemory(key), source: "memory" };
   }
 
-  const value = await redisCommand<string>(["GET", key]);
+  // An unreachable cache reads as a miss, so the caller goes upstream.
+  const value = await tolerate(() => redisCommand<string>(["GET", key]), null);
   return { value, source: "redis" };
 }
 
@@ -109,12 +162,14 @@ export async function redisSet(key: string, value: string, ttlSeconds?: number) 
     return;
   }
 
-  if (ttlSeconds && ttlSeconds > 0) {
-    await redisCommand(["SET", key, value, "EX", ttlSeconds]);
-    return;
-  }
-
-  await redisCommand(["SET", key, value]);
+  // A write we cannot make just means the next read is a miss.
+  await tolerate(
+    () =>
+      ttlSeconds && ttlSeconds > 0
+        ? redisCommand(["SET", key, value, "EX", ttlSeconds])
+        : redisCommand(["SET", key, value]),
+    null,
+  );
 }
 
 export async function redisSetNx(key: string, value: string, ttlSeconds: number): Promise<boolean> {
@@ -125,7 +180,13 @@ export async function redisSetNx(key: string, value: string, ttlSeconds: number)
     return true;
   }
 
-  const result = await redisCommand<string>(["SET", key, value, "NX", "EX", ttlSeconds]);
+  // Fall back to "acquired". Without Redis there is no cross-instance
+  // coordination anyway, and reporting failure would send every caller down the
+  // RetryableCacheMiss path and turn a degraded cache into a 503.
+  const result = await tolerate(
+    () => redisCommand<string>(["SET", key, value, "NX", "EX", ttlSeconds]),
+    "OK" as string | null,
+  );
   return result === "OK";
 }
 
@@ -136,7 +197,7 @@ export async function redisDel(key: string) {
     return;
   }
 
-  await redisCommand(["DEL", key]);
+  await tolerate(() => redisCommand(["DEL", key]), null);
 }
 
 /**
@@ -155,7 +216,11 @@ export async function redisDelIfMatches(key: string, expectedValue: string): Pro
   }
 
   const script = `if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("DEL", KEYS[1]) else return 0 end`;
-  const result = await redisCommand<number>(["EVAL", script, "1", key, expectedValue]);
+  // Releasing a lock we cannot reach is a no-op; the TTL will clear it.
+  const result = await tolerate(
+    () => redisCommand<number>(["EVAL", script, "1", key, expectedValue]),
+    0 as number | null,
+  );
   return result === 1;
 }
 
@@ -177,7 +242,14 @@ export async function redisIncrWithTtl(key: string, ttlSeconds: number): Promise
   // INCR then EXPIRE as separate round trips leaves a TTL-less key behind if
   // the second call never lands. One script keeps them together.
   const script = `local count = redis.call("INCR", KEYS[1]) if count == 1 then redis.call("EXPIRE", KEYS[1], ARGV[1]) end return count`;
-  const count = await redisCommand<number>(["EVAL", script, "1", key, String(ttlSeconds)]);
+  // Deliberately fails open: an unreachable Redis returns 0, so enforceRateLimit
+  // lets the request through rather than rejecting all traffic. Authentication
+  // still applies on every protected route; the alternative is a cache outage
+  // becoming a full outage.
+  const count = await tolerate(
+    () => redisCommand<number>(["EVAL", script, "1", key, String(ttlSeconds)]),
+    0 as number | null,
+  );
   return count ?? 0;
 }
 

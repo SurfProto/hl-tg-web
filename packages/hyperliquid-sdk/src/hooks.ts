@@ -46,6 +46,11 @@ import type {
 } from "@repo/types";
 import { USDC_ARBITRUM, HL_BRIDGE_ARBITRUM } from "./constants";
 import {
+  DEV_ACCESS_TOKEN,
+  getDevAccountScope,
+  isDevIdentityEnabled,
+} from "./dev-identity";
+import {
   fetchAccountFills,
   fetchAccountOrders,
   fetchAccountPortfolio,
@@ -475,7 +480,24 @@ function usePublicHyperliquid() {
  */
 export function useAccountScope(): string | null {
   const { user } = usePrivy();
-  return user?.id ?? null;
+  // Local development has no way to sign in — see ./dev-identity.ts. This is the
+  // single gate every account query reads, so returning a synthetic scope here
+  // enables them all. Removed from production builds by dead-code elimination.
+  return user?.id ?? getDevAccountScope();
+}
+
+/**
+ * Bearer token for the account routes.
+ *
+ * Locally there is no Privy session to mint one, and the server-side dev bypass
+ * ignores the value, so any non-empty string suffices.
+ */
+export function useAccountToken(): () => Promise<string | null> {
+  const { getAccessToken } = useToken();
+  return useCallback(async () => {
+    if (isDevIdentityEnabled()) return DEV_ACCESS_TOKEN;
+    return getAccessToken();
+  }, [getAccessToken]);
 }
 
 /**
@@ -619,7 +641,7 @@ export function useCandles(coin: string, interval: string = "1h") {
 export function useAccountSnapshot<TSelected = AccountSnapshot>(
   select?: (snapshot: AccountSnapshot) => TSelected,
 ) {
-  const { getAccessToken } = useToken();
+  const getAccessToken = useAccountToken();
   const scope = useAccountScope();
 
   return useQuery({
@@ -896,7 +918,7 @@ export function useModifyOrder() {
  * Hook to fetch open orders
  */
 export function useOpenOrders() {
-  const { getAccessToken } = useToken();
+  const getAccessToken = useAccountToken();
   const scope = useAccountScope();
 
   return useQuery({
@@ -917,7 +939,7 @@ export function useOpenOrders() {
  * Hook to fetch fills
  */
 export function useFills() {
-  const { getAccessToken } = useToken();
+  const getAccessToken = useAccountToken();
   const scope = useAccountScope();
 
   return useQuery({
@@ -2084,7 +2106,7 @@ export function useAssetCtx(coin: string) {
  * Hook to fetch portfolio value history for area chart display.
  */
 export function usePortfolioPeriod(period: PortfolioRange = "7d") {
-  const { getAccessToken } = useToken();
+  const getAccessToken = useAccountToken();
   const scope = useAccountScope();
 
   return useQuery<PortfolioPeriodData>({
@@ -2102,7 +2124,7 @@ export function usePortfolioPeriod(period: PortfolioRange = "7d") {
 }
 
 export function usePortfolioHistory(period: PortfolioRange = "7d") {
-  const { getAccessToken } = useToken();
+  const getAccessToken = useAccountToken();
   const scope = useAccountScope();
 
   return useQuery<PortfolioHistoryPoint[]>({

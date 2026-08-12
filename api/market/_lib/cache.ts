@@ -92,19 +92,37 @@ export async function readThroughCache<T>({
       };
     }
 
-    await sleep(lockWaitMs);
-    const retry = await redisGet(key);
-    const retryCached = parseCached<T>(retry.value);
-    if (retryCached) {
-      return {
-        data: retryCached.data,
-        meta: {
-          cache: isFresh(retryCached, Date.now()) ? "hit" : "stale",
-          source: retry.source,
-          fetchedAt: retryCached.fetchedAt,
-          ttlSeconds: retryCached.ttlSeconds,
-        },
-      };
+    // Wait for whoever holds the lock to publish, polling until the lock could
+    // not still be held.
+    //
+    // This used to be a single 125ms sleep and one retry. That is far shorter
+    // than a real refresh: the market:stats fanout — metaAndAssetCtxs plus
+    // spotMetaAndAssetCtxs plus one call per HIP-3 dex — takes around two
+    // seconds cold. And since /api/market/ticker now reads the same cached
+    // aggregate as /api/market/stats, the two contend for one lock on every
+    // page load, so the loser reliably gave up and returned 503 CACHE_WARMING.
+    // The coin detail page showed it as Mark Price and Open Interest stuck on
+    // "Loading...".
+    //
+    // Polling to the lock's own expiry turns contention into a slightly slow
+    // success instead of an error. If nothing is published by then the holder
+    // has died or genuinely failed, and 503 is the honest answer.
+    const deadline = Date.now() + lockSeconds * 1000;
+    while (Date.now() < deadline) {
+      await sleep(lockWaitMs);
+      const retry = await redisGet(key);
+      const retryCached = parseCached<T>(retry.value);
+      if (retryCached) {
+        return {
+          data: retryCached.data,
+          meta: {
+            cache: isFresh(retryCached, Date.now()) ? "hit" : "stale",
+            source: retry.source,
+            fetchedAt: retryCached.fetchedAt,
+            ttlSeconds: retryCached.ttlSeconds,
+          },
+        };
+      }
     }
 
     throw new RetryableCacheMissError();

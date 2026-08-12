@@ -78,27 +78,58 @@ describe("readThroughCache", () => {
     expect((await redisGet(lockKey)).value).toBe("second-owner");
   });
 
-  it("returns a retryable miss when an empty key is locked", async () => {
-    const first = readThroughCache({
-      key: "market:test:locked",
+  it("waits for the lock holder's result instead of returning a retryable miss", async () => {
+    const key = "market:test:slow-holder";
+
+    // A refresh far slower than the old flat 125ms wait. /api/market/stats and
+    // /api/market/ticker share this key, so on every page load one of them is
+    // the waiter — and it used to give up and 503.
+    const slow = readThroughCache({
+      key,
       ttlSeconds: 10,
-      lockSeconds: 1,
+      lockSeconds: 5,
       fetchFresh: async () => {
-        await new Promise((resolve) => setTimeout(resolve, 200));
+        await new Promise((resolve) => setTimeout(resolve, 600));
         return { price: 100 };
       },
     });
 
+    // Let the first caller take the lock before the second arrives.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const waiter = await readThroughCache({
+      key,
+      ttlSeconds: 10,
+      lockSeconds: 5,
+      lockWaitMs: 50,
+      fetchFresh: async () => {
+        throw new Error("the waiter must not fetch; it should read the holder's result");
+      },
+    });
+
+    expect(waiter.data).toEqual({ price: 100 });
+    expect(waiter.meta.cache).toBe("hit");
+    await slow;
+  });
+
+  it("returns a retryable miss only when the holder never publishes", async () => {
+    const key = "market:test:abandoned";
+
+    // Hold the lock with nothing behind it: the holder has died, or its fetch
+    // is failing. Previously any contention produced this outcome after 125ms;
+    // now it takes an abandoned lock, which is the only case where 503 is the
+    // honest answer.
+    expect(await redisSetNx(`${key}:lock`, "someone-else", 5)).toBe(true);
+
     await expect(
       readThroughCache({
-        key: "market:test:locked",
+        key,
         ttlSeconds: 10,
-        lockSeconds: 1,
-        lockWaitMs: 1,
+        // Poll for 200ms, not the 5s default, so the test stays quick.
+        lockSeconds: 0.2,
+        lockWaitMs: 20,
         fetchFresh: async () => ({ price: 101 }),
       }),
     ).rejects.toBeInstanceOf(RetryableCacheMissError);
-
-    await first;
   });
 });

@@ -11,6 +11,11 @@ export default defineConfig({
   // it every /api/* request falls through to the SPA fallback and returns
   // index.html, which is why local development could not exercise the app.
   plugins: [react(), apiPlugin({ root: repoRoot })],
+  // Read .env from the repo root rather than this app's directory, so the same
+  // file supplies both the client's VITE_* values and the api/ handlers' server
+  // variables. Otherwise the two halves read different files and the client
+  // silently boots with undefined config.
+  envDir: repoRoot,
   server: {
     host: true,
     port: 5173,

@@ -1,24 +1,24 @@
-import { requirePrivySession } from "./onramp/_lib/auth";
-import { ensureMethod, HttpError, json, parseJsonBody, withJsonRoute } from "./onramp/_lib/http";
-import { getPlatformConfig, isProhibitedCorridor } from "./platform/_lib/config";
-import { rateLimitPlatform } from "./platform/_lib/rate-limit";
+import { requirePrivySession } from "../onramp/_lib/auth";
+import { ensureMethod, HttpError, json, parseJsonBody, withJsonRoute } from "../onramp/_lib/http";
+import { getPlatformConfig, isProhibitedCorridor } from "../platform/_lib/config";
+import { rateLimitPlatform } from "../platform/_lib/rate-limit";
 import {
   requireDirection,
   requirePaymentMethod,
   requirePositiveNumber,
   requireString,
-} from "./platform/_lib/request";
-import { QUOTE_TTL_SECONDS, signQuoteToken } from "./platform/_lib/quote-token";
-import { deriveRiskFlags } from "./platform/_lib/risk-derivation";
-import { evaluateRiskDecision } from "./platform/_lib/risk";
-import { routeQuote } from "./platform/_lib/rails";
+} from "../platform/_lib/request";
+import { QUOTE_TTL_SECONDS, signQuoteToken } from "../platform/_lib/quote-token";
+import { deriveRiskFlags } from "../platform/_lib/risk-derivation";
+import { evaluateRiskDecision } from "../platform/_lib/risk";
+import { routeQuote } from "../platform/_lib/rails";
 import {
   getPaymentRails,
   getPlatformUserByPrivyUserId,
   getReferenceRate,
   getUserRiskProfile,
   getUserVelocity,
-} from "./platform/_lib/supabase-admin";
+} from "../platform/_lib/supabase-admin";
 
 interface QuoteBody {
   amount?: number | string;

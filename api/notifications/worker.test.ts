@@ -2,8 +2,37 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const runNotificationWorkerOnce = vi.fn();
 
+/**
+ * worker.ts statically imports five modules from apps/notification-worker/src.
+ * Mocking only run-once left the other four to be transformed for real on every
+ * `vi.resetModules()` + dynamic import — the whole 1,686-line worker tree, twice.
+ * That took ~5.8s against a 5s timeout on a cold transform cache, which is
+ * exactly what CI always has. These tests assert cron auth and that the worker
+ * is invoked once; they need none of the real implementations.
+ */
 vi.mock("../../apps/notification-worker/src/run-once", () => ({
   runNotificationWorkerOnce,
+}));
+
+vi.mock("../../apps/notification-worker/src/config", () => ({
+  getNotificationWorkerConfig: () => ({
+    hyperliquidTestnet: true,
+    supabaseServiceRoleKey: "service-role",
+    supabaseUrl: "https://example.supabase.co",
+    telegramBotToken: "telegram-token",
+  }),
+}));
+
+vi.mock("../../apps/notification-worker/src/hyperliquid", () => ({
+  createHyperliquidMarketDataService: () => ({}),
+}));
+
+vi.mock("../../apps/notification-worker/src/supabase", () => ({
+  createSupabaseNotificationRepository: () => ({}),
+}));
+
+vi.mock("../../apps/notification-worker/src/telegram", () => ({
+  createTelegramClient: () => ({}),
 }));
 
 interface MockResponse {

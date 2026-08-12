@@ -1,8 +1,8 @@
-import { requirePrivySession } from "../onramp/_lib/auth";
-import { ensureMethod, HttpError, json, withJsonRoute } from "../onramp/_lib/http";
-import { getStringQuery } from "../onramp/_lib/request";
-import { getPlatformConfig } from "../platform/_lib/config";
-import { getPlatformTransaction, getPlatformUserByPrivyUserId } from "../platform/_lib/supabase-admin";
+import { requirePrivySession } from "../../onramp/_lib/auth";
+import { ensureMethod, HttpError, json, withJsonRoute } from "../../onramp/_lib/http";
+import { getStringQuery } from "../../onramp/_lib/request";
+import { getPlatformConfig } from "../../platform/_lib/config";
+import { getPlatformTransaction, getPlatformUserByPrivyUserId } from "../../platform/_lib/supabase-admin";
 
 export default async function handler(request: any, response: any) {
   await withJsonRoute(request, response, async () => {

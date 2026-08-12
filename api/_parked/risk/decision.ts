@@ -1,19 +1,19 @@
-import { ensureMethod, json, parseJsonBody, withJsonRoute } from "../onramp/_lib/http";
-import { requirePlatformAdminKey } from "../platform/_lib/admin-auth";
-import { getPlatformConfig, isProhibitedCorridor } from "../platform/_lib/config";
+import { ensureMethod, json, parseJsonBody, withJsonRoute } from "../../onramp/_lib/http";
+import { requirePlatformAdminKey } from "../../platform/_lib/admin-auth";
+import { getPlatformConfig, isProhibitedCorridor } from "../../platform/_lib/config";
 import {
   requireDirection,
   requirePaymentMethod,
   requirePositiveNumber,
   requireString,
-} from "../platform/_lib/request";
-import { deriveRiskFlags } from "../platform/_lib/risk-derivation";
-import { evaluateRiskDecision } from "../platform/_lib/risk";
+} from "../../platform/_lib/request";
+import { deriveRiskFlags } from "../../platform/_lib/risk-derivation";
+import { evaluateRiskDecision } from "../../platform/_lib/risk";
 import {
   getUserRiskProfile,
   getUserVelocity,
   persistRiskDecision,
-} from "../platform/_lib/supabase-admin";
+} from "../../platform/_lib/supabase-admin";
 
 interface RiskDecisionBody {
   amount?: number | string;

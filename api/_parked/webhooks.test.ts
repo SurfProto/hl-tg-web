@@ -5,12 +5,12 @@ const mocks = vi.hoisted(() => ({
   persistWebhookEvent: vi.fn(),
 }));
 
-vi.mock("./platform/_lib/supabase-admin", () => ({
+vi.mock("../platform/_lib/supabase-admin", () => ({
   getMerchantByApiKey: mocks.getMerchantByApiKey,
   persistWebhookEvent: mocks.persistWebhookEvent,
 }));
 
-import { signWebhookPayload } from "./platform/_lib/webhooks";
+import { signWebhookPayload } from "../platform/_lib/webhooks";
 import handler from "./webhooks";
 
 const SECRET = "webhook-secret";

@@ -1,8 +1,8 @@
-import { ensureMethod, json, withJsonRoute } from "./onramp/_lib/http";
-import { getStringQuery } from "./onramp/_lib/request";
-import { requirePlatformAdminKey } from "./platform/_lib/admin-auth";
-import { getPlatformConfig } from "./platform/_lib/config";
-import { listSettlements } from "./platform/_lib/supabase-admin";
+import { ensureMethod, json, withJsonRoute } from "../onramp/_lib/http";
+import { getStringQuery } from "../onramp/_lib/request";
+import { requirePlatformAdminKey } from "../platform/_lib/admin-auth";
+import { getPlatformConfig } from "../platform/_lib/config";
+import { listSettlements } from "../platform/_lib/supabase-admin";
 
 export default async function handler(request: any, response: any) {
   await withJsonRoute(request, response, async () => {

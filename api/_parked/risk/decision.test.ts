@@ -8,12 +8,12 @@ const mocks = vi.hoisted(() => ({
   persistRiskDecision: vi.fn(),
 }));
 
-vi.mock("../platform/_lib/config", () => ({
+vi.mock("../../platform/_lib/config", () => ({
   getPlatformConfig: mocks.getPlatformConfig,
   isProhibitedCorridor: mocks.isProhibitedCorridor,
 }));
 
-vi.mock("../platform/_lib/supabase-admin", () => ({
+vi.mock("../../platform/_lib/supabase-admin", () => ({
   getUserRiskProfile: mocks.getUserRiskProfile,
   getUserVelocity: mocks.getUserVelocity,
   persistRiskDecision: mocks.persistRiskDecision,

@@ -10,15 +10,15 @@ const mocks = vi.hoisted(() => ({
   getUserVelocity: vi.fn(),
 }));
 
-vi.mock("./onramp/_lib/auth", () => ({
+vi.mock("../onramp/_lib/auth", () => ({
   requirePrivySession: mocks.requirePrivySession,
 }));
 
-vi.mock("./platform/_lib/rate-limit", () => ({
+vi.mock("../platform/_lib/rate-limit", () => ({
   rateLimitPlatform: mocks.rateLimitPlatform,
 }));
 
-vi.mock("./platform/_lib/supabase-admin", () => ({
+vi.mock("../platform/_lib/supabase-admin", () => ({
   getPaymentRails: mocks.getPaymentRails,
   getPlatformUserByPrivyUserId: mocks.getPlatformUserByPrivyUserId,
   getReferenceRate: mocks.getReferenceRate,
@@ -26,7 +26,7 @@ vi.mock("./platform/_lib/supabase-admin", () => ({
   getUserVelocity: mocks.getUserVelocity,
 }));
 
-import { verifyQuoteToken } from "./platform/_lib/quote-token";
+import { verifyQuoteToken } from "../platform/_lib/quote-token";
 import handler from "./quotes";
 
 const SECRET = "quote-secret";

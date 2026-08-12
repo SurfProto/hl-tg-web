@@ -8,21 +8,21 @@ const mocks = vi.hoisted(() => ({
   getPlatformUserByPrivyUserId: vi.fn(),
 }));
 
-vi.mock("./onramp/_lib/auth", () => ({
+vi.mock("../onramp/_lib/auth", () => ({
   requirePrivySession: mocks.requirePrivySession,
 }));
 
-vi.mock("./platform/_lib/rate-limit", () => ({
+vi.mock("../platform/_lib/rate-limit", () => ({
   rateLimitPlatform: mocks.rateLimitPlatform,
 }));
 
-vi.mock("./platform/_lib/supabase-admin", () => ({
+vi.mock("../platform/_lib/supabase-admin", () => ({
   createPlatformTransaction: mocks.createPlatformTransaction,
   getMerchantByApiKey: mocks.getMerchantByApiKey,
   getPlatformUserByPrivyUserId: mocks.getPlatformUserByPrivyUserId,
 }));
 
-import { signQuoteToken, type QuoteClaims } from "./platform/_lib/quote-token";
+import { signQuoteToken, type QuoteClaims } from "../platform/_lib/quote-token";
 import handler from "./transactions";
 
 const SECRET = "quote-secret";

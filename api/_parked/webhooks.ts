@@ -1,9 +1,9 @@
-import { HttpError } from "./onramp/_lib/http";
-import { toErrorBody } from "./_lib/error-response";
-import { getPlatformConfig } from "./platform/_lib/config";
-import { optionalString, requireString } from "./platform/_lib/request";
-import { getMerchantByApiKey, persistWebhookEvent } from "./platform/_lib/supabase-admin";
-import { verifyWebhookSignature } from "./platform/_lib/webhooks";
+import { HttpError } from "../onramp/_lib/http";
+import { toErrorBody } from "../_lib/error-response";
+import { getPlatformConfig } from "../platform/_lib/config";
+import { optionalString, requireString } from "../platform/_lib/request";
+import { getMerchantByApiKey, persistWebhookEvent } from "../platform/_lib/supabase-admin";
+import { verifyWebhookSignature } from "../platform/_lib/webhooks";
 
 interface WebhookBody {
   eventId?: string;

@@ -1,15 +1,15 @@
-import { requirePrivySession } from "./onramp/_lib/auth";
-import { ensureMethod, HttpError, json, parseJsonBody, withJsonRoute } from "./onramp/_lib/http";
-import { getPlatformConfig } from "./platform/_lib/config";
-import { rateLimitPlatform } from "./platform/_lib/rate-limit";
-import { optionalString, requireString } from "./platform/_lib/request";
-import { verifyQuoteToken } from "./platform/_lib/quote-token";
+import { requirePrivySession } from "../onramp/_lib/auth";
+import { ensureMethod, HttpError, json, parseJsonBody, withJsonRoute } from "../onramp/_lib/http";
+import { getPlatformConfig } from "../platform/_lib/config";
+import { rateLimitPlatform } from "../platform/_lib/rate-limit";
+import { optionalString, requireString } from "../platform/_lib/request";
+import { verifyQuoteToken } from "../platform/_lib/quote-token";
 import {
   createPlatformTransaction,
   getMerchantByApiKey,
   getPlatformUserByPrivyUserId,
-} from "./platform/_lib/supabase-admin";
-import type { RiskAction, TransactionStatus } from "./platform/_lib/types";
+} from "../platform/_lib/supabase-admin";
+import type { RiskAction, TransactionStatus } from "../platform/_lib/types";
 
 interface TransactionBody {
   idempotencyKey?: string;

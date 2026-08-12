@@ -4,6 +4,7 @@ import { getProfileByPrivyUserId } from "../../profile/_lib/supabase-admin";
 import { HttpError } from "../../market/_lib/response";
 import { requireTelegramInitData } from "./telegram";
 import { rateLimitAccount } from "./rate-limit";
+import { getDevAccountContext } from "./dev-bypass";
 
 export interface AccountContext {
   privyUserId: string;
@@ -12,6 +13,14 @@ export interface AccountContext {
 }
 
 export async function requireAccountContext(request: any): Promise<AccountContext> {
+  // Local development only — see ./dev-bypass.ts. Inert unless NODE_ENV is not
+  // "production" *and* DEV_ACCOUNT_WALLET is set, so it cannot be enabled on
+  // Vercel (Preview included, since Vercel sets NODE_ENV=production there too).
+  const devContext = getDevAccountContext();
+  if (devContext) {
+    return devContext;
+  }
+
   const config = getProfileConfig();
   const session = await requirePrivySession(request, config.privyAppId);
   const telegram = requireTelegramInitData(request);

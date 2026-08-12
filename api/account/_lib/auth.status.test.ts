@@ -80,6 +80,23 @@ describe("/api/account/snapshot auth failures", () => {
     mocks.requirePrivySession.mockResolvedValue({ privyUserId: "did:privy:user:123" });
   });
 
+  // The dev bypass in ./dev-bypass.ts returns a context without any credentials.
+  // These tests all run with DEV_ACCOUNT_WALLET unset; this one asserts that
+  // setting it changes nothing while NODE_ENV is production, so the bypass
+  // cannot weaken the deployed auth path.
+  it("ignores the dev account bypass when NODE_ENV is production", async () => {
+    vi.stubEnv("DEV_ACCOUNT_WALLET", "0x1111111111111111111111111111111111111111");
+    mocks.requirePrivySession.mockRejectedValue(
+      new OnrampHttpError(401, "UNAUTHORIZED", "Missing or invalid access token"),
+    );
+    const response = createResponse();
+
+    await handler(request({ authorization: "Bearer bad", "x-telegram-init-data": "x" }), response);
+
+    expect(response.status).toHaveBeenCalledWith(401);
+    expect(mocks.getAccountSnapshot).not.toHaveBeenCalled();
+  });
+
   it("returns 401, not 500, when the access token is rejected", async () => {
     mocks.requirePrivySession.mockRejectedValue(
       new OnrampHttpError(401, "UNAUTHORIZED", "Missing or invalid access token"),

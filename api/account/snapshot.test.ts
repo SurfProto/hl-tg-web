@@ -52,6 +52,10 @@ function createResponse() {
 describe("/api/account/snapshot", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Vitest loads .env files into process.env, so a developer running against
+    // testnet locally would otherwise flip the value this test asserts on and
+    // see a failure that CI never reproduces. Pin it.
+    vi.stubEnv("VITE_HYPERLIQUID_TESTNET", "false");
     mocks.getProfileConfig.mockReturnValue({ privyAppId: "privy-app-id" });
     mocks.requirePrivySession.mockResolvedValue({
       privyUserId: "did:privy:user:123",

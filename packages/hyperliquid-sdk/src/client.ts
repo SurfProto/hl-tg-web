@@ -847,6 +847,13 @@ export class HyperliquidClient {
     context: Record<string, unknown>,
     error: unknown,
   ): never {
+    // Every branch below replaces the upstream error with a friendlier message
+    // and does not carry the original, so the real failure was unrecoverable —
+    // from logs and from a developer at a console alike. A trading action that
+    // failed during metadata resolution surfaced only as "Rate limited", with
+    // nothing to say what actually happened. Record the original before mapping.
+    console.error(`[hyperliquid] ${action} failed`, { context, error });
+
     if (error instanceof Error) {
       const lowerMessage = error.message.toLowerCase();
       const isTradingAction = [

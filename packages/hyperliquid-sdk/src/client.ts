@@ -489,10 +489,32 @@ export class HyperliquidClient {
     const hip3PerpMarkets = (
       await Promise.all(
         perpDexs.map(async ({ dex, dexIndex }) => {
+          // One dex must not be able to take the whole market cache down.
+          //
+          // This fans out one request per HIP-3 dex on top of spotMeta,
+          // metaAndAssetCtxs and perpDexs, and an unhandled rejection here
+          // rejected the entire Promise.all — so a single 429 or blip left
+          // ensureMarketCache throwing, which made placeOrder fail before it
+          // built anything. Observed while placing a testnet order: one dex
+          // returned 429 and the order surfaced as "Rate limited" with no
+          // market cache at all. The server-side equivalent in
+          // api/market/_lib/upstream.ts already isolates per-dex failures this
+          // way; the trading path did not.
+          //
+          // Skipping a dex costs only its own markets, which resolveMarket
+          // reports as MARKET_NOT_FOUND for that symbol. Standard perps and
+          // spot are unaffected.
           const dexMetaAndCtxs = await this.postInfo<any>({
             type: "metaAndAssetCtxs",
             dex,
+          }).catch((error: unknown) => {
+            console.error(`[hyperliquid] HIP-3 dex ${dex} metadata unavailable`, error);
+            return null;
           });
+          if (!dexMetaAndCtxs?.[0]?.universe) {
+            return [];
+          }
+
           const collateralAsset = inferStableCollateralAsset(
             dexMetaAndCtxs?.[0]?.universe?.find(
               (market: any) => !market?.isDelisted,

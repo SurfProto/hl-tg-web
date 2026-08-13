@@ -1,4 +1,5 @@
 import { fetchWithTimeout } from "../../_lib/fetch-with-timeout";
+import { redisDel, redisGet, redisSet } from "../../market/_lib/redis";
 import { type ProfileConfig } from "./config";
 import { HttpError } from "../../onramp/_lib/http";
 
@@ -100,10 +101,46 @@ export function getDefaultNotificationPreferences(): NotificationPreferencesRow 
   };
 }
 
+/**
+ * How long a resolved profile may be reused.
+ *
+ * requireAccountContext calls getProfileByPrivyUserId on every /api/account/*
+ * request, and it runs *before* the Redis payload cache — so even a cache hit
+ * cost one Supabase query. With the client polling the snapshot and orders
+ * every 5s and fills every 10s, that was roughly 32 queries per minute per
+ * active user, purely to translate a Privy user id into a wallet address.
+ *
+ * The mapping is effectively immutable, so a short window is safe. It is
+ * deliberately short rather than absent because the row also carries
+ * telegram_id, which requireAccountContext uses for an authorization decision;
+ * 60s bounds how long a revoked or relinked identity stays usable. Both writers
+ * below invalidate explicitly, so the window only matters for changes made
+ * outside this API.
+ */
+const PROFILE_CACHE_TTL_SECONDS = 60;
+
+function profileCacheKey(privyUserId: string): string {
+  return `profile:privy:${privyUserId}`;
+}
+
+export async function invalidateProfileCache(privyUserId: string): Promise<void> {
+  await redisDel(profileCacheKey(privyUserId));
+}
+
 export async function getProfileByPrivyUserId(
   config: ProfileConfig,
   privyUserId: string,
 ): Promise<ProfileRow | null> {
+  const key = profileCacheKey(privyUserId);
+  const cached = await redisGet(key);
+  if (cached.value) {
+    try {
+      return JSON.parse(cached.value) as ProfileRow;
+    } catch {
+      // Unparseable entry: fall through and refresh it.
+    }
+  }
+
   const rows = await supabaseRequest<ProfileRow[]>(
     config,
     `users?privy_user_id=eq.${encodeURIComponent(privyUserId)}&select=id,telegram_id,wallet_address,privy_user_id,username,email,language&limit=1`,
@@ -112,7 +149,14 @@ export async function getProfileByPrivyUserId(
     },
   );
 
-  return rows[0] ?? null;
+  const profile = rows[0] ?? null;
+  // Only cache hits. Caching "no such profile" would make a user who has just
+  // signed up wait out the TTL before the app could see them.
+  if (profile) {
+    await redisSet(key, JSON.stringify(profile), PROFILE_CACHE_TTL_SECONDS);
+  }
+
+  return profile;
 }
 
 export async function getProfileByTelegramId(
@@ -168,6 +212,7 @@ export async function bootstrapProfileUser(
       },
     );
 
+    await invalidateProfileCache(input.privyUserId);
     return rows[0];
   }
 
@@ -187,6 +232,7 @@ export async function bootstrapProfileUser(
     },
   );
 
+  await invalidateProfileCache(input.privyUserId);
   return rows[0];
 }
 
@@ -218,6 +264,7 @@ export async function updateProfileUser(
     },
   );
 
+  await invalidateProfileCache(privyUserId);
   return rows[0];
 }
 

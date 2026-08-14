@@ -92,7 +92,7 @@ pnpm test                                   # 5/5 turbo tasks + the api suite, e
 pnpm exec tsc --noEmit -p tsconfig.json     # exit 0
 ```
 
-461 tests: 169 api, 225 hyperliquid-sdk, 49 tg-mini-app, 14 notification-worker,
+495 tests: 169 api, 242 hyperliquid-sdk, 66 tg-mini-app, 14 notification-worker,
 4 onramp-proxy.
 
 Two structural facts about the test setup:
@@ -303,7 +303,7 @@ payments resume.
    size, and the test pins the offending double as a literal so it reproduces
    anywhere.
 
-`client.ts` (2,249 LOC) and `hooks.ts` (2,001 LOC) remain the untested bulk, and
+`client.ts` (2,171 LOC) and `hooks.ts` (2,001 LOC) remain the untested bulk, and
 they are what signs and submits orders. The working pattern is the one already
 established by `order-validation.ts` and `account-state.ts`: extract pure
 decision logic, leave a thin I/O shell, do not touch exchange semantics.
@@ -331,10 +331,25 @@ decision logic, leave a thin I/O shell, do not touch exchange semantics.
   believing it can trade. It is now pure — the caller does the `storeAgentExpiry`
   write.
 
-What is left in those two files is genuinely I/O-shaped, with one exception:
-`upsertPositionProtection` (~170 lines in `client.ts`) still mixes the SL/TP
-sizing and side decisions into the cancel-and-replace sequence. That is the next
-extraction, and the largest remaining one.
+- **`upsertPositionProtection` held a second copy of the app's protection
+  classifier**, with a comment in `client.ts` pointing at the original in
+  `apps/tg-mini-app/src/lib/protection.ts` rather than resolving it. The UI and
+  the order path were therefore free to disagree about which resting order is
+  your stop. `position-protection.ts` now owns both `classifyProtectionOrder`
+  and `planPositionProtection`; the app re-exports the classifier, and
+  `client.ts` is left with the cancel-and-place sequence. Neither side had a
+  single test before; there are now 34 across the two.
+
+  One deliberate non-change: when a position carries several stops, only the
+  first is cancelled. Cancelling all of them would be defensible on the reading
+  that duplicates are stale, but scaling out at several levels is a real
+  strategy, and silently clearing the ladder is worse than leaving it. A test
+  pins the current behavior either way. The one behavior change is that a
+  zero-size position is now refused up front rather than sending a zero-size
+  order the exchange would reject.
+
+What is left in those two files is genuinely I/O-shaped: HTTP, signing, caching
+and the React wiring around them.
 
 ## Supabase Disk IO alert
 

@@ -144,5 +144,15 @@ export {
   normalizeStableBalances,
 } from "./account-state";
 
+export {
+  classifyProtectionOrder,
+  planPositionProtection,
+} from "./position-protection";
+export type {
+  PositionDirection,
+  ProtectionKind,
+  ProtectionPlan,
+} from "./position-protection";
+
 // WebSocket manager
 export { WebSocketManager } from "./ws";

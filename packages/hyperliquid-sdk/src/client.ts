@@ -38,6 +38,7 @@ import {
   orderbookMidpoint,
   parsePositiveNumber,
 } from "./order-price";
+import { planPositionProtection } from "./position-protection";
 import {
   getBuilderAddress,
   getBuilderConfig,
@@ -1422,95 +1423,16 @@ export class HyperliquidClient {
       }
 
       const referencePrice = await this.getReferencePrice(market);
-      const isLong = positionSzi > 0;
-      const side: OrderSide = isLong ? "sell" : "buy";
-      const size = Math.abs(positionSzi);
-      const stopLossPx = request.stopLossPx ?? null;
-      const takeProfitPx = request.takeProfitPx ?? null;
-
-      if (
-        stopLossPx != null &&
-        (!Number.isFinite(stopLossPx) || stopLossPx <= 0)
-      ) {
-        throw new Error("Stop loss trigger price must be greater than 0.");
-      }
-
-      if (
-        takeProfitPx != null &&
-        (!Number.isFinite(takeProfitPx) || takeProfitPx <= 0)
-      ) {
-        throw new Error("Take profit trigger price must be greater than 0.");
-      }
-
-      if (stopLossPx != null) {
-        const isValidStop = isLong
-          ? stopLossPx < referencePrice
-          : stopLossPx > referencePrice;
-        if (!isValidStop) {
-          throw new Error(
-            isLong
-              ? "Stop loss must be below the current mark price for a long position."
-              : "Stop loss must be above the current mark price for a short position.",
-          );
-        }
-      }
-
-      if (takeProfitPx != null) {
-        const isValidTakeProfit = isLong
-          ? takeProfitPx > referencePrice
-          : takeProfitPx < referencePrice;
-        if (!isValidTakeProfit) {
-          throw new Error(
-            isLong
-              ? "Take profit must be above the current mark price for a long position."
-              : "Take profit must be below the current mark price for a short position.",
-          );
-        }
-      }
-
-      // --- Diff-based upsert: only cancel/place the sides that actually changed ---
-      // Classify current open orders for this coin into SL and TP buckets.
-      const existingOrders = request.skipCancelExisting
-        ? []
-        : await this.getOpenOrders();
-      const existingForCoin = existingOrders.filter(
-        (o) => o.coin === market.name && o.isTrigger && o.reduceOnly,
-      );
-
-      // Classify each existing trigger order as SL or TP using price-vs-reference comparison
-      // (same logic as classifyProtectionOrder in protection.ts).
-      const existingSl = existingForCoin.find((o) => {
-        if (o.triggerPx == null) return false;
-        return isLong ? o.triggerPx < referencePrice : o.triggerPx > referencePrice;
-      }) ?? null;
-      const existingTp = existingForCoin.find((o) => {
-        if (o.triggerPx == null) return false;
-        return isLong ? o.triggerPx > referencePrice : o.triggerPx < referencePrice;
-      }) ?? null;
-
-      // Determine which sides need a cancel and/or a place.
-      const cancelOids: number[] = [];
-      const toPlace: Array<{ triggerPx: number; triggerKind: "stopLoss" | "takeProfit" }> = [];
-
-      // SL side
-      const slChanged =
-        stopLossPx !== (existingSl?.triggerPx ?? null);
-      if (slChanged) {
-        if (existingSl) cancelOids.push(existingSl.oid);
-        if (stopLossPx != null) toPlace.push({ triggerPx: stopLossPx, triggerKind: "stopLoss" });
-      }
-
-      // TP side
-      const tpChanged =
-        takeProfitPx !== (existingTp?.triggerPx ?? null);
-      if (tpChanged) {
-        if (existingTp) cancelOids.push(existingTp.oid);
-        if (takeProfitPx != null) toPlace.push({ triggerPx: takeProfitPx, triggerKind: "takeProfit" });
-      }
-
-      if (cancelOids.length === 0 && toPlace.length === 0) {
-        throw new Error("No protection changes to apply.");
-      }
+      const { side, size, cancelOids, toPlace } = planPositionProtection({
+        positionSzi,
+        referencePrice,
+        stopLossPx: request.stopLossPx ?? null,
+        takeProfitPx: request.takeProfitPx ?? null,
+        existingOrders: request.skipCancelExisting
+          ? []
+          : await this.getOpenOrders(),
+        marketName: market.name,
+      });
 
       // Batch cancel (single API call for all cancels)
       if (cancelOids.length > 0) {

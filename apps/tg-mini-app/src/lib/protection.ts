@@ -1,7 +1,15 @@
 import type { OpenOrder } from "@repo/types";
+import {
+  classifyProtectionOrder,
+  type PositionDirection,
+  type ProtectionKind,
+} from "@repo/hyperliquid-sdk";
 
-export type PositionDirection = "long" | "short";
-export type ProtectionKind = "stopLoss" | "takeProfit";
+// One classifier, shared with the SDK. This file used to declare its own, and
+// client.ts noted the duplication rather than resolving it — leaving the UI and
+// the order path free to disagree about which resting order is your stop.
+export { classifyProtectionOrder };
+export type { PositionDirection, ProtectionKind };
 
 export interface ProtectionDraft {
   stopLossEnabled: boolean;
@@ -92,31 +100,6 @@ export function getProtectionPnl(
   return direction === "long"
     ? (triggerPx - entryPx) * size
     : (entryPx - triggerPx) * size;
-}
-
-export function classifyProtectionOrder(
-  order: OpenOrder,
-  direction: PositionDirection,
-  currentPrice: number | null,
-): ProtectionKind | null {
-  if (
-    !order.isTrigger ||
-    !order.reduceOnly ||
-    order.triggerPx == null ||
-    currentPrice == null
-  ) {
-    return null;
-  }
-
-  if (direction === "long") {
-    if (order.triggerPx < currentPrice) return "stopLoss";
-    if (order.triggerPx > currentPrice) return "takeProfit";
-  } else {
-    if (order.triggerPx > currentPrice) return "stopLoss";
-    if (order.triggerPx < currentPrice) return "takeProfit";
-  }
-
-  return null;
 }
 
 export function getProtectionState(

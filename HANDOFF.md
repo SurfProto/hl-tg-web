@@ -3,6 +3,11 @@
 Written 2026-08-13 at the end of a long session. `main` is at `362f6c8`, everything
 pushed, working tree clean, one worktree, one local branch.
 
+**Update 2026-08-14.** Open work item 1 and the `ws.ts` half of item 3 are done,
+on branch `agent-key-and-ws-reconnect-tests` — two commits, not pushed, no PR.
+That clears the prerequisites item 2 asked for, so lazy HIP-3 loading is next.
+Opening the PR is also the first real run CI will ever get.
+
 ## Where things stand
 
 The project is a Telegram Mini App for Hyperliquid trading (~33k LOC, pnpm/turbo
@@ -74,7 +79,7 @@ pnpm test                                   # 5/5 turbo tasks + the api suite, e
 pnpm exec tsc --noEmit -p tsconfig.json     # exit 0
 ```
 
-291 tests: 158 api, 66 hyperliquid-sdk, 49 tg-mini-app, 14 notification-worker,
+351 tests: 158 api, 126 hyperliquid-sdk, 49 tg-mini-app, 14 notification-worker,
 4 onramp-proxy.
 
 Two structural facts about the test setup:
@@ -158,10 +163,16 @@ payments resume.
 
 ## Open work, in the order I would do it
 
-1. **Agent key lifecycle tests** — `packages/hyperliquid-sdk/src/agent.ts` has
-   zero tests and handles generation, `localStorage` persistence, expiry and
-   reapproval of the key that signs orders. Needs a `globalThis.localStorage`
-   stub; the SDK tests run in the node environment.
+1. ~~**Agent key lifecycle tests**~~ — **done 2026-08-14.** 32 tests in
+   `agent.test.ts` over generation, storage, expiry and reapproval, against a
+   `globalThis.localStorage` stub. The cases worth knowing about: wallet-address
+   casing is normalized, so a checksummed and a lowercase address reach the same
+   key; and an expired key stays readable, so reapproval reuses the same
+   on-chain agent address instead of costing a second signature. One asymmetry
+   was left alone deliberately — the getters swallow `localStorage` failures and
+   the setters do not, so a failed write throws out of the approval mutation
+   *after* `approveAgent` already succeeded. Surfacing it beats silently
+   believing a key was stored, but it is a decision, not an accident.
 2. **Lazy HIP-3 loading** — `ensureMarketCache` in `client.ts` fans out one
    `metaAndAssetCtxs` request per HIP-3 dex. Mainnet lists 9 named dexes (12
    concurrent requests per session, fine); **testnet lists 247** (250), which
@@ -171,8 +182,28 @@ payments resume.
    `perp: index`, `spot: 10000 + pair.index`,
    `hip3: 100000 + dexIndex*10000 + index`, and `index` must be the position in
    the **unfiltered** universe. Get it wrong and orders go to the wrong market.
-   Do the tests in (1) and (3) first.
-3. **Balance and margin math**, then `ws.ts` reconnect (243 LOC, untested).
+   The tests in (1) and (3) are done, so this is the next thing to do.
+3. ~~**Balance and margin math**, then `ws.ts` reconnect~~ — **done 2026-08-14**,
+   with one part reassigned.
+
+   `ws.ts` has 28 tests, and writing the back-off ones surfaced three defects in
+   the same path, all fixed. `disconnect()` reconnected, because `close()` still
+   fires `onclose` and nothing distinguished a deliberate shutdown from a
+   dropped connection. A socket that never opened left `connectionOpenedAt`
+   null, which zeroed the attempt counter every time, pinned the delay at one
+   second and meant the ten-attempt cap was never reached — the exact tight loop
+   the code's own comment claimed to prevent. And `onopen` zeroed the counter
+   unconditionally, which made the five-second stability window dead code for
+   any socket that opened at all, so a server that accepts and instantly drops
+   reconnected every second forever. The reset now lives only in
+   `handleReconnect`, gated on a connection that lasted.
+
+   **Balance and margin math needs no test pass** — it is already covered. The
+   pure math is in `account-state.ts` with 23 tests, and `client.ts:2423` only
+   delegates to it. What is genuinely untested is the clearinghouse-state
+   parsing in `getAccountState` (`client.ts` ~1388-1440), and that is an
+   extraction job before it is a testing job. Same pattern as
+   `order-validation.ts`: pull out the pure part, leave the I/O shell.
 4. **The trading path bypasses the shared read layer.** The UI reads markets via
    `/api/market/markets` (Redis-cached, shared) while `placeOrder` re-derives the
    same universe directly from the browser. Worth unifying for latency once (2)
@@ -242,6 +273,10 @@ Recorded because they each cost real time in this session.
   markers. All are ancestors of `main`, so dropping them loses only the labels.
 - `apps/web` has a `test` script and no test files; it now passes
   `--passWithNoTests`. Before that, `pnpm test` had never succeeded at the root.
+- **`eslint` finds no config from inside `packages/hyperliquid-sdk`** — it
+  reports "couldn't find a configuration file" and exits 2, so that package's
+  `lint` script cannot be passing. Noticed 2026-08-14 while linting new test
+  files; not investigated, and `packages/eslint-config` exists unconsumed there.
 - The `buffer`/`util` externalization warnings in the browser console are
   benign: `@privy-io/react-auth` → `@solana/web3.js`, code this app never runs.
   Both Hyperliquid signing chunks are clean and signing was verified working in

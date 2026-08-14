@@ -27,6 +27,18 @@ import {
   getAvailableCollateralForMarket,
 } from "./account-state";
 import {
+  findStatusError,
+  isRateLimitError,
+  isRetryableLeverageError,
+  mapExchangeErrorMessage,
+} from "./exchange-response";
+import {
+  formatPrice,
+  getAggressiveMarketPrice,
+  orderbookMidpoint,
+  parsePositiveNumber,
+} from "./order-price";
+import {
   getBuilderAddress,
   getBuilderConfig,
   isBuilderConfigured,
@@ -673,39 +685,13 @@ export class HyperliquidClient {
     throw new Error(`Unknown market: ${coin}`);
   }
 
-  private stripTrailingZeros(value: string): string {
-    if (!value.includes(".")) return value;
-    return value
-      .replace(/(\.\d*?[1-9])0+$/u, "$1")
-      .replace(/\.0+$/u, "")
-      .replace(/\.$/u, "");
-  }
-
-  private truncateToDecimals(value: number, decimals: number): string {
-    const factor = 10 ** decimals;
-    const truncated = Math.trunc((value + Number.EPSILON) * factor) / factor;
-    return decimals === 0
-      ? String(Math.trunc(truncated))
-      : this.stripTrailingZeros(truncated.toFixed(decimals));
-  }
-
-  private parsePositiveNumber(value: unknown): number | null {
-    const parsed =
-      typeof value === "number"
-        ? value
-        : typeof value === "string"
-          ? parseFloat(value)
-          : NaN;
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-  }
-
   private getCachedMidPrice(market: CachedMarket): number | null {
     if (!this.midsCache || Date.now() >= this.midsCache.expiresAt) {
       return null;
     }
 
     for (const alias of market.aliases) {
-      const parsed = this.parsePositiveNumber(this.midsCache.data?.[alias]);
+      const parsed = parsePositiveNumber(this.midsCache.data?.[alias]);
       if (parsed != null) {
         return parsed;
       }
@@ -729,7 +715,7 @@ export class HyperliquidClient {
     }
 
     try {
-      const assetCtxPrice = this.parsePositiveNumber(
+      const assetCtxPrice = parsePositiveNumber(
         (await this.getAssetCtx(market.name))?.markPx,
       );
       if (assetCtxPrice != null) {
@@ -741,12 +727,10 @@ export class HyperliquidClient {
 
     try {
       const orderbook = await this.getOrderbook(market.name);
-      const bestBid = this.parsePositiveNumber(orderbook?.levels?.bids?.[0]?.px);
-      const bestAsk = this.parsePositiveNumber(orderbook?.levels?.asks?.[0]?.px);
-      const midpoint =
-        bestBid != null && bestAsk != null
-          ? (bestBid + bestAsk) / 2
-          : bestBid ?? bestAsk ?? null;
+      const midpoint = orderbookMidpoint(
+        orderbook?.levels?.bids?.[0]?.px,
+        orderbook?.levels?.asks?.[0]?.px,
+      );
 
       if (midpoint != null) {
         return { executionSource: "orderbook", price: midpoint };
@@ -758,47 +742,8 @@ export class HyperliquidClient {
     return null;
   }
 
-  private limitSignificantFigures(
-    value: string,
-    maxSignificant: number,
-  ): string {
-    let result = "";
-    let significantDigits = 0;
-    let seenNonZero = false;
-
-    for (const char of value) {
-      if (char === ".") {
-        if (!result.includes(".")) {
-          result += result === "" ? "0." : ".";
-        }
-        continue;
-      }
-
-      if (!seenNonZero) {
-        if (char === "0") {
-          result += char;
-          continue;
-        }
-        seenNonZero = true;
-      }
-
-      if (significantDigits >= maxSignificant) continue;
-      significantDigits += 1;
-      result += char;
-    }
-
-    return this.stripTrailingZeros(result || "0");
-  }
-
   private formatPrice(rawPrice: number, market: CachedMarket): string {
-    if (!Number.isFinite(rawPrice) || rawPrice <= 0) {
-      throw new Error(`Invalid price for ${market.name}`);
-    }
-    const truncated = this.truncateToDecimals(rawPrice, market.priceDecimals);
-    const limited = this.limitSignificantFigures(truncated, 5);
-    if (limited === "0")
-      throw new Error(`Price rounded to zero for ${market.name}`);
-    return limited;
+    return formatPrice(rawPrice, market);
   }
 
   private formatSize(rawSize: number, market: CachedMarket): string {
@@ -840,17 +785,6 @@ export class HyperliquidClient {
     throw new Error(`No live market price available for ${market.name}`);
   }
 
-  private getAggressiveMarketPrice(midPrice: number, side: OrderSide): number {
-    // 3% tolerance from mid — matches Hyperliquid's own SDK default.
-    // Buy: price 3% above mid (crosses the ask + depth within 3%).
-    // Sell: price 3% below mid (crosses the bid + depth within 3%).
-    // Worst-case slippage is capped at ~3%; IOC cancels any unfilled remainder.
-    const tolerance = 0.03;
-    return side === "buy"
-      ? midPrice * (1 + tolerance)
-      : midPrice * (1 - tolerance);
-  }
-
   private async getMarketOrderExecutionContext(
     market: CachedMarket,
     side: OrderSide,
@@ -863,10 +797,7 @@ export class HyperliquidClient {
       );
     }
 
-    const rawExecutionPrice = this.getAggressiveMarketPrice(
-      marketPrice.price,
-      side,
-    );
+    const rawExecutionPrice = getAggressiveMarketPrice(marketPrice.price, side);
 
     return {
       executionSource: marketPrice.executionSource,
@@ -900,82 +831,18 @@ export class HyperliquidClient {
     context: Record<string, unknown>,
     error: unknown,
   ): never {
-    // Every branch below replaces the upstream error with a friendlier message
-    // and does not carry the original, so the real failure was unrecoverable —
-    // from logs and from a developer at a console alike. A trading action that
-    // failed during metadata resolution surfaced only as "Rate limited", with
-    // nothing to say what actually happened. Record the original before mapping.
+    // mapExchangeErrorMessage replaces the upstream error with a friendlier
+    // message and cannot carry the original, so the real failure would be
+    // unrecoverable — from logs and from a developer at a console alike. A
+    // trading action that failed during metadata resolution surfaced only as
+    // "Rate limited", with nothing to say what actually happened. Record the
+    // original before mapping.
     console.error(`[hyperliquid] ${action} failed`, { context, error });
 
     if (error instanceof Error) {
-      const lowerMessage = error.message.toLowerCase();
-      const isTradingAction = [
-        "cancelAllOrders",
-        "cancelPositionProtection",
-        "cancelOrder",
-        "closePosition",
-        "modifyOrder",
-        "placeOrder",
-        "placeSpotOrder",
-        "placeTriggerOrder",
-        "upsertPositionProtection",
-        "updateIsolatedMargin",
-        "updateLeverage",
-      ].includes(action);
-
-      if (
-        isTradingAction &&
-        lowerMessage.includes("must deposit before performing actions")
-      ) {
-        throw new Error(
-          "Trading agent is not linked to a funded Hyperliquid account. Re-run trading setup or deposit funds into your main account.",
-        );
-      }
-      if (
-        action === "usdClassTransfer" &&
-        lowerMessage.includes("must deposit before performing actions")
-      ) {
-        throw new Error(
-          "Transfer unavailable until your main Hyperliquid account has a deposit. Deposit funds first, then try again.",
-        );
-      }
-      if (
-        isTradingAction &&
-        lowerMessage.includes(
-          "order price cannot be more than 95% away from the reference price",
-        )
-      ) {
-        throw new Error(
-          "Order price is too far from the current market price. Adjust your price and try again.",
-        );
-      }
-      if (
-        isTradingAction &&
-        lowerMessage.includes("could not immediately match")
-      ) {
-        throw new Error(
-          "Market order couldn't fill — no matching orders available. Try a limit order.",
-        );
-      }
-      if (isTradingAction && lowerMessage.includes("insufficient margin")) {
-        throw new Error(
-          "Insufficient margin for this order size. Reduce size or lower leverage.",
-        );
-      }
-      if (action === "setUserAbstraction") {
-        throw new Error(
-          "Unified trading approval failed. Approve the signature in your wallet and try again.",
-        );
-      }
-      if (action === "setUserDexAbstraction") {
-        throw new Error(
-          "HIP-3 abstraction approval failed. Approve the signature in your wallet and try again.",
-        );
-      }
-      if (lowerMessage.includes("429") || lowerMessage.includes("rate limit") || lowerMessage.includes("after retries")) {
-        throw new Error("Rate limited — please try again in a moment.");
-      }
-      throw new Error(error.message);
+      throw new Error(
+        mapExchangeErrorMessage(action, error.message) ?? error.message,
+      );
     }
     throw new Error(`${action} failed`);
   }
@@ -994,9 +861,7 @@ export class HyperliquidClient {
         return await clientInstance.order(params);
       } catch (error) {
         lastError = error;
-        const msg = error instanceof Error ? error.message.toLowerCase() : "";
-        const is429 = msg.includes("429") || msg.includes("rate limit");
-        if (is429 && attempt < maxRetries) {
+        if (isRateLimitError(error) && attempt < maxRetries) {
           await new Promise((res) => setTimeout(res, 500 * 2 ** attempt));
           continue;
         }
@@ -1007,28 +872,12 @@ export class HyperliquidClient {
   }
 
   private unwrapStatuses(response: any) {
-    const statuses = response?.response?.data?.statuses;
-    if (!Array.isArray(statuses)) {
-      return response;
-    }
-
-    const errorStatus = statuses.find((status: any) => status?.error);
-    if (errorStatus?.error) {
-      throw new Error(errorStatus.error);
+    const statusError = findStatusError(response);
+    if (statusError) {
+      throw new Error(statusError);
     }
 
     return response;
-  }
-
-  private isRetryableLeverageError(error: unknown): boolean {
-    if (!(error instanceof Error)) return false;
-    const message = error.message.toLowerCase();
-    return (
-      message.includes("invalid leverage value") ||
-      (message.includes("leverage") && message.includes("invalid")) ||
-      (message.includes("margin") &&
-        (message.includes("cross") || message.includes("isolated")))
-    );
   }
 
   private async ensurePerpLeverage(
@@ -1060,7 +909,7 @@ export class HyperliquidClient {
       await this.updateLeverage(market.name, leverage, isCross);
       this.leverageTypeCache.set(market.name, isCross);
     } catch (error) {
-      if (!this.isRetryableLeverageError(error) || existingPosition) {
+      if (!isRetryableLeverageError(error) || existingPosition) {
         throw error;
       }
 
@@ -1098,7 +947,7 @@ export class HyperliquidClient {
     const rawPrice =
       order.orderType === "market"
         ? (executionContext?.rawExecutionPrice ??
-          this.getAggressiveMarketPrice(referencePrice, order.side))
+          getAggressiveMarketPrice(referencePrice, order.side))
         : referencePrice;
     const rawSize = order.sizeUsd / referencePrice;
     const formattedPrice = this.formatPrice(rawPrice, market);

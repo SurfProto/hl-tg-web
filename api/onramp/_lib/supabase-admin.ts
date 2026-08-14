@@ -1,4 +1,4 @@
-import { fetchWithTimeout } from "../../_lib/fetch-with-timeout";
+import { buildHeaders, supabaseRequest } from "../../_lib/supabase";
 import { getSymbolCurrencies, type OnrampConfig } from "./config";
 import { normalizeOrderState } from "./normalize";
 import type { OnrampOrderStatus } from "./types";
@@ -61,45 +61,6 @@ interface UpdateOrderStatusInput {
   providerTouchedAt: string | null;
   errorCode: string | null;
   errorMessage: string | null;
-}
-
-function looksLikeHtml(body: string): boolean {
-  const trimmed = body.trim().toLowerCase();
-  return trimmed.startsWith("<!doctype html") || trimmed.startsWith("<html");
-}
-
-function buildHeaders(config: OnrampConfig, extra?: Record<string, string>) {
-  return {
-    apikey: config.supabaseServiceRoleKey,
-    Authorization: `Bearer ${config.supabaseServiceRoleKey}`,
-    "Content-Type": "application/json",
-    ...extra,
-  };
-}
-
-async function supabaseRequest<T>(config: OnrampConfig, path: string, init?: RequestInit): Promise<T> {
-  const response = await fetchWithTimeout(`${config.supabaseUrl}/rest/v1/${path}`, init);
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Supabase request failed: ${response.status} ${body}`);
-  }
-
-  if (response.status === 204) {
-    return null as T;
-  }
-
-  const rawBody = await response.text();
-  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
-
-  if (contentType.includes("text/html") || looksLikeHtml(rawBody)) {
-    throw new Error(`Supabase returned HTML for ${path}`);
-  }
-
-  try {
-    return JSON.parse(rawBody) as T;
-  } catch {
-    throw new Error(`Supabase returned invalid JSON for ${path}`);
-  }
 }
 
 function normalizeEmail(email: string | null | undefined): string | null {

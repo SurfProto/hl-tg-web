@@ -1,5 +1,5 @@
 import type { LeaderboardEntry, RewardKind, RewardLedgerEntry } from "../../../packages/types/src";
-import { fetchWithTimeout } from "../../_lib/fetch-with-timeout";
+import { buildHeaders, supabaseRequest } from "../../_lib/supabase";
 import type { RewardsConfig } from "./config";
 
 export interface RewardsUserRow {
@@ -89,49 +89,6 @@ interface SupabaseRewardLedgerRow {
   status: "pending" | "posted" | "failed";
   user_id: string;
   week_start: string | null;
-}
-
-function looksLikeHtml(body: string): boolean {
-  const trimmed = body.trim().toLowerCase();
-  return trimmed.startsWith("<!doctype html") || trimmed.startsWith("<html");
-}
-
-function buildHeaders(config: RewardsConfig, extra?: Record<string, string>) {
-  return {
-    apikey: config.supabaseServiceRoleKey,
-    Authorization: `Bearer ${config.supabaseServiceRoleKey}`,
-    "Content-Type": "application/json",
-    ...extra,
-  };
-}
-
-async function supabaseRequest<T>(
-  config: RewardsConfig,
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
-  const response = await fetchWithTimeout(`${config.supabaseUrl}/rest/v1/${path}`, init);
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Supabase request failed: ${response.status} ${body}`);
-  }
-
-  if (response.status === 204) {
-    return null as T;
-  }
-
-  const rawBody = await response.text();
-  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
-
-  if (contentType.includes("text/html") || looksLikeHtml(rawBody)) {
-    throw new Error(`Supabase returned HTML for ${path}`);
-  }
-
-  try {
-    return JSON.parse(rawBody) as T;
-  } catch {
-    throw new Error(`Supabase returned invalid JSON for ${path}`);
-  }
 }
 
 function monthStart(date: Date) {

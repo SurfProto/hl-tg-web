@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { fetchWithTimeout } from "../../_lib/fetch-with-timeout";
+import { buildHeaders, supabaseRequest } from "../../_lib/supabase";
 import { buildTransactionLedgerEntries } from "./ledger";
 import type { PlatformConfig } from "./config";
 import type {
@@ -82,44 +82,6 @@ interface CreatePlatformTransactionInput {
   riskScore: number;
   status: TransactionStatus;
   userId?: string | null;
-}
-
-function looksLikeHtml(body: string): boolean {
-  const trimmed = body.trim().toLowerCase();
-  return trimmed.startsWith("<!doctype html") || trimmed.startsWith("<html");
-}
-
-function buildHeaders(config: PlatformConfig, extra?: Record<string, string>) {
-  return {
-    apikey: config.supabaseServiceRoleKey,
-    Authorization: `Bearer ${config.supabaseServiceRoleKey}`,
-    "Content-Type": "application/json",
-    ...extra,
-  };
-}
-
-async function supabaseRequest<T>(config: PlatformConfig, path: string, init?: RequestInit): Promise<T> {
-  const response = await fetchWithTimeout(`${config.supabaseUrl}/rest/v1/${path}`, init);
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Supabase request failed: ${response.status} ${body}`);
-  }
-
-  if (response.status === 204) {
-    return null as T;
-  }
-
-  const rawBody = await response.text();
-  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
-  if (contentType.includes("text/html") || looksLikeHtml(rawBody)) {
-    throw new Error(`Supabase returned HTML for ${path}`);
-  }
-
-  try {
-    return JSON.parse(rawBody) as T;
-  } catch {
-    throw new Error(`Supabase returned invalid JSON for ${path}`);
-  }
 }
 
 function mapRailRow(row: PaymentRailRow): PaymentRail {

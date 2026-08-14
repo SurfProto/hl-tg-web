@@ -92,7 +92,7 @@ pnpm test                                   # 5/5 turbo tasks + the api suite, e
 pnpm exec tsc --noEmit -p tsconfig.json     # exit 0
 ```
 
-383 tests: 158 api, 158 hyperliquid-sdk, 49 tg-mini-app, 14 notification-worker,
+396 tests: 169 api, 160 hyperliquid-sdk, 49 tg-mini-app, 14 notification-worker,
 4 onramp-proxy.
 
 Two structural facts about the test setup:
@@ -270,11 +270,21 @@ payments resume.
    `/api/market/markets` (Redis-cached, shared) while `placeOrder` re-derives the
    same universe directly from the browser. Worth unifying for latency once (2)
    is done; not urgent on mainnet.
-5. **Consolidate three Supabase clients** — `api/onramp/_lib/supabase-admin.ts`
-   (278), `api/profile/_lib/…` (282), `api/rewards/_lib/…` (705), each with its
-   own `supabaseRequest`, `buildHeaders`, `looksLikeHtml`. Same duplication class
-   as the two `HttpError` declarations that caused the production outage. Extract
-   into `api/_lib/supabase.ts` alongside the existing shared modules.
+5. ~~**Consolidate three Supabase clients**~~ — **done 2026-08-14.** There were
+   **four**, not three: the parked `api/platform/_lib/supabase-admin.ts` had a
+   copy too. All four were character-identical apart from the config type name,
+   so `api/_lib/supabase.ts` now holds `supabaseRequest`, `buildHeaders` and
+   `looksLikeHtml`, typed against a structural `SupabaseConfig`, and 167 lines
+   of duplication are gone. 11 tests — the transport had none of its own before,
+   only whatever the route tests happened to exercise.
+
+   Four other `looksLikeHtml` copies remain, in `edge-proxy.ts`,
+   `onramp/_lib/provider.ts`, `apps/tg-mini-app/src/lib/{onramp,rewards}.ts` and
+   the onramp proxy. Those guard *provider* responses rather than Supabase ones
+   and sit on the far side of a package boundary, so they were left alone —
+   sharing them means deciding where a browser, a serverless function and a
+   standalone proxy can all import from, which is a bigger question than this
+   change.
 6. ~~**CI has never executed.**~~ **Wrong — it has run on every push since it
    was added, and it had been failing for a day.** `ci.yml` triggers on
    `pull_request` *and* `push` to `main`, which the note above missed. Every run

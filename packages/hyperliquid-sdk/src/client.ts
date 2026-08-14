@@ -231,6 +231,7 @@ export class HyperliquidClient {
   private testnet: boolean;
   private config: HyperliquidClientConfig;
   private marketCache: MarketCache | null = null;
+  private marketCacheLoad: Promise<MarketCache> | null = null;
   private builderApprovalCache: { result: ReturnType<typeof getBuilderConfig>; expiresAt: number } | null = null;
   private userStateCache: { data: AccountState; expiresAt: number } | null = null;
   private midsCache: { data: Record<string, string>; expiresAt: number } | null = null;
@@ -243,6 +244,12 @@ export class HyperliquidClient {
     string,
     { data: any[]; universe: any[]; timestamp: number }
   > = new Map();
+  // HIP-3 dex universes load on demand, one request per dex. In-flight loads
+  // are shared so concurrent resolveMarket calls for the same dex issue one
+  // request; loadedHip3Dexes is what every per-dex fan-out iterates, so a dex
+  // nobody asked for costs nothing.
+  private hip3DexLoads = new Map<string, Promise<void>>();
+  private loadedHip3Dexes = new Set<string>();
   private leverageTypeCache = new Map<string, boolean>();
 
   constructor(config: HyperliquidClientConfig) {
@@ -418,7 +425,18 @@ export class HyperliquidClient {
 
   private async ensureMarketCache(): Promise<MarketCache> {
     if (this.marketCache) return this.marketCache;
+    // Concurrent first callers used to each run the whole build and each get a
+    // different cache object, so a lazy dex load could land on one instance
+    // while the caller held the other and saw the symbol as unknown.
+    if (this.marketCacheLoad) return this.marketCacheLoad;
 
+    this.marketCacheLoad = this.buildMarketCache().finally(() => {
+      this.marketCacheLoad = null;
+    });
+    return this.marketCacheLoad;
+  }
+
+  private async buildMarketCache(): Promise<MarketCache> {
     const client = await this.getPublicClient();
     const [spotMeta, metaAndCtxs, perpDexsResponse] = await Promise.all([
       client.spotMeta(),
@@ -486,96 +504,6 @@ export class HyperliquidClient {
       })
       .filter((m: any) => m !== null);
 
-    const hip3PerpMarkets = (
-      await Promise.all(
-        perpDexs.map(async ({ dex, dexIndex }) => {
-          // One dex must not be able to take the whole market cache down.
-          //
-          // This fans out one request per HIP-3 dex on top of spotMeta,
-          // metaAndAssetCtxs and perpDexs, and an unhandled rejection here
-          // rejected the entire Promise.all — so a single 429 or blip left
-          // ensureMarketCache throwing, which made placeOrder fail before it
-          // built anything. Observed while placing a testnet order: one dex
-          // returned 429 and the order surfaced as "Rate limited" with no
-          // market cache at all. The server-side equivalent in
-          // api/market/_lib/upstream.ts already isolates per-dex failures this
-          // way; the trading path did not.
-          //
-          // Skipping a dex costs only its own markets, which resolveMarket
-          // reports as MARKET_NOT_FOUND for that symbol. Standard perps and
-          // spot are unaffected.
-          const dexMetaAndCtxs = await this.postInfo<any>({
-            type: "metaAndAssetCtxs",
-            dex,
-          }).catch((error: unknown) => {
-            console.error(`[hyperliquid] HIP-3 dex ${dex} metadata unavailable`, error);
-            return null;
-          });
-          if (!dexMetaAndCtxs?.[0]?.universe) {
-            return [];
-          }
-
-          const collateralAsset = inferStableCollateralAsset(
-            dexMetaAndCtxs?.[0]?.universe?.find(
-              (market: any) => !market?.isDelisted,
-            )?.name,
-          );
-          const dexEntry = perpDexs.find((entry) => entry.dex === dex);
-          if (dexEntry && collateralAsset) {
-            dexEntry.collateralAsset = collateralAsset;
-          }
-
-          this.hip3AssetCtxsCache.set(dex, {
-            data: dexMetaAndCtxs[1] ?? [],
-            universe: dexMetaAndCtxs[0].universe,
-            timestamp: Date.now(),
-          });
-
-          return dexMetaAndCtxs[0].universe
-            .map((market: any, index: number) => {
-              // Must map BEFORE filtering so `index` matches the original universe position,
-              // which is required for the correct HIP-3 asset formula: 100000 + dexIndex*10000 + index
-              if (market.isDelisted) return null;
-              // Strip any dex prefix the API may have included to avoid "xyz:xyz:GOLD-USDC"
-              const bareName = market.name.includes(":")
-                ? market.name.split(":").pop()!
-                : market.name;
-              const fullName = `${dex}:${bareName}`;
-              const cached: CachedMarket = {
-                asset: 100000 + dexIndex * 10000 + index,
-                aliases: [fullName],
-                baseCoin: bareName,
-                dex,
-                dexIndex,
-                isHip3: true,
-                marketType: "perp",
-                maxLeverage: market.maxLeverage,
-                minBaseSize: 10 ** -market.szDecimals,
-                minNotionalUsd: MIN_ORDER_NOTIONAL_USD,
-                name: fullName,
-                onlyIsolated: Boolean(market.onlyIsolated),
-                priceDecimals: Math.max(0, 6 - market.szDecimals),
-                szDecimals: market.szDecimals,
-              };
-              perp[fullName.toUpperCase()] = cached;
-              return {
-                ...market,
-                dex,
-                dexIndex,
-                index,
-                isHip3: true,
-                maxLeverage: market.maxLeverage,
-                minBaseSize: cached.minBaseSize,
-                minNotionalUsd: cached.minNotionalUsd,
-                name: fullName,
-                onlyIsolated: Boolean(market.onlyIsolated),
-              };
-            })
-            .filter((m: any) => m !== null);
-        }),
-      )
-    ).flat();
-
     const spotMarkets = spotMeta.universe.map((pair: any) => {
       const baseToken = tokensByIndex[pair.tokens[0]];
       const quoteToken = tokensByIndex[pair.tokens[1]];
@@ -613,7 +541,8 @@ export class HyperliquidClient {
     this.marketCache = {
       perp,
       perpDexs,
-      perpMarkets: [...perpMarkets, ...hip3PerpMarkets],
+      // HIP-3 markets are appended by ensureHip3Dex as dexes are loaded.
+      perpMarkets,
       spot,
       spotMarkets,
       spotTokenNames: new Set(
@@ -624,22 +553,163 @@ export class HyperliquidClient {
     return this.marketCache;
   }
 
+  /**
+   * Load one HIP-3 dex's universe into the market cache.
+   *
+   * Loading every dex up front cost one request per dex on top of spotMeta,
+   * metaAndAssetCtxs and perpDexs. Mainnet lists 9 named dexes, which was
+   * tolerable; testnet lists 247, which rate-limits itself before an order can
+   * be signed. A dex is now loaded only when a symbol on it is requested.
+   *
+   * One dex must not be able to take the market cache down, so a failure is
+   * logged and swallowed: it costs that dex's markets, which resolveMarket then
+   * reports as an unknown market, and leaves standard perps and spot alone. The
+   * memo is dropped on failure so a transient 429 does not disable the dex for
+   * the lifetime of the client.
+   */
+  private async ensureHip3Dex(dex: string): Promise<void> {
+    const cache = this.marketCache;
+    if (!cache) return;
+    if (this.loadedHip3Dexes.has(dex)) return;
+
+    const inFlight = this.hip3DexLoads.get(dex);
+    if (inFlight) return inFlight;
+
+    const dexEntry = cache.perpDexs.find((entry) => entry.dex === dex);
+    if (!dexEntry) return;
+    const { dexIndex } = dexEntry;
+
+    const load = (async () => {
+      const dexMetaAndCtxs = await this.postInfo<any>({
+        type: "metaAndAssetCtxs",
+        dex,
+      }).catch((error: unknown) => {
+        console.error(
+          `[hyperliquid] HIP-3 dex ${dex} metadata unavailable`,
+          error,
+        );
+        return null;
+      });
+      if (!dexMetaAndCtxs?.[0]?.universe) {
+        this.hip3DexLoads.delete(dex);
+        return;
+      }
+
+      const collateralAsset = inferStableCollateralAsset(
+        dexMetaAndCtxs[0].universe.find((market: any) => !market?.isDelisted)
+          ?.name,
+      );
+      if (collateralAsset) {
+        dexEntry.collateralAsset = collateralAsset;
+      }
+
+      this.hip3AssetCtxsCache.set(dex, {
+        data: dexMetaAndCtxs[1] ?? [],
+        universe: dexMetaAndCtxs[0].universe,
+        timestamp: Date.now(),
+      });
+
+      const markets = dexMetaAndCtxs[0].universe
+        .map((market: any, index: number) => {
+          // Must map BEFORE filtering so `index` matches the original universe position,
+          // which is required for the correct HIP-3 asset formula: 100000 + dexIndex*10000 + index
+          if (market.isDelisted) return null;
+          // Strip any dex prefix the API may have included to avoid "xyz:xyz:GOLD-USDC"
+          const bareName = market.name.includes(":")
+            ? market.name.split(":").pop()!
+            : market.name;
+          const fullName = `${dex}:${bareName}`;
+          const cached: CachedMarket = {
+            asset: 100000 + dexIndex * 10000 + index,
+            aliases: [fullName],
+            baseCoin: bareName,
+            dex,
+            dexIndex,
+            isHip3: true,
+            marketType: "perp",
+            maxLeverage: market.maxLeverage,
+            minBaseSize: 10 ** -market.szDecimals,
+            minNotionalUsd: MIN_ORDER_NOTIONAL_USD,
+            name: fullName,
+            onlyIsolated: Boolean(market.onlyIsolated),
+            priceDecimals: Math.max(0, 6 - market.szDecimals),
+            szDecimals: market.szDecimals,
+          };
+          cache.perp[fullName.toUpperCase()] = cached;
+          return {
+            ...market,
+            dex,
+            dexIndex,
+            index,
+            isHip3: true,
+            maxLeverage: market.maxLeverage,
+            minBaseSize: cached.minBaseSize,
+            minNotionalUsd: cached.minNotionalUsd,
+            name: fullName,
+            onlyIsolated: Boolean(market.onlyIsolated),
+          };
+        })
+        .filter((m: any) => m !== null);
+
+      cache.perpMarkets.push(...markets);
+      this.loadedHip3Dexes.add(dex);
+    })();
+
+    this.hip3DexLoads.set(dex, load);
+    return load;
+  }
+
+  /**
+   * Load every HIP-3 dex. This is the old eager behavior, kept for the paths
+   * that genuinely enumerate markets rather than trade one of them.
+   */
+  async loadAllHip3Dexes(): Promise<void> {
+    const cache = await this.ensureMarketCache();
+    await Promise.all(
+      cache.perpDexs.map(({ dex }) => this.ensureHip3Dex(dex)),
+    );
+  }
+
+  /** Dexes whose universe is in the cache — what every per-dex fan-out uses. */
+  private getLoadedPerpDexs(): MarketCache["perpDexs"] {
+    const cache = this.marketCache;
+    if (!cache) return [];
+    return cache.perpDexs.filter(({ dex }) => this.loadedHip3Dexes.has(dex));
+  }
+
   async resolveMarket(
     coin: string,
     marketType?: MarketType,
   ): Promise<CachedMarket> {
     const cache = await this.ensureMarketCache();
     const key = coin.toUpperCase();
-    const lookups =
-      marketType === "spot"
+    const lookup = () =>
+      (marketType === "spot"
         ? [cache.spot[key]]
         : marketType === "perp"
           ? [cache.perp[key]]
-          : [cache.perp[key], cache.spot[key]];
+          : [cache.perp[key], cache.spot[key]]
+      ).find(Boolean);
 
-    const resolved = lookups.find(Boolean);
-    if (!resolved) throw new Error(`Unknown market: ${coin}`);
-    return resolved;
+    const resolved = lookup();
+    if (resolved) return resolved;
+
+    // A HIP-3 symbol arrives as "dex:SYMBOL", and its dex universe is only
+    // fetched on demand. This is the miss that triggers that fetch — one
+    // request, for the one dex the order actually needs.
+    if (marketType !== "spot" && coin.includes(":")) {
+      const prefix = coin.slice(0, coin.indexOf(":")).toLowerCase();
+      const dexEntry = cache.perpDexs.find(
+        (entry) => entry.dex.toLowerCase() === prefix,
+      );
+      if (dexEntry) {
+        await this.ensureHip3Dex(dexEntry.dex);
+        const afterLoad = lookup();
+        if (afterLoad) return afterLoad;
+      }
+    }
+
+    throw new Error(`Unknown market: ${coin}`);
   }
 
   private stripTrailingZeros(value: string): string {
@@ -1193,6 +1263,8 @@ export class HyperliquidClient {
 
   // Get all markets (spot + perp), filtered for tradeable assets
   async getMarkets() {
+    // Enumerating markets is the one caller that does need every dex.
+    await this.loadAllHip3Dexes();
     const cache = await this.ensureMarketCache();
     return {
       perp: cache.perpMarkets,
@@ -1230,10 +1302,12 @@ export class HyperliquidClient {
     if (this.midsCache && Date.now() < this.midsCache.expiresAt) {
       return this.midsCache.data;
     }
-    const cache = await this.ensureMarketCache();
+    await this.ensureMarketCache();
+    // Only dexes already in the cache. A dex whose markets nobody has asked
+    // for has no resolvable symbols, so its mids would go nowhere.
     const [baseMids, ...dexMids] = await Promise.all([
       this.postInfo<Record<string, string>>({ type: "allMids" }),
-      ...cache.perpDexs.map(({ dex }) =>
+      ...this.getLoadedPerpDexs().map(({ dex }) =>
         this.postInfo<Record<string, string>>({ type: "allMids", dex }).then(
           (mids) => ({ dex, mids }),
         ),
@@ -2105,7 +2179,10 @@ export class HyperliquidClient {
     ) {
       return;
     }
-    const perpDexs = this.marketCache?.perpDexs ?? [];
+    // Loaded dexes only: this runs on the order path via getAssetCtx, where
+    // refreshing 247 testnet dexes to price one BTC order is what rate-limited
+    // the order in the first place.
+    const perpDexs = this.getLoadedPerpDexs();
     const [metaAndCtxs, ...dexResults] = await Promise.all([
       this.postInfo<any>({ type: "metaAndAssetCtxs" }),
       ...perpDexs.map(({ dex }) =>

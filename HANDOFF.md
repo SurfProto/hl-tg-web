@@ -162,16 +162,42 @@ payments resume.
    zero tests and handles generation, `localStorage` persistence, expiry and
    reapproval of the key that signs orders. Needs a `globalThis.localStorage`
    stub; the SDK tests run in the node environment.
-2. **Lazy HIP-3 loading** — `ensureMarketCache` in `client.ts` fans out one
-   `metaAndAssetCtxs` request per HIP-3 dex. Mainnet lists 9 named dexes (12
-   concurrent requests per session, fine); **testnet lists 247** (250), which
-   rate-limits itself and is why no testnet order has executed yet. Fetching a
-   dex's universe only when a HIP-3 symbol is requested takes a BTC order from
-   250 requests to 3. This is order-routing surgery — the asset-id formulas are
-   `perp: index`, `spot: 10000 + pair.index`,
-   `hip3: 100000 + dexIndex*10000 + index`, and `index` must be the position in
-   the **unfiltered** universe. Get it wrong and orders go to the wrong market.
-   Do the tests in (1) and (3) first.
+2. ~~**Lazy HIP-3 loading**~~ — **done 2026-08-14**, on branch
+   `lazy-hip3-loading`, with one piece deliberately left standing.
+
+   A dex universe is fetched when a symbol on that dex is first resolved, and
+   memoized. The asset-id formulas are unchanged — `perp: index`,
+   `spot: 10000 + pair.index`, `hip3: 100000 + dexIndex*10000 + index`, with
+   `index` the position in the **unfiltered** universe, which a test now pins.
+
+   The fan-out was on two more paths than this list said. `refreshAssetCtxs` is
+   the one that mattered: it runs on the order path via `getAssetCtx`, so
+   pricing a BTC order issued its own 248 requests regardless of the cache
+   build. It and `getMids` now cover only loaded dexes; `getMarkets`
+   enumerates everything, so it loads them all through `loadAllHip3Dexes`. A
+   testnet BTC order went from 250 requests to 4.
+
+   Two things fell out of writing the tests. A failed dex load drops its memo,
+   or a transient 429 would disable that dex for the life of the client —
+   worse than the eager version. And `ensureMarketCache` now shares one
+   in-flight build: concurrent first callers each ran the whole build and got
+   separate cache objects, so a lazy load could mutate one while the caller
+   held the other and saw its own symbol as unknown.
+
+   **`getUserState` still fans out over every known dex** — one
+   `clearinghouseState` each, so 247 on testnet whenever account state loads.
+   Left alone on purpose: restricting it to loaded dexes would under-report
+   collateral for someone holding a balance on a dex they have not opened, and
+   that is a money-correctness decision rather than a performance one. If the
+   order screen gates submit on balance, this can still throttle a testnet
+   order. Measure it before choosing between bounded concurrency, a
+   loaded-dex restriction, and leaning on `dexAbstraction`.
+
+   One behavior change to know about: `getMids` and `getMarketStats` now carry
+   HIP-3 data only for loaded dexes. The UI lists markets from the server's
+   Redis-cached `/api/market/markets`, and the browser client's own listing
+   path is `getMarkets`, which loads everything — but a future caller that
+   enumerates markets some other way would see less than it used to.
 3. **Balance and margin math**, then `ws.ts` reconnect (243 LOC, untested).
 4. **The trading path bypasses the shared read layer.** The UI reads markets via
    `/api/market/markets` (Redis-cached, shared) while `placeOrder` re-derives the

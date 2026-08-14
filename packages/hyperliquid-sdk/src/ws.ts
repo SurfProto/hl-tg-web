@@ -45,19 +45,26 @@ export class WebSocketManager {
 
     return new Promise((resolve, reject) => {
       try {
-        this.ws = new WebSocket(this.getWsUrl());
+        const socket = new WebSocket(this.getWsUrl());
+        this.ws = socket;
 
-        this.ws.onopen = () => {
+        socket.onopen = () => {
+          // A socket that is no longer the current one was abandoned by
+          // disconnect(); it must not resubscribe or report the manager online.
+          if (this.ws !== socket) return;
           console.log('[WS] Connected');
           this.isConnecting = false;
           this.connectionOpenedAt = Date.now();
-          this.reconnectAttempts = 0;
+          // The back-off counter is reset in handleReconnect, and only for a
+          // connection that lasted. Resetting it here would clear it for a
+          // socket that opens and drops immediately, which is the flapping
+          // server the back-off is meant to slow down.
           this.resubscribeAll();
           this.notifyStatus(true);
           resolve();
         };
 
-        this.ws.onmessage = (event) => {
+        socket.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data) as WsMessage;
             this.handleMessage(data);
@@ -66,14 +73,17 @@ export class WebSocketManager {
           }
         };
 
-        this.ws.onclose = (event) => {
+        socket.onclose = (event) => {
           console.log('[WS] Disconnected:', event.code, event.reason);
+          // disconnect() clears this.ws before closing, so an explicit
+          // disconnect lands here with a stale socket and must not reconnect.
+          if (this.ws !== socket) return;
           this.isConnecting = false;
           this.notifyStatus(false);
           this.handleReconnect();
         };
 
-        this.ws.onerror = (error) => {
+        socket.onerror = (error) => {
           console.error('[WS] Error:', error);
           this.isConnecting = false;
           reject(error);
@@ -86,12 +96,15 @@ export class WebSocketManager {
   }
 
   private handleReconnect(): void {
-    // Only reset the counter if the connection was stable for >5s.
-    // This prevents a tight reconnect loop when the server is unreachable.
+    // Only reset the counter if the connection was stable for >5s. Anything
+    // else — an immediate drop, or a socket that never opened at all because
+    // the server is unreachable — keeps the back-off climbing, which is what
+    // stops a tight reconnect loop.
     const MIN_STABLE_MS = 5000;
-    if (this.connectionOpenedAt !== null && Date.now() - this.connectionOpenedAt < MIN_STABLE_MS) {
-      // Connection dropped immediately — keep incrementing the back-off counter.
-    } else {
+    const wasStable =
+      this.connectionOpenedAt !== null &&
+      Date.now() - this.connectionOpenedAt >= MIN_STABLE_MS;
+    if (wasStable) {
       this.reconnectAttempts = 0;
     }
     this.connectionOpenedAt = null;
@@ -229,12 +242,21 @@ export class WebSocketManager {
   }
 
   disconnect(): void {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
+    const socket = this.ws;
+    // Cleared before close() so the socket's onclose sees a stale reference
+    // and skips the reconnect. Status is reported here instead.
+    this.ws = null;
     this.subscriptions.clear();
     this.reconnectAttempts = 0;
+    this.connectionOpenedAt = null;
+    this.isConnecting = false;
+
+    if (!socket) return;
+    const wasOpen = socket.readyState === WebSocket.OPEN;
+    socket.close();
+    if (wasOpen) {
+      this.notifyStatus(false);
+    }
   }
 
   isConnected(): boolean {

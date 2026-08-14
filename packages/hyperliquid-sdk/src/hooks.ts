@@ -26,6 +26,22 @@ import {
   getUnifiedApprovalState as getUnifiedApprovalSnapshot,
   getSupportedStableAssets,
 } from "./account-state";
+import {
+  formatStableAmount,
+  getSpotAvailableBalance,
+  parseBalanceAmount,
+  resolveStableSwapLeg,
+  roundStableAmount,
+  type ResolvedStableSwapLeg,
+  type StableSpotMarket,
+} from "./stable-swap";
+import {
+  getBuilderApprovalState,
+  getUnifiedApprovalRequirementState,
+  reduceAgentApproval,
+  type AgentApprovalState,
+  type UnifiedApprovalState,
+} from "./trading-setup";
 import type {
   AccountState,
   ApprovalRequirementState,
@@ -67,69 +83,8 @@ import {
 
 const publicClientCache = new Map<"mainnet" | "testnet", HyperliquidClient>();
 const STABLE_SWAP_ASSETS = getSupportedStableAssets();
-const STABLE_TRANSFER_PRECISION = 1_000_000;
 const SPOT_USDC_DUST_THRESHOLD = 0.01;
 const UNIFIED_ACCOUNT_PREFERENCE_PREFIX = "hl_pref_unified_";
-
-type StableSpotMarket = {
-  index: number;
-  baseName: string;
-  quoteName: string;
-};
-
-type ResolvedStableSwapLeg = {
-  coin: string;
-  side: "buy" | "sell";
-  marketName: string;
-};
-
-type AgentApprovalState = {
-  address: string | null;
-  approved: boolean;
-  hasLocalKey: boolean;
-  isExpired: boolean;
-  validUntil: number | null;
-  state: ApprovalRequirementState;
-  remoteConfirmed: boolean;
-  lastVerifiedAt: number | null;
-};
-
-type UnifiedApprovalState = {
-  enabled: boolean;
-  abstractionMode: AccountState["abstractionMode"];
-};
-
-function roundStableAmount(amount: number) {
-  return (
-    Math.floor(amount * STABLE_TRANSFER_PRECISION) / STABLE_TRANSFER_PRECISION
-  );
-}
-
-function formatStableAmount(amount: number) {
-  return roundStableAmount(amount)
-    .toFixed(6)
-    .replace(/\.?0+$/, "");
-}
-
-function parseBalanceAmount(value: unknown) {
-  const parsed =
-    typeof value === "number"
-      ? value
-      : typeof value === "string"
-        ? parseFloat(value)
-        : NaN;
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function getSpotAvailableBalance(spotBalance: any, coin: StableSwapAsset) {
-  const entry = spotBalance?.balances?.find(
-    (balance: any) => balance.coin?.toUpperCase() === coin,
-  );
-  if (!entry) return 0;
-  const total = parseBalanceAmount(entry.total);
-  const hold = parseBalanceAmount(entry.hold);
-  return Math.max(0, total - hold);
-}
 
 function getUnifiedPreference(walletAddress: string): boolean {
   try {
@@ -264,89 +219,25 @@ async function getAgentApprovalState(
   previousState?: AgentApprovalState,
 ): Promise<AgentApprovalState> {
   const localState = getLocalAgentApprovalState(client, walletAddress);
-  if (!localState.hasLocalKey || localState.isExpired || !localState.address) {
-    return {
-      ...localState,
-      approved: false,
-      state: "missing",
-      lastVerifiedAt: Date.now(),
-    };
+  const hasLocalAgent =
+    localState.hasLocalKey && !localState.isExpired && localState.address;
+
+  const extraAgents = hasLocalAgent
+    ? await client.getExtraAgents().catch(() => null)
+    : null;
+
+  const { next, validUntilToPersist } = reduceAgentApproval({
+    localState,
+    extraAgents,
+    previousState,
+    now: Date.now(),
+  });
+
+  if (validUntilToPersist != null) {
+    storeAgentExpiry(walletAddress, validUntilToPersist);
   }
 
-  const extraAgents = await client.getExtraAgents().catch(() => null);
-  if (extraAgents == null) {
-    return {
-      ...localState,
-      state: "stale",
-      approved: true,
-    };
-  }
-
-  const approvedAgent = extraAgents.find(
-    (agent: { address?: string }) =>
-      agent.address?.toLowerCase() === localState.address?.toLowerCase(),
-  );
-  const validUntil =
-    typeof approvedAgent?.validUntil === "number"
-      ? approvedAgent.validUntil
-      : null;
-
-  if (validUntil != null) {
-    storeAgentExpiry(walletAddress, validUntil);
-  }
-
-  if (!approvedAgent) {
-    if (previousState?.remoteConfirmed) {
-      return {
-        ...localState,
-        approved: false,
-        state: "missing",
-        remoteConfirmed: false,
-        lastVerifiedAt: Date.now(),
-      };
-    }
-
-    return {
-      ...localState,
-      state: "stale",
-      approved: true,
-      lastVerifiedAt: previousState?.lastVerifiedAt ?? null,
-    };
-  }
-
-  const remoteExpired = validUntil != null ? validUntil <= Date.now() : false;
-
-  return {
-    ...localState,
-    approved: !remoteExpired,
-    hasLocalKey: true,
-    isExpired: remoteExpired,
-    validUntil,
-    state: remoteExpired ? "missing" : "approved",
-    remoteConfirmed: !remoteExpired,
-    lastVerifiedAt: Date.now(),
-  };
-}
-
-function getBuilderApprovalState(
-  feeTenthsBp: number | undefined,
-  isError: boolean,
-): ApprovalRequirementState {
-  if (!isBuilderConfigured()) return "approved";
-  if (typeof feeTenthsBp === "number") {
-    return feeTenthsBp > 0 ? "approved" : "missing";
-  }
-  return isError ? "stale" : "checking";
-}
-
-function getUnifiedApprovalRequirementState(
-  approval: UnifiedApprovalState | undefined,
-  isError: boolean,
-): ApprovalRequirementState {
-  if (approval) {
-    return approval.enabled ? "approved" : "missing";
-  }
-  return isError ? "stale" : "checking";
+  return next;
 }
 
 function buildTradingSetupStatus(args: {
@@ -363,7 +254,11 @@ function buildTradingSetupStatus(args: {
     isAgentExpired: args.agentApproval?.isExpired ?? false,
     abstractionMode: args.abstractionMode,
     prefersUnifiedAccount: args.prefersUnifiedAccount,
-    builderState: getBuilderApprovalState(args.builderMaxFee, args.builderError),
+    builderState: getBuilderApprovalState(
+      args.builderMaxFee,
+      args.builderError,
+      isBuilderConfigured(),
+    ),
     unifiedState: getUnifiedApprovalRequirementState(
       args.unifiedApproval,
       args.unifiedError,
@@ -376,42 +271,6 @@ function buildTradingSetupStatus(args: {
       args.agentApproval?.lastVerifiedAt ??
       (status.isChecking ? null : Date.now()),
   };
-}
-
-function resolveStableSwapLeg(
-  markets: StableSpotMarket[],
-  fromAsset: StableSwapAsset,
-  toAsset: StableSwapAsset,
-): ResolvedStableSwapLeg {
-  const buyLeg = markets.find(
-    (market) =>
-      market.baseName.toUpperCase() === toAsset &&
-      market.quoteName.toUpperCase() === fromAsset,
-  );
-  if (buyLeg) {
-    return {
-      coin: `@${buyLeg.index}`,
-      side: "buy",
-      marketName: `${buyLeg.baseName}/${buyLeg.quoteName}`,
-    };
-  }
-
-  const sellLeg = markets.find(
-    (market) =>
-      market.baseName.toUpperCase() === fromAsset &&
-      market.quoteName.toUpperCase() === toAsset,
-  );
-  if (sellLeg) {
-    return {
-      coin: `@${sellLeg.index}`,
-      side: "sell",
-      marketName: `${sellLeg.baseName}/${sellLeg.quoteName}`,
-    };
-  }
-
-  throw new Error(
-    `No supported spot market found for ${fromAsset} -> ${toAsset}.`,
-  );
 }
 
 async function waitForSpotBalance(

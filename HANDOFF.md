@@ -92,7 +92,7 @@ pnpm test                                   # 5/5 turbo tasks + the api suite, e
 pnpm exec tsc --noEmit -p tsconfig.json     # exit 0
 ```
 
-396 tests: 169 api, 160 hyperliquid-sdk, 49 tg-mini-app, 14 notification-worker,
+461 tests: 169 api, 225 hyperliquid-sdk, 49 tg-mini-app, 14 notification-worker,
 4 onramp-proxy.
 
 Two structural facts about the test setup:
@@ -303,10 +303,38 @@ payments resume.
    size, and the test pins the offending double as a literal so it reproduces
    anywhere.
 
-`client.ts` (2,428 LOC) and `hooks.ts` (2,120 LOC) remain the untested bulk, and
+`client.ts` (2,249 LOC) and `hooks.ts` (2,001 LOC) remain the untested bulk, and
 they are what signs and submits orders. The working pattern is the one already
 established by `order-validation.ts` and `account-state.ts`: extract pure
 decision logic, leave a thin I/O shell, do not touch exchange semantics.
+
+**Five rounds of that pattern have now landed**, in `account-state.ts`,
+`decimal.ts`, `order-price.ts`, `exchange-response.ts`, `stable-swap.ts` and
+`trading-setup.ts`. Each one found something:
+
+- **The price path never got the truncation fix.** `362f6c8` replaced
+  `Math.trunc((value + Number.EPSILON) * factor) / factor` in the *size* path
+  because it carries a value sitting just below a boundary over it. `formatPrice`
+  kept using it, so `formatPrice(1.9999999999999998, {priceDecimals: 4})`
+  returned `"2"` — on a buy, a bid above the price asked for. Both paths now
+  share one `truncateToDecimals`, and a property test holds the invariant across
+  tick boundaries.
+- **The two rate-limit predicates were not the same test** and are deliberately
+  still not. `retryOrder` must not match `"after retries"`, which is what
+  `postInfo` throws once its own backoff is spent; retrying that multiplies
+  attempts against an exchange already refusing them. The user-facing mapper
+  does treat it as rate limiting.
+- **`reduceAgentApproval` is where "stale" versus "missing" lives.** An agent
+  absent from a list that previously carried it is revoked; absent from the
+  first list ever read is propagation delay right after approval. Reading either
+  wrong sends a working account back through setup, or leaves a revoked one
+  believing it can trade. It is now pure — the caller does the `storeAgentExpiry`
+  write.
+
+What is left in those two files is genuinely I/O-shaped, with one exception:
+`upsertPositionProtection` (~170 lines in `client.ts`) still mixes the SL/TP
+sizing and side decisions into the cancel-and-replace sequence. That is the next
+extraction, and the largest remaining one.
 
 ## Supabase Disk IO alert
 

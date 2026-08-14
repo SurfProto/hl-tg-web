@@ -315,3 +315,224 @@ export function evaluateTradingSetupStatus({
 export function getSupportedStableAssets(): StableSwapAsset[] {
   return [...SUPPORTED_STABLE_ASSETS];
 }
+
+/**
+ * Hyperliquid sends every number as a string, so the shapes below are what the
+ * `clearinghouseState` and `spotClearinghouseState` info endpoints actually
+ * return, not what they mean. `buildAccountState` turns them into numbers.
+ */
+export interface RawMarginSummary {
+  accountValue?: unknown;
+  totalMarginUsed?: unknown;
+  totalNtlPos?: unknown;
+  totalRawUsd?: unknown;
+}
+
+export interface RawAssetPosition {
+  type?: unknown;
+  position: {
+    coin: string;
+    szi?: unknown;
+    leverage: { type?: unknown; value?: unknown };
+    entryPx?: unknown;
+    liquidationPx?: unknown;
+    marginUsed?: unknown;
+    maxLeverage?: unknown;
+    positionValue?: unknown;
+    returnOnEquity?: unknown;
+    unrealizedPnl?: unknown;
+  };
+}
+
+export interface RawClearinghouseState {
+  marginSummary?: RawMarginSummary | null;
+  crossMarginSummary?: RawMarginSummary | null;
+  crossMaintenanceMarginUsed?: unknown;
+  withdrawable?: unknown;
+  assetPositions?: RawAssetPosition[] | null;
+}
+
+export interface RawSpotClearinghouseState {
+  balances?: Array<{ coin?: string; total?: unknown; hold?: unknown }> | null;
+}
+
+/**
+ * `parseFloat` on values the API is expected to send as strings. Deliberately
+ * NaN-propagating rather than zero-filling: a malformed number reaching a
+ * balance should be visible, not quietly read as no money.
+ */
+function toFloat(value: unknown): number {
+  return Number.parseFloat(value as string);
+}
+
+/**
+ * Add one more balance of the same asset onto a running total, keeping the
+ * spot and perp breakdowns separate.
+ *
+ * Not the same operation as `mergeStableBalanceStates`, which pairs a spot
+ * balance with a perp one. This sums like with like — several HIP-3 dexes can
+ * share a collateral asset, and each contributes its own perp balance.
+ */
+function accumulateStableBalance(
+  current: StableBalanceState | undefined,
+  next: StableBalanceState,
+): StableBalanceState {
+  return {
+    total: (current?.total ?? 0) + next.total,
+    hold: (current?.hold ?? 0) + next.hold,
+    available: (current?.available ?? 0) + next.available,
+    ...(current?.spot || next.spot
+      ? {
+          spot: {
+            total: (current?.spot?.total ?? 0) + (next.spot?.total ?? 0),
+            hold: (current?.spot?.hold ?? 0) + (next.spot?.hold ?? 0),
+            available:
+              (current?.spot?.available ?? 0) + (next.spot?.available ?? 0),
+          },
+        }
+      : {}),
+    ...(current?.perp || next.perp
+      ? {
+          perp: {
+            total: (current?.perp?.total ?? 0) + (next.perp?.total ?? 0),
+            hold: (current?.perp?.hold ?? 0) + (next.perp?.hold ?? 0),
+            available:
+              (current?.perp?.available ?? 0) + (next.perp?.available ?? 0),
+          },
+        }
+      : {}),
+  };
+}
+
+function parseMarginSummary(marginSummary: RawMarginSummary | null | undefined) {
+  return {
+    accountValue: toFloat(marginSummary?.accountValue ?? "0"),
+    totalMarginUsed: toFloat(marginSummary?.totalMarginUsed ?? "0"),
+    totalNtlPos: toFloat(marginSummary?.totalNtlPos ?? "0"),
+    totalRawUsd: toFloat(marginSummary?.totalRawUsd ?? "0"),
+  };
+}
+
+/**
+ * Fold the clearinghouse responses for the base perp account, the spot account
+ * and every HIP-3 dex into one `AccountState`.
+ *
+ * `dexStates` is positional: entry `i` is the state for `perpDexs[i]`. That
+ * alignment is the caller's `Promise.all` order and is what attributes a
+ * balance to the right collateral asset, so it is pinned by tests.
+ */
+export function buildAccountState({
+  baseState,
+  spotState,
+  abstraction,
+  hip3DexAbstractionEnabled,
+  perpDexs,
+  dexStates,
+}: {
+  baseState: RawClearinghouseState | null | undefined;
+  spotState: RawSpotClearinghouseState | null | undefined;
+  abstraction: string | null | undefined;
+  hip3DexAbstractionEnabled: boolean | null | undefined;
+  perpDexs: Array<{ dex: string; collateralAsset?: StableSwapAsset }>;
+  dexStates: Array<RawClearinghouseState | null | undefined>;
+}): AccountState {
+  const allStates: Array<{
+    dex: string | undefined;
+    state: RawClearinghouseState | null | undefined;
+  }> = [
+    { dex: undefined, state: baseState },
+    ...dexStates.map((state, index) => ({
+      dex: perpDexs[index]?.dex,
+      state,
+    })),
+  ];
+
+  const abstractionMode = inferAbstractionMode(
+    abstraction,
+    hip3DexAbstractionEnabled,
+  );
+  const spotStableBalances = normalizeStableBalances(spotState?.balances);
+  const perpStableBalances = allStates.reduce<
+    Partial<Record<StableSwapAsset, StableBalanceState>>
+  >((result, { dex, state }) => {
+    const collateralAsset = dex
+      ? perpDexs.find((entry) => entry.dex === dex)?.collateralAsset
+      : "USDC";
+    if (!collateralAsset) return result;
+
+    const normalized = normalizePerpStableBalance({
+      totalRawUsd: state?.marginSummary?.totalRawUsd,
+      totalMarginUsed: state?.marginSummary?.totalMarginUsed,
+    });
+
+    result[collateralAsset] = accumulateStableBalance(
+      result[collateralAsset],
+      normalized,
+    );
+    return result;
+  }, {});
+  const stableBalances = combineStableBalances({
+    abstractionMode,
+    spotBalances: spotStableBalances,
+    perpBalances: perpStableBalances,
+  });
+  const visibleStableBalances = getVisibleStableBalances(stableBalances);
+  const rawMarginSummary = parseMarginSummary(baseState?.marginSummary);
+  const crossMarginSummary = parseMarginSummary(baseState?.crossMarginSummary);
+  const rawWithdrawable = toFloat(baseState?.withdrawable ?? "0");
+  const { availableBalance, withdrawableBalance } = getActionableBalances(
+    stableBalances,
+    visibleStableBalances.length === 0 ? rawWithdrawable : 0,
+  );
+  const assetPositions = allStates.flatMap(({ dex, state }) =>
+    (state?.assetPositions ?? []).map((assetPosition) => ({
+      type: assetPosition.type as "oneWay",
+      position: {
+        // A HIP-3 dex reports its own bare symbol, so qualify it the way the
+        // rest of the app names those markets.
+        coin:
+          dex && !assetPosition.position.coin.includes(":")
+            ? `${dex}:${assetPosition.position.coin}`
+            : assetPosition.position.coin,
+        szi: toFloat(assetPosition.position.szi),
+        leverage: {
+          type: assetPosition.position.leverage.type as "isolated" | "cross",
+          value: toFloat(assetPosition.position.leverage.value),
+        },
+        entryPx: toFloat(assetPosition.position.entryPx),
+        liquidationPx:
+          assetPosition.position.liquidationPx != null
+            ? toFloat(assetPosition.position.liquidationPx)
+            : null,
+        marginUsed: toFloat(assetPosition.position.marginUsed),
+        maxLeverage: toFloat(assetPosition.position.maxLeverage),
+        positionValue: toFloat(assetPosition.position.positionValue),
+        returnOnEquity: toFloat(assetPosition.position.returnOnEquity),
+        unrealizedPnl: toFloat(assetPosition.position.unrealizedPnl),
+      },
+    })),
+  );
+  const marginSummary = {
+    ...rawMarginSummary,
+    accountValue: getNormalizedTotalEquity({
+      availableBalance,
+      assetPositions,
+    }),
+  };
+
+  return {
+    abstractionMode,
+    hip3DexAbstractionEnabled: hip3DexAbstractionEnabled ?? null,
+    stableBalances,
+    visibleStableBalances,
+    availableBalance,
+    withdrawableBalance,
+    marginSummary,
+    crossMarginSummary,
+    crossMaintenanceMarginUsed: toFloat(
+      baseState?.crossMaintenanceMarginUsed ?? "0",
+    ),
+    withdrawable: rawWithdrawable,
+    assetPositions,
+  };
+}

@@ -3,11 +3,19 @@
 Written 2026-08-13 at the end of a long session. `main` is at `362f6c8`, everything
 pushed, working tree clean, one worktree, one local branch.
 
-**Update 2026-08-14.** Open work items 1, 2 and 3 are done. Both branches —
+**Update 2026-08-14.** Open work items 1, 2 and 3 are done, including the
+clearinghouse-state extraction item 3 left behind. Both branches —
 `agent-key-and-ws-reconnect-tests` and `lazy-hip3-loading` — are merged into
 `main`; they were developed in parallel and touched disjoint files, so only this
-document conflicted. The next thing to do is the extraction called out under
-item 3: `getAccountState`'s clearinghouse-state parsing.
+document conflicted.
+
+**The account snapshot is broken on testnet**, found while verifying that
+extraction in the browser. `/api/account/snapshot` returns 500 from
+`Info request failed with status 429`, thrown at index 49 of `getUserState`'s
+247-way `clearinghouseState` fan-out. Mainnet fans out over 9 dexes and is fine,
+so this is testnet-only and not a production outage — but it is the measurement
+the note under item 2 asked for, and it means no local testnet session can load
+account state. See item 3 for what to do about it.
 
 ## Where things stand
 
@@ -29,6 +37,10 @@ outside a deployed Telegram context.
 
 `pnpm dev` → Vite on port 5173, which also serves the `api/` functions via
 `scripts/vite-plugin-api.ts`. One process, no proxy.
+
+**It has to be 5173.** The CSP `frame-ancestors` list names `localhost:5173`
+only, so on any other port Privy's `auth.privy.io` iframe is blocked and login
+cannot complete.
 
 `.env.local` (gitignored) currently holds a **Hyperliquid testnet** setup:
 
@@ -80,7 +92,7 @@ pnpm test                                   # 5/5 turbo tasks + the api suite, e
 pnpm exec tsc --noEmit -p tsconfig.json     # exit 0
 ```
 
-368 tests: 158 api, 143 hyperliquid-sdk, 49 tg-mini-app, 14 notification-worker,
+383 tests: 158 api, 158 hyperliquid-sdk, 49 tg-mini-app, 14 notification-worker,
 4 onramp-proxy.
 
 Two structural facts about the test setup:
@@ -231,6 +243,29 @@ payments resume.
    parsing in `getAccountState` (`client.ts` ~1388-1440), and that is an
    extraction job before it is a testing job. Same pattern as
    `order-validation.ts`: pull out the pure part, leave the I/O shell.
+
+   **That extraction is done.** `buildAccountState` in `account-state.ts` folds
+   the base perp state, the spot state and every HIP-3 dex state into one
+   `AccountState`; `getUserState` is now the `Promise.all` and the 2s cache and
+   nothing else, ~100 lines shorter. 15 tests. `mergeStableBalanceState` moved
+   over with it as `accumulateStableBalance` — the name now says how it differs
+   from the neighbouring `mergeStableBalanceStates`, which pairs spot with perp
+   rather than summing like with like.
+
+   Two things the tests pin that were previously only implied: `dexStates[i]`
+   belongs to `perpDexs[i]`, which is what attributes a balance to the right
+   collateral asset, and equity is idle balance plus position value rather than
+   the exchange's own `accountValue`. Parsing stays NaN-propagating — a
+   malformed number should be visible, not read as no money — and a null dex
+   state no longer throws where the old code did `state.assetPositions`.
+
+   **Next, and now urgent for testnet: the `getUserState` fan-out.** It is not
+   a latency question any more — 247 concurrent `clearinghouseState` requests
+   rate-limit themselves and `/api/account/snapshot` 500s. The three options are
+   unchanged (bounded concurrency, a loaded-dex restriction, `dexAbstraction`),
+   and the tradeoff still is that a loaded-dex restriction under-reports
+   collateral held on a dex the user has not opened. Bounded concurrency keeps
+   what is counted identical and is the conservative fix.
 4. **The trading path bypasses the shared read layer.** The UI reads markets via
    `/api/market/markets` (Redis-cached, shared) while `placeOrder` re-derives the
    same universe directly from the browser. Worth unifying for latency once (2)

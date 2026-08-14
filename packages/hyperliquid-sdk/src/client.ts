@@ -23,14 +23,8 @@ import type {
   WsMessage,
 } from "@repo/types";
 import {
-  combineStableBalances,
-  getActionableBalances,
+  buildAccountState,
   getAvailableCollateralForMarket,
-  getNormalizedTotalEquity,
-  getVisibleStableBalances,
-  inferAbstractionMode,
-  normalizePerpStableBalance,
-  normalizeStableBalances,
 } from "./account-state";
 import {
   getBuilderAddress,
@@ -186,39 +180,6 @@ function inferStableCollateralAsset(
     ?.toUpperCase()
     .match(/-(USDC|USDH|USDT|USDE)\b/u)?.[1] as StableSwapAsset | undefined;
   return asset && STABLE_COLLATERAL_ASSETS.includes(asset) ? asset : undefined;
-}
-
-function mergeStableBalanceState(
-  current: StableBalanceState | undefined,
-  next: StableBalanceState,
-): StableBalanceState {
-  return {
-    total: (current?.total ?? 0) + next.total,
-    hold: (current?.hold ?? 0) + next.hold,
-    available: (current?.available ?? 0) + next.available,
-    ...(current?.spot || next.spot
-      ? {
-          spot: {
-            total: (current?.spot?.total ?? 0) + (next.spot?.total ?? 0),
-            hold: (current?.spot?.hold ?? 0) + (next.spot?.hold ?? 0),
-            available:
-              (current?.spot?.available ?? 0) +
-              (next.spot?.available ?? 0),
-          },
-        }
-      : {}),
-    ...(current?.perp || next.perp
-      ? {
-          perp: {
-            total: (current?.perp?.total ?? 0) + (next.perp?.total ?? 0),
-            hold: (current?.perp?.hold ?? 0) + (next.perp?.hold ?? 0),
-            available:
-              (current?.perp?.available ?? 0) +
-              (next.perp?.available ?? 0),
-          },
-        }
-      : {}),
-  };
 }
 
 export class HyperliquidClient {
@@ -1410,109 +1371,14 @@ export class HyperliquidClient {
       ),
     ]);
 
-    const parseMarginSummary = (marginSummary: any) => ({
-      accountValue: parseFloat(marginSummary?.accountValue ?? "0"),
-      totalMarginUsed: parseFloat(marginSummary?.totalMarginUsed ?? "0"),
-      totalNtlPos: parseFloat(marginSummary?.totalNtlPos ?? "0"),
-      totalRawUsd: parseFloat(marginSummary?.totalRawUsd ?? "0"),
-    });
-
-    const allStates = [
-      { dex: undefined, state: baseState },
-      ...dexStates.map((state, index) => ({
-        dex: cache.perpDexs[index]?.dex,
-        state,
-      })),
-    ];
-
-    const abstractionMode = inferAbstractionMode(
+    const result = buildAccountState({
+      baseState,
+      spotState,
       abstraction,
-      hip3DexAbstraction,
-    );
-    const spotStableBalances = normalizeStableBalances(spotState?.balances);
-    const perpStableBalances = allStates.reduce<
-      Partial<Record<StableSwapAsset, StableBalanceState>>
-    >((result, { dex, state }) => {
-      const collateralAsset = dex
-        ? cache.perpDexs.find((entry) => entry.dex === dex)?.collateralAsset
-        : "USDC";
-      if (!collateralAsset) return result;
-
-      const normalized = normalizePerpStableBalance({
-        totalRawUsd: state?.marginSummary?.totalRawUsd,
-        totalMarginUsed: state?.marginSummary?.totalMarginUsed,
-      });
-
-      result[collateralAsset] = mergeStableBalanceState(
-        result[collateralAsset],
-        normalized,
-      );
-      return result;
-    }, {});
-    const stableBalances = combineStableBalances({
-      abstractionMode,
-      spotBalances: spotStableBalances,
-      perpBalances: perpStableBalances,
-    });
-    const visibleStableBalances = getVisibleStableBalances(stableBalances);
-    const rawMarginSummary = parseMarginSummary(baseState?.marginSummary);
-    const crossMarginSummary = parseMarginSummary(
-      baseState?.crossMarginSummary,
-    );
-    const rawWithdrawable = parseFloat(baseState?.withdrawable ?? "0");
-    const { availableBalance, withdrawableBalance } = getActionableBalances(
-      stableBalances,
-      visibleStableBalances.length === 0 ? rawWithdrawable : 0,
-    );
-    const assetPositions = allStates.flatMap(({ dex, state }) =>
-      (state.assetPositions ?? []).map((assetPosition: any) => ({
-        type: assetPosition.type,
-        position: {
-          coin:
-            dex && !assetPosition.position.coin.includes(":")
-              ? `${dex}:${assetPosition.position.coin}`
-              : assetPosition.position.coin,
-          szi: parseFloat(assetPosition.position.szi),
-          leverage: {
-            type: assetPosition.position.leverage.type,
-            value: parseFloat(assetPosition.position.leverage.value),
-          },
-          entryPx: parseFloat(assetPosition.position.entryPx),
-          liquidationPx:
-            assetPosition.position.liquidationPx != null
-              ? parseFloat(assetPosition.position.liquidationPx)
-              : null,
-          marginUsed: parseFloat(assetPosition.position.marginUsed),
-          maxLeverage: parseFloat(assetPosition.position.maxLeverage),
-          positionValue: parseFloat(assetPosition.position.positionValue),
-          returnOnEquity: parseFloat(assetPosition.position.returnOnEquity),
-          unrealizedPnl: parseFloat(assetPosition.position.unrealizedPnl),
-        },
-      })),
-    );
-    const marginSummary = {
-      ...rawMarginSummary,
-      accountValue: getNormalizedTotalEquity({
-        availableBalance,
-        assetPositions,
-      }),
-    };
-
-    const result: AccountState = {
-      abstractionMode,
       hip3DexAbstractionEnabled: hip3DexAbstraction,
-      stableBalances,
-      visibleStableBalances,
-      availableBalance,
-      withdrawableBalance,
-      marginSummary,
-      crossMarginSummary,
-      crossMaintenanceMarginUsed: parseFloat(
-        baseState?.crossMaintenanceMarginUsed ?? "0",
-      ),
-      withdrawable: rawWithdrawable,
-      assetPositions,
-    };
+      perpDexs: cache.perpDexs,
+      dexStates,
+    });
     this.userStateCache = { data: result, expiresAt: Date.now() + 2000 };
     return result;
   }

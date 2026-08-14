@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildAccountState,
   combineStableBalances,
   evaluateTradingSetupStatus,
   getActionableBalances,
@@ -10,6 +11,10 @@ import {
   inferAbstractionMode,
   normalizePerpStableBalance,
   normalizeStableBalances,
+} from "./account-state";
+import type {
+  RawAssetPosition,
+  RawClearinghouseState,
 } from "./account-state";
 
 describe("inferAbstractionMode", () => {
@@ -405,5 +410,345 @@ describe("evaluateTradingSetupStatus", () => {
       shouldPromptRestoreUnified: false,
       lastVerifiedAt: null,
     });
+  });
+});
+
+describe("buildAccountState", () => {
+  const perpState = ({
+    totalRawUsd = "0",
+    totalMarginUsed = "0",
+    ...rest
+  }: {
+    totalRawUsd?: string;
+    totalMarginUsed?: string;
+    accountValue?: string;
+    totalNtlPos?: string;
+    withdrawable?: string;
+    crossMaintenanceMarginUsed?: string;
+    assetPositions?: RawAssetPosition[];
+  } = {}): RawClearinghouseState => ({
+    marginSummary: {
+      accountValue: rest.accountValue ?? "0",
+      totalMarginUsed,
+      totalNtlPos: rest.totalNtlPos ?? "0",
+      totalRawUsd,
+    },
+    crossMarginSummary: {
+      accountValue: rest.accountValue ?? "0",
+      totalMarginUsed,
+      totalNtlPos: rest.totalNtlPos ?? "0",
+      totalRawUsd,
+    },
+    crossMaintenanceMarginUsed: rest.crossMaintenanceMarginUsed ?? "0",
+    withdrawable: rest.withdrawable ?? "0",
+    assetPositions: rest.assetPositions ?? [],
+  });
+
+  const position = (
+    coin: string,
+    overrides: Record<string, unknown> = {},
+  ): RawAssetPosition => ({
+    type: "oneWay",
+    position: {
+      coin,
+      szi: "1",
+      leverage: { type: "cross", value: "5" },
+      entryPx: "100",
+      liquidationPx: "50",
+      marginUsed: "20",
+      maxLeverage: "20",
+      positionValue: "100",
+      returnOnEquity: "0.1",
+      unrealizedPnl: "10",
+      ...overrides,
+    },
+  });
+
+  const build = (overrides: Partial<Parameters<typeof buildAccountState>[0]>) =>
+    buildAccountState({
+      baseState: perpState(),
+      spotState: null,
+      abstraction: null,
+      hip3DexAbstractionEnabled: false,
+      perpDexs: [],
+      dexStates: [],
+      ...overrides,
+    });
+
+  it("reads the base perp account as USDC collateral", () => {
+    const state = build({
+      baseState: perpState({
+        totalRawUsd: "1000",
+        totalMarginUsed: "200",
+        totalNtlPos: "500",
+        accountValue: "1000",
+        withdrawable: "800",
+        crossMaintenanceMarginUsed: "25",
+      }),
+    });
+
+    expect(state.abstractionMode).toBe("standard");
+    expect(state.stableBalances).toEqual({
+      USDC: {
+        total: 1000,
+        hold: 200,
+        available: 800,
+        perp: { total: 1000, hold: 200, available: 800 },
+      },
+    });
+    expect(state.availableBalance).toBe(800);
+    expect(state.withdrawableBalance).toBe(800);
+    expect(state.withdrawable).toBe(800);
+    expect(state.crossMaintenanceMarginUsed).toBe(25);
+    expect(state.crossMarginSummary).toEqual({
+      accountValue: 1000,
+      totalMarginUsed: 200,
+      totalNtlPos: 500,
+      totalRawUsd: 1000,
+    });
+  });
+
+  it("reports equity as idle balance plus open position value, not the raw account value", () => {
+    const state = build({
+      baseState: perpState({
+        totalRawUsd: "1000",
+        totalMarginUsed: "200",
+        accountValue: "1000",
+        assetPositions: [position("BTC", { positionValue: "1500" })],
+      }),
+    });
+
+    // Raw accountValue says 1000; 800 idle plus a 1500 position is the number
+    // the app shows.
+    expect(state.marginSummary.accountValue).toBe(2300);
+    expect(state.marginSummary.totalMarginUsed).toBe(200);
+  });
+
+  it("falls back to withdrawable when no stable balance is visible", () => {
+    const state = build({ baseState: perpState({ withdrawable: "42" }) });
+
+    expect(state.visibleStableBalances).toEqual([]);
+    expect(state.availableBalance).toBe(42);
+    expect(state.withdrawableBalance).toBe(42);
+  });
+
+  it("ignores withdrawable once a stable balance is visible", () => {
+    const state = build({
+      baseState: perpState({
+        totalRawUsd: "300",
+        totalMarginUsed: "100",
+        withdrawable: "999",
+      }),
+    });
+
+    expect(state.availableBalance).toBe(200);
+    expect(state.withdrawableBalance).toBe(200);
+    expect(state.withdrawable).toBe(999);
+  });
+
+  it("attributes each dex state to the collateral asset at its own index", () => {
+    const state = build({
+      perpDexs: [
+        { dex: "vntls", collateralAsset: "USDT" },
+        { dex: "felix", collateralAsset: "USDH" },
+      ],
+      dexStates: [
+        perpState({ totalRawUsd: "300", totalMarginUsed: "100" }),
+        perpState({ totalRawUsd: "70", totalMarginUsed: "20" }),
+      ],
+    });
+
+    expect(state.stableBalances.USDT).toMatchObject({
+      total: 300,
+      hold: 100,
+      available: 200,
+    });
+    expect(state.stableBalances.USDH).toMatchObject({
+      total: 70,
+      hold: 20,
+      available: 50,
+    });
+  });
+
+  it("follows the dex states when their order changes", () => {
+    // The alignment is positional, so the same balances swap assets when the
+    // responses arrive in the other order.
+    const state = build({
+      perpDexs: [
+        { dex: "vntls", collateralAsset: "USDT" },
+        { dex: "felix", collateralAsset: "USDH" },
+      ],
+      dexStates: [
+        perpState({ totalRawUsd: "70", totalMarginUsed: "20" }),
+        perpState({ totalRawUsd: "300", totalMarginUsed: "100" }),
+      ],
+    });
+
+    expect(state.stableBalances.USDT).toMatchObject({ total: 70 });
+    expect(state.stableBalances.USDH).toMatchObject({ total: 300 });
+  });
+
+  it("sums dexes that share a collateral asset", () => {
+    const state = build({
+      perpDexs: [
+        { dex: "vntls", collateralAsset: "USDT" },
+        { dex: "felix", collateralAsset: "USDT" },
+      ],
+      dexStates: [
+        perpState({ totalRawUsd: "300", totalMarginUsed: "100" }),
+        perpState({ totalRawUsd: "200", totalMarginUsed: "50" }),
+      ],
+    });
+
+    expect(state.stableBalances.USDT).toMatchObject({
+      total: 500,
+      hold: 150,
+      available: 350,
+      perp: { total: 500, hold: 150, available: 350 },
+    });
+  });
+
+  it("skips the balance of a dex with no known collateral asset", () => {
+    const state = build({
+      perpDexs: [{ dex: "mystery" }],
+      dexStates: [
+        perpState({
+          totalRawUsd: "300",
+          totalMarginUsed: "100",
+          assetPositions: [position("XYZ")],
+        }),
+      ],
+    });
+
+    expect(state.stableBalances.USDT).toBeUndefined();
+    // Only the empty base account is left, so its 300 lands nowhere.
+    expect(state.stableBalances.USDC).toMatchObject({ total: 0, available: 0 });
+    // The position still shows, so an unattributable dex does not hide a trade.
+    expect(state.assetPositions.map((entry) => entry.position.coin)).toEqual([
+      "mystery:XYZ",
+    ]);
+  });
+
+  it("qualifies HIP-3 position coins with their dex and leaves qualified ones alone", () => {
+    const state = build({
+      baseState: perpState({ assetPositions: [position("BTC")] }),
+      perpDexs: [{ dex: "felix", collateralAsset: "USDH" }],
+      dexStates: [
+        perpState({ assetPositions: [position("ETH"), position("felix:SOL")] }),
+      ],
+    });
+
+    expect(state.assetPositions.map((entry) => entry.position.coin)).toEqual([
+      "BTC",
+      "felix:ETH",
+      "felix:SOL",
+    ]);
+  });
+
+  it("parses position numbers and keeps a missing liquidation price null", () => {
+    const state = build({
+      baseState: perpState({
+        assetPositions: [
+          position("BTC", {
+            szi: "-0.5",
+            entryPx: "64000.5",
+            marginUsed: "320.25",
+            maxLeverage: "40",
+            positionValue: "32000.25",
+            returnOnEquity: "-0.125",
+            unrealizedPnl: "-40.5",
+          }),
+          position("ETH", { liquidationPx: null }),
+        ],
+      }),
+    });
+
+    expect(state.assetPositions[0]).toEqual({
+      type: "oneWay",
+      position: {
+        coin: "BTC",
+        szi: -0.5,
+        leverage: { type: "cross", value: 5 },
+        entryPx: 64000.5,
+        liquidationPx: 50,
+        marginUsed: 320.25,
+        maxLeverage: 40,
+        positionValue: 32000.25,
+        returnOnEquity: -0.125,
+        unrealizedPnl: -40.5,
+      },
+    });
+    expect(state.assetPositions[1]?.position.liquidationPx).toBeNull();
+  });
+
+  it("merges spot balances with perp balances in standard mode", () => {
+    const state = build({
+      baseState: perpState({ totalRawUsd: "1000", totalMarginUsed: "200" }),
+      spotState: { balances: [{ coin: "USDC", total: "100", hold: "10" }] },
+    });
+
+    expect(state.stableBalances.USDC).toEqual({
+      total: 1100,
+      hold: 210,
+      available: 890,
+      spot: { total: 100, hold: 10, available: 90 },
+      perp: { total: 1000, hold: 200, available: 800 },
+    });
+  });
+
+  it("counts only spot balances under a unified account", () => {
+    const state = build({
+      baseState: perpState({ totalRawUsd: "1000", totalMarginUsed: "200" }),
+      spotState: { balances: [{ coin: "USDC", total: "100", hold: "10" }] },
+      abstraction: "unifiedAccount",
+    });
+
+    expect(state.abstractionMode).toBe("unifiedAccount");
+    expect(state.stableBalances.USDC).toEqual({
+      total: 100,
+      hold: 10,
+      available: 90,
+      spot: { total: 100, hold: 10, available: 90 },
+    });
+    expect(state.availableBalance).toBe(90);
+  });
+
+  it("reports dex abstraction when the flag is on, and carries the flag through", () => {
+    expect(build({ hip3DexAbstractionEnabled: true })).toMatchObject({
+      abstractionMode: "dexAbstraction",
+      hip3DexAbstractionEnabled: true,
+    });
+    expect(build({ hip3DexAbstractionEnabled: null })).toMatchObject({
+      abstractionMode: "standard",
+      hip3DexAbstractionEnabled: null,
+    });
+  });
+
+  it("tolerates missing states rather than throwing on the account screen", () => {
+    const state = build({
+      baseState: null,
+      spotState: null,
+      perpDexs: [{ dex: "felix", collateralAsset: "USDH" }],
+      dexStates: [null],
+    });
+
+    expect(state.assetPositions).toEqual([]);
+    expect(state.marginSummary).toEqual({
+      accountValue: 0,
+      totalMarginUsed: 0,
+      totalNtlPos: 0,
+      totalRawUsd: 0,
+    });
+    expect(state.withdrawable).toBe(0);
+    expect(state.availableBalance).toBe(0);
+    expect(state.visibleStableBalances).toEqual([]);
+  });
+
+  it("keeps a malformed number visible as NaN instead of reading it as zero", () => {
+    const state = build({
+      baseState: perpState({ withdrawable: "not-a-number" }),
+    });
+
+    expect(state.withdrawable).toBeNaN();
   });
 });

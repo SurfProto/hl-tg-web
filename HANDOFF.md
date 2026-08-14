@@ -275,9 +275,23 @@ payments resume.
    own `supabaseRequest`, `buildHeaders`, `looksLikeHtml`. Same duplication class
    as the two `HttpError` declarations that caused the production outage. Extract
    into `api/_lib/supabase.ts` alongside the existing shared modules.
-6. **CI has never executed.** `.github/workflows/ci.yml` triggers on
-   `pull_request`, and everything this session went in as direct pushes to `main`.
-   It is configured but unproven; the next PR is its first real run.
+6. ~~**CI has never executed.**~~ **Wrong — it has run on every push since it
+   was added, and it had been failing for a day.** `ci.yml` triggers on
+   `pull_request` *and* `push` to `main`, which the note above missed. Every run
+   from `362f6c8` (2026-08-13) onward was red on a single test, including both
+   merges from 2026-08-14. Fixed 2026-08-14; check `gh run list` rather than
+   assuming.
+
+   The failure is worth knowing about because it could only happen on CI.
+   `order-size.test.ts` asserted `inferSzDecimalsFromMinBaseSize(10 ** -5) === 5`.
+   `10 ** -5` is exactly 1e-5 on the Node 24 in use locally, but on the Node 20
+   the workflow pins it is one ulp higher, which prints as
+   `0.000010000000000000003` — twenty-one decimals, so the function returned 21.
+   That value becomes `szDecimals` in `OrderForm`, and szDecimals formats the
+   size sent to the exchange, so the test was pointing at something real. The
+   function now takes the shortest decimal that still represents the same lot
+   size, and the test pins the offending double as a literal so it reproduces
+   anywhere.
 
 `client.ts` (2,428 LOC) and `hooks.ts` (2,120 LOC) remain the untested bulk, and
 they are what signs and submits orders. The working pattern is the one already

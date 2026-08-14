@@ -78,17 +78,37 @@ function truncateToDecimals(value: number, decimals: number): string {
   return decimals === 0 ? cut : stripTrailingZeros(cut);
 }
 
+/**
+ * No real lot size needs more places than this, and the loop below has to stop
+ * somewhere. Hyperliquid's own szDecimals top out well under it.
+ */
+const MAX_INFERRED_SZ_DECIMALS = 18;
+
+/**
+ * The number of decimal places a lot size occupies.
+ *
+ * Counting the digits of `minBaseSize.toString()` is only right when the double
+ * is exactly the decimal it looks like. Reach one by arithmetic and it may not
+ * be: `10 ** -5` is exactly 1e-5 on V8 in Node 24 but 1.0000000000000001e-5 on
+ * Node 20, which prints twenty-one decimals. That number then became
+ * szDecimals, and szDecimals is what formats the size sent to the exchange — so
+ * float noise in a lot size turned into a twenty-one decimal order.
+ *
+ * Take the shortest decimal that still represents the same lot size instead.
+ * Real lot sizes are decades apart, so a relative tolerance this tight cannot
+ * merge two of them.
+ */
 export function inferSzDecimalsFromMinBaseSize(minBaseSize: number): number {
   if (!Number.isFinite(minBaseSize) || minBaseSize <= 0) return 0;
 
-  const normalized = stripTrailingZeros(minBaseSize.toString());
-  if (normalized.includes('e-')) {
-    const exponent = normalized.split('e-')[1];
-    return exponent ? parseInt(exponent, 10) : 0;
+  for (let decimals = 0; decimals <= MAX_INFERRED_SZ_DECIMALS; decimals++) {
+    const rounded = Number(minBaseSize.toFixed(decimals));
+    if (Math.abs(rounded - minBaseSize) <= minBaseSize * 1e-9) {
+      return decimals;
+    }
   }
 
-  const decimals = normalized.split('.')[1] ?? '';
-  return decimals.length;
+  return MAX_INFERRED_SZ_DECIMALS;
 }
 
 export function formatOrderSize(

@@ -96,9 +96,26 @@ describe("inferSzDecimalsFromMinBaseSize", () => {
   });
 
   it("handles exponential notation, which is how small lot sizes stringify", () => {
-    // 10 ** -5 stringifies as "0.00001", but 10 ** -7 becomes "1e-7".
-    expect(inferSzDecimalsFromMinBaseSize(10 ** -5)).toBe(5);
-    expect(inferSzDecimalsFromMinBaseSize(10 ** -7)).toBe(7);
+    // 1e-5 stringifies as "0.00001", but 1e-7 becomes "1e-7". Written as
+    // literals rather than 10 ** -5: `**` is not exact across V8 versions, and
+    // this test failed on CI's Node 20 while passing on Node 24 for a year of
+    // nobody looking.
+    expect(inferSzDecimalsFromMinBaseSize(1e-5)).toBe(5);
+    expect(inferSzDecimalsFromMinBaseSize(1e-7)).toBe(7);
+  });
+
+  it("ignores float noise in a lot size instead of asking for 21 decimals", () => {
+    // What Node 20 computes for 10 ** -5: one ulp above 1e-5, printing as
+    // twenty-one decimals. Counting its digits gave szDecimals 21, and
+    // szDecimals formats the size sent to the exchange.
+    expect(inferSzDecimalsFromMinBaseSize(0.000010000000000000003)).toBe(5);
+    expect(inferSzDecimalsFromMinBaseSize(0.30000000000000004)).toBe(1);
+  });
+
+  it("still distinguishes neighbouring lot sizes", () => {
+    expect(inferSzDecimalsFromMinBaseSize(0.00012)).toBe(5);
+    expect(inferSzDecimalsFromMinBaseSize(0.0001)).toBe(4);
+    expect(inferSzDecimalsFromMinBaseSize(0.5)).toBe(1);
   });
 
   it("treats whole and invalid lot sizes as zero decimals", () => {

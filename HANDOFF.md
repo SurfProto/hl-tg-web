@@ -92,7 +92,7 @@ pnpm test                                   # 5/5 turbo tasks + the api suite, e
 pnpm exec tsc --noEmit -p tsconfig.json     # exit 0
 ```
 
-495 tests: 169 api, 242 hyperliquid-sdk, 66 tg-mini-app, 14 notification-worker,
+508 tests: 182 api, 242 hyperliquid-sdk, 66 tg-mini-app, 14 notification-worker,
 4 onramp-proxy.
 
 Two structural facts about the test setup:
@@ -173,6 +173,66 @@ It is already failing for that reason, so this is fix-forward, not a regression.
 **004 and 005 belong to the parked layer.** 005 `alter`s tables that 004
 creates, so 005 cannot run without 004. Leave both unapplied until merchant
 payments resume.
+
+## First-ever login was broken in production (2026-08-16)
+
+Reported as "Something went wrong — a is not a function" on a brand-new
+account, working on the second attempt. Two independent bugs, neither from
+recent work, both only reachable by a user who has no row in `users` yet.
+
+**1. `/api/profile/bootstrap` was dead — fixed.** 28 requests, 28 failures in
+the preceding 24h. It died at module load:
+
+```
+Cannot find module './src/errors.js'
+  …/@hpke/common/script/mod.js
+  …/@privy-io/node/lib/cryptography.js
+  /var/task/api/profile/_lib/identity.js
+```
+
+The file is present in the installed package, so Vercel was not shipping
+`@hpke/common/script/src/*` into the function bundle. That route creates the
+user's row, so nothing downstream could work: `/api/account/snapshot` returned
+401 seventy-nine times in two minutes for that session.
+
+The SDK was one call, `client.users()._get(id)`, so `identity.ts` now makes the
+REST request the SDK made and `@privy-io/node` is out of the bundle entirely.
+`@privy-io/node` stays in `package.json` — `scripts/security-audit-identities.ts`
+uses it, and a local script is not bundled into a function.
+
+**An unauthenticated POST is a good probe for this class of failure.** A module
+that fails to load answers `500 FUNCTION_INVOCATION_FAILED`; a module that
+loads answers `401 UNAUTHORIZED` with a JSON body. That is how the fix was
+verified against production, before and after.
+
+**2. The production database is behind its migrations — still open.**
+`/api/rewards/dashboard` 500s for a new user:
+
+```
+null value in column "telegram_id" of relation "users" violates not-null constraint
+  at getOrCreateRewardsUser
+```
+
+`getOrCreateRewardsUser` inserts a row with only `privy_user_id`, which is
+correct against the intended schema: both `schema.sql` ("nullable: NULL for
+wallet-only users") and migration `001` (`alter column telegram_id drop not
+null`) make the column nullable. Production still enforces `NOT NULL`, so
+**migration 001 was never applied there**. Fixing it needs
+
+```sql
+alter table users alter column telegram_id drop not null;
+```
+
+and, given the prefix collisions, a check of what else from 001–006 is missing.
+Until then a new user's rewards dashboard fails, though onboarding itself now
+completes.
+
+The client-side `a is not a function` was never reproduced directly — the app's
+logger only writes to console, so no stack survives, and the production build of
+that commit renders correctly in Chromium. It is most likely downstream of three
+failing endpoints on a cold account. Worth re-testing with a fresh account now
+that (1) is fixed; if it recurs, the app needs somewhere to send client errors
+before it can be diagnosed at all.
 
 ## Open work, in the order I would do it
 
@@ -374,7 +434,16 @@ Recorded because they each cost real time in this session.
   cause from symptoms. The module-load failure was diagnosed after three wrong
   hypotheses (Hobby function limit, `api/_lib` bundling, Hyperliquid fanout) and
   one look at `get_runtime_logs`. Same again with "Rate limited", which was only
-  explicable after adding a log line.
+  explicable after adding a log line. And again on 2026-08-16: a client-side
+  `a is not a function` looked like a bundling regression from that day's
+  commits, and `get_runtime_errors` showed a server route that had been dead
+  for far longer.
+- **A dependency that works locally can still be missing in the deployment.**
+  `@hpke/common/script/src/errors.js` exists in the installed package and is
+  required statically, and Vercel still did not trace it into the function.
+  Prefer `fetch` against a documented REST endpoint over an SDK when the SDK is
+  one call deep — the whole @hpke chain was in the bundle for a single user
+  lookup.
 - **Verify against the DOM, not the accessibility tree.** The tree dropped one of
   two spans and made a correct `$0.00` look like a broken `.00`.
 - **Check for stray processes before believing a cache theory.** See above.

@@ -317,54 +317,63 @@ Found by the smoke check, not by anything failing loudly.
   entry, for `/api/rewards/weekly-raffle`. The worker route exists, is now
   loadable, and is never called, so notifications do not send at all.
 
-## The lazy-import pattern does not do what this codebase thinks (2026-08-19)
+## Why no authenticated account read had ever worked (2026-08-19)
 
-Three places defer a Hyperliquid SDK import with `await import(...)`, each with
-a comment explaining that eager importing "crashed in production" and that
-laziness fixed it:
+The balance showed zero for every user because `/api/account/snapshot` had
+never once returned data in production. Three faults stacked, each invisible
+until the one in front of it was fixed:
 
-- `api/account/_lib/upstream.ts` — every authenticated `/api/account/*` read
-- `api/rewards/_lib/hyperliquid-client.ts`
-- `apps/notification-worker/src/hyperliquid.ts`, reached from
-  `api/notifications/worker.ts`
+1. **`/api/profile/bootstrap` was dead at module load** (`@hpke` missing from
+   the function bundle), so no user could complete onboarding.
+2. **`TELEGRAM_BOT_TOKEN` was unset**, so `requireTelegramInitData` 401'd every
+   account request — 127 of them in one week — no matter how valid the token
+   and init data were. Note this returns **401**; a missing profile row returns
+   404, so a 401 storm never meant "no profile".
+3. **The Hyperliquid SDK could not be loaded from a CommonJS function.**
 
-**Laziness did not fix it. It moved the failure from load time to call time.**
-Vercel compiles these entrypoints to CommonJS (`api/tsconfig.json`, load-bearing),
-and TypeScript rewrites `import()` under that setting. Verified against the emit:
+The third is the interesting one, and the "lazy import" comments in
+`api/account/_lib/upstream.ts`, `api/rewards/_lib/hyperliquid-client.ts` and
+`apps/notification-worker/src/hyperliquid.ts` are actively misleading. They say
+eager importing "crashed in production" and that deferring fixed it. **Deferring
+only moved the failure from load time to call time.** Vercel compiles these
+entrypoints to CommonJS (`api/tsconfig.json`, load-bearing) and TypeScript
+rewrites `import()` under that setting — verified against the emit:
 
 ```js
-const [config, other] = await Promise.all([
-    Promise.resolve().then(() => require(".../config")),
+Promise.resolve().then(() => require(".../client"))
 ```
 
-So every one of those is a `require()` at runtime, and
-`packages/hyperliquid-sdk` declares `"type": "module"`. Node refuses with
-`ERR_REQUIRE_ESM`. Demonstrated live: the notifications worker cron failed this
-way on every run once it was finally scheduled.
+So the route still answered 401 to an unauthenticated probe, because the module
+loaded fine and only the deferred require failed, deep inside the authenticated
+path. **The smoke check cannot see this class of bug**; the runtime logs are the
+only thing that can.
 
-What this means, and what makes it hard to see: **the route still answers 401 to
-an unauthenticated request**, because the module loads fine and only the deferred
-import fails, deep inside the authenticated path. The smoke check cannot catch
-it. `/api/account/snapshot` has 127 recorded 401s over the last week and no
-observed success — no user has ever got far enough to exercise it, because
-profile bootstrap was dead until 2026-08-16.
+Peeling it took three passes, each one a layer down:
 
-**Assume every authenticated account read is broken in production until proven
-otherwise.** That is the core data path for a trading app, so it outranks
-everything else on the list below.
+| Failure | Cause | Fix |
+|---|---|---|
+| `ERR_REQUIRE_ESM` on `notification-worker/src/config.js` | package declared `"type": "module"` | removed the field |
+| `ERR_REQUIRE_ESM` on `hyperliquid-sdk/src/client.js` | same | removed the field |
+| `Cannot find module .../@repo/types/src/index.ts` | `require("@repo/types")` resolves through `main`, which points at **TypeScript source** that no longer exists once Vercel compiles to `.js` | import the one runtime constant by relative path |
 
-Removing `"type": "module"` is what fixed `apps/notification-worker` — it is
-started with `tsx` from source, has no build step, and no ESM-only syntax. The
-same trick will **not** work for `packages/hyperliquid-sdk`: it uses
-`import.meta.env` in `builder.ts`, `dev-identity.ts` and `hooks.ts`, and is
-consumed by Vite. The options are to make the server talk to Hyperliquid without
-the browser SDK — which is how `api/market/_lib/upstream.ts` already works, and
-how the Privy fix on 2026-08-16 went — or to split the SDK so its server-safe
-half carries no `import.meta`.
+**Removing `"type": "module"` from a workspace package is safe here, and the
+earlier note in this document claiming otherwise was wrong.** The field only
+governs how *Node* treats `.js` files. Every consumer in this repo — Vite,
+vitest, tsx — resolves these packages to their `.ts` source through `main`/
+`exports` and never reads it. Real `import.meta.env` usage exists only in
+`dev-identity.ts` and `hooks.ts`, and neither is reachable from `client.ts`;
+`builder.ts` mentions it in comments only. The browser build was run after each
+change to confirm.
 
-The notifications cron is unscheduled again until this is resolved; it was
-erroring every 60 seconds. The route, the fix to its own config import, and the
-smoke coverage all stay.
+**The rule that falls out of this:** a serverless function under
+`api/tsconfig.json` can only `require` things. It cannot load a package marked
+ESM, and it cannot resolve a package whose `main` points at `.ts`. Importing by
+deep relative path — which `api/` already does for the SDK — sidesteps the
+second problem entirely and is the pattern to follow.
+
+Still unverified at the time of writing: whether the snapshot now returns 200.
+Everything up to the SDK import is proven; check `get_runtime_logs` for
+`/api/account/snapshot` after any authenticated session.
 
 ## Open work, in the order I would do it
 

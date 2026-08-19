@@ -90,3 +90,14 @@ begin
      and week_start = p_week_start;
 end;
 $$;
+
+-- CREATE FUNCTION grants EXECUTE to PUBLIC by default, and anon/authenticated
+-- inherit that, so both of the above were callable over PostgREST as
+-- /rest/v1/rpc/... by anyone holding the publishable key: claim a week's draw
+-- and stall it, or mark a run completed with a made-up winner count. Only the
+-- API calls these, with the service role key, which keeps its own grant.
+--
+-- Revoking from anon and authenticated by name does nothing — they hold no
+-- explicit grant. The PUBLIC grant is the one that matters.
+revoke execute on function public.claim_weekly_raffle_run(uuid, timestamptz, int) from public;
+revoke execute on function public.complete_weekly_raffle_run(uuid, timestamptz, int, text) from public;

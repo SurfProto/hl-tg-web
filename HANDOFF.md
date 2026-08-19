@@ -146,7 +146,46 @@ off the deployed surface without losing a line. `api/platform/_lib/` stayed put
 
 Merchant payments were explicitly **not wanted for now**.
 
-## Migrations — read before applying anything
+## Migrations — audited and applied 2026-08-19
+
+The Supabase connector reached the project (`tdtlptrpgxweyulkenza`) for the
+first time, so the drift is no longer guesswork. **Verified against the live
+schema, not the migration ledger** — the ledger only records what ran through
+the migration tool, and `001` had partly landed some other way.
+
+Applied this session, one at a time, each verified:
+
+| Migration | Was | Now |
+|---|---|---|
+| `001` `telegram_id drop not null` | `NOT NULL` — every new user's rewards 500'd | nullable |
+| `006_weekly_raffle_runs` | table and both RPCs absent — raffle 500'd | present, RLS on |
+| `003_auth_data_boundary_hardening` | pre-hardening policies live | service-role-only |
+| `005_profile_data_boundary_hardening` | same | service-role-only |
+
+`004` and `005_platform` remain unapplied, correctly — they belong to the
+parked payments layer, and no `platform*` table exists.
+
+**006 as written left a hole, now fixed in the file too.** `CREATE FUNCTION`
+grants `EXECUTE` to `PUBLIC`, so `claim_weekly_raffle_run` and
+`complete_weekly_raffle_run` were callable over PostgREST by anyone with the
+publishable key — enough to claim a week's draw and stall it, or mark a run
+completed with a made-up winner count. Note that revoking from `anon` and
+`authenticated` by name does nothing; they hold no explicit grant and inherit
+`PUBLIC`'s. Revoke `PUBLIC`. `service_role` keeps its own grant, which is what
+the API uses.
+
+**Two tables still have RLS disabled**: `seasons` and
+`bridge_sponsorship_events`, both flagged ERROR by `get_advisors`. Supabase's
+default grants give `anon` full DML on them including `TRUNCATE`. Nothing the
+app publishes opens that door — the built bundle carries neither the Supabase
+URL nor an anon key — but an anon key is not a secret by design.
+`bridge_sponsorship_events` is referenced nowhere in the codebase and may be
+dead. Deliberately left alone this session rather than swept in.
+
+Read `get_advisors` after any DDL. It caught the function-grant hole within a
+minute of 006 landing.
+
+### The original prefix warning still stands
 
 ```
 001_identity_and_rls

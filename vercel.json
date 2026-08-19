@@ -6,7 +6,8 @@
   "framework": "vite",
   "installCommand": "pnpm install",
   "crons": [
-    { "path": "/api/rewards/weekly-raffle", "schedule": "5 0 * * 1" }
+    { "path": "/api/rewards/weekly-raffle", "schedule": "5 0 * * 1" },
+    { "path": "/api/notifications/worker", "schedule": "* * * * *" }
   ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1" },

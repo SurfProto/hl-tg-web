@@ -157,9 +157,11 @@ describe("root vercel deployment config", () => {
       src: "/(.*)",
       dest: "/index.html",
     });
-    expect(config.crons).toContainEqual({
-      path: "/api/rewards/weekly-raffle",
-      schedule: "5 0 * * 1",
-    });
+    // The raffle is deferred until the core trading path is verified, and
+    // runWeeklyRaffle pays prizes through sendRewardUsdc — so it must not be
+    // scheduled, or setting CRON_SECRET silently starts moving real USDC.
+    expect(
+      config.crons?.some((cron) => cron.path === "/api/rewards/weekly-raffle"),
+    ).toBeFalsy();
   });
 });

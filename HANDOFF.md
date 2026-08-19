@@ -92,7 +92,7 @@ pnpm test                                   # 5/5 turbo tasks + the api suite, e
 pnpm exec tsc --noEmit -p tsconfig.json     # exit 0
 ```
 
-508 tests: 182 api, 242 hyperliquid-sdk, 66 tg-mini-app, 14 notification-worker,
+531 tests: 193 api, 242 hyperliquid-sdk, 78 tg-mini-app, 14 notification-worker,
 4 onramp-proxy.
 
 Two structural facts about the test setup:
@@ -233,6 +233,50 @@ that commit renders correctly in Chromium. It is most likely downstream of three
 failing endpoints on a cold account. Worth re-testing with a fresh account now
 that (1) is fixed; if it recurs, the app needs somewhere to send client errors
 before it can be diagnosed at all.
+
+## Monitoring exists now (2026-08-19)
+
+Two blind spots are closed. Both existed because nothing was asking.
+
+**`pnpm smoke`** (`scripts/smoke-check.mjs`) probes all 21 routes with no
+credentials and asserts two things:
+
+- an authed route answers **401, not 500** — reaching the handler is what proves
+  the module loaded;
+- the response is **not HTML** — `vercel.json` sends an unknown `/api/*` path to
+  `index.html`, so a route that stops existing answers 200 with a page, which a
+  status-only check would happily accept.
+
+It runs on every production deployment and hourly
+(`.github/workflows/smoke.yml`). **It found a dead route on its first run**:
+`/api/notifications/worker` was failing at load with `ERR_REQUIRE_ESM`, because
+four of its five imports were lazy and the fifth — the config — was static,
+while `apps/notification-worker` is `"type": "module"` and Vercel compiles the
+entrypoint to CommonJS. Now lazy with the rest. That is three module-load
+outages found in this codebase, all invisible to typecheck and tests.
+
+**`/api/client-errors`** gives the mini app somewhere to report to. Crashes
+become runtime log lines, so they group under `get_runtime_errors` beside
+server errors — no new vendor, no new secret, no schema. The reporter
+(`apps/tg-mini-app/src/lib/error-reporting.ts`) never throws into the caller,
+never reports a failure of its own reporting, and sends one report per distinct
+crash, because a render loop fires the same error thousands of times.
+
+If reports ever need to outlive Vercel's retention, `api/client-errors.ts` is
+the single place that changes.
+
+## Production configuration that is missing
+
+Found by the smoke check, not by anything failing loudly.
+
+- **`CRON_SECRET` is unset.** `/api/notifications/worker` says so directly
+  (`500 CRON_SECRET_MISSING`). Vercel only sends `Authorization: Bearer
+  $CRON_SECRET` when that variable exists, so the Monday raffle cron has been
+  getting 401 on every run — the raffle is broken for this reason *as well as*
+  the unapplied migration 006. Setting it turns the last smoke check green.
+- **Nothing schedules the notifications worker.** `vercel.json` has one cron
+  entry, for `/api/rewards/weekly-raffle`. The worker route exists, is now
+  loadable, and is never called, so notifications do not send at all.
 
 ## Open work, in the order I would do it
 

@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import i18n from '../lib/i18n';
 import { log } from '../lib/logger';
+import { reportClientError, toReportableError } from '../lib/error-reporting';
 
 interface Props {
   children: ReactNode;
@@ -26,6 +27,14 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: unknown, info: ErrorInfo) {
     log.error('[ErrorBoundary] caught error', {
       error,
+      componentStack: info.componentStack,
+    });
+
+    const { message, stack } = toReportableError(error);
+    reportClientError({
+      kind: 'error-boundary',
+      message,
+      stack,
       componentStack: info.componentStack,
     });
   }

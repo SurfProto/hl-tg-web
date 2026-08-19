@@ -16,7 +16,8 @@
     "test:coverage": "turbo test:coverage",
     "test:e2e": "playwright test",
     "security:audit-identities": "tsx scripts/security-audit-identities.ts",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\""
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "smoke": "node scripts/smoke-check.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",

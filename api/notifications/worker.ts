@@ -1,8 +1,13 @@
 import { HttpError, json, withJsonRoute } from "../onramp/_lib/http";
-import { getNotificationWorkerConfig } from "../../apps/notification-worker/src/config";
 
 /**
  * The worker's dependencies are imported on demand, not at module scope.
+ *
+ * It also has to be on demand: every one of them lives in
+ * apps/notification-worker, which is "type": "module", while Vercel compiles
+ * this entrypoint to CommonJS. A static import becomes a require() of an ES
+ * module and the function dies at load with ERR_REQUIRE_ESM — which is exactly
+ * what the config import did, silently, until a smoke check asked.
  *
  * createHyperliquidMarketDataService pulls in the whole 2,400-line
  * HyperliquidClient and its viem graph. Loading that eagerly meant an
@@ -11,7 +16,8 @@ import { getNotificationWorkerConfig } from "../../apps/notification-worker/src/
  * rewards Hyperliquid client") applied the same fix to the rewards routes.
  */
 async function loadWorkerDependencies() {
-  const [hyperliquid, runOnce, supabase, telegram] = await Promise.all([
+  const [config, hyperliquid, runOnce, supabase, telegram] = await Promise.all([
+    import("../../apps/notification-worker/src/config"),
     import("../../apps/notification-worker/src/hyperliquid"),
     import("../../apps/notification-worker/src/run-once"),
     import("../../apps/notification-worker/src/supabase"),
@@ -19,6 +25,7 @@ async function loadWorkerDependencies() {
   ]);
 
   return {
+    getNotificationWorkerConfig: config.getNotificationWorkerConfig,
     createHyperliquidMarketDataService: hyperliquid.createHyperliquidMarketDataService,
     createSupabaseNotificationRepository: supabase.createSupabaseNotificationRepository,
     createTelegramClient: telegram.createTelegramClient,
@@ -46,18 +53,20 @@ export default async function handler(request: any, response: any) {
   await withJsonRoute(request, response, async () => {
     ensureCronRequest(request);
 
-    const config = getNotificationWorkerConfig({
-      ...process.env,
-      NOTIFICATION_RUN_ONCE: "true",
-    });
     const now = new Date();
 
     const {
+      getNotificationWorkerConfig,
       createHyperliquidMarketDataService,
       createSupabaseNotificationRepository,
       createTelegramClient,
       runNotificationWorkerOnce,
     } = await loadWorkerDependencies();
+
+    const config = getNotificationWorkerConfig({
+      ...process.env,
+      NOTIFICATION_RUN_ONCE: "true",
+    });
 
     await runNotificationWorkerOnce({
       repository: createSupabaseNotificationRepository({

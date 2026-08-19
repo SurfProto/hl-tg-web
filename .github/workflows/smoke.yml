@@ -1,0 +1,34 @@
+name: Smoke
+
+# Runs when Vercel finishes deploying, and hourly.
+#
+# The deploy trigger catches a release that cannot load its own functions. The
+# schedule catches everything else: both times this API died, it died quietly
+# and stayed dead for days because nothing was asking.
+on:
+  deployment_status:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: Production smoke check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # deployment_status fires for every state; only a finished production
+    # deployment is worth probing.
+    if: >-
+      github.event_name != 'deployment_status' ||
+      (github.event.deployment_status.state == 'success' &&
+       github.event.deployment.environment == 'Production')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Probe production
+        run: node scripts/smoke-check.mjs

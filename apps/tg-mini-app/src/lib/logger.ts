@@ -1,3 +1,5 @@
+import { reportClientError, toReportableError } from "./error-reporting";
+
 export type AppLogLevel = "debug" | "info" | "warn" | "error";
 
 export interface AppLogEntry {
@@ -97,12 +99,18 @@ export function installGlobalErrorLogging() {
       lineno: event.lineno,
       colno: event.colno,
     });
+
+    const { message, stack } = toReportableError(event.error ?? event.message);
+    reportClientError({ kind: "window-error", message, stack });
   });
 
   window.addEventListener("unhandledrejection", (event) => {
     log.error("window.unhandledrejection", {
       reason: event.reason,
     });
+
+    const { message, stack } = toReportableError(event.reason);
+    reportClientError({ kind: "unhandled-rejection", message, stack });
   });
 
   globalErrorLoggingInstalled = true;

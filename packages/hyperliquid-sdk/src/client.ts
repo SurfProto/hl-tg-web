@@ -1,6 +1,11 @@
 import { createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { APP_TRADE_CLOID_PREFIX } from "@repo/types";
+// By path, not by package name: @repo/types resolves through its package.json
+// "main", which points at src/index.ts — a specifier Node cannot require once
+// Vercel has compiled the tree to .js. Every other import of this package in
+// the server graph is `import type`, which compiles away; this constant is the
+// only value, so it is the only one that has to resolve at runtime.
+import { APP_TRADE_CLOID_PREFIX } from "../../types/src/index";
 import type {
   AccountState,
   AccountAbstractionMode,

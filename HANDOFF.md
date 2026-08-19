@@ -317,6 +317,55 @@ Found by the smoke check, not by anything failing loudly.
   entry, for `/api/rewards/weekly-raffle`. The worker route exists, is now
   loadable, and is never called, so notifications do not send at all.
 
+## The lazy-import pattern does not do what this codebase thinks (2026-08-19)
+
+Three places defer a Hyperliquid SDK import with `await import(...)`, each with
+a comment explaining that eager importing "crashed in production" and that
+laziness fixed it:
+
+- `api/account/_lib/upstream.ts` — every authenticated `/api/account/*` read
+- `api/rewards/_lib/hyperliquid-client.ts`
+- `apps/notification-worker/src/hyperliquid.ts`, reached from
+  `api/notifications/worker.ts`
+
+**Laziness did not fix it. It moved the failure from load time to call time.**
+Vercel compiles these entrypoints to CommonJS (`api/tsconfig.json`, load-bearing),
+and TypeScript rewrites `import()` under that setting. Verified against the emit:
+
+```js
+const [config, other] = await Promise.all([
+    Promise.resolve().then(() => require(".../config")),
+```
+
+So every one of those is a `require()` at runtime, and
+`packages/hyperliquid-sdk` declares `"type": "module"`. Node refuses with
+`ERR_REQUIRE_ESM`. Demonstrated live: the notifications worker cron failed this
+way on every run once it was finally scheduled.
+
+What this means, and what makes it hard to see: **the route still answers 401 to
+an unauthenticated request**, because the module loads fine and only the deferred
+import fails, deep inside the authenticated path. The smoke check cannot catch
+it. `/api/account/snapshot` has 127 recorded 401s over the last week and no
+observed success — no user has ever got far enough to exercise it, because
+profile bootstrap was dead until 2026-08-16.
+
+**Assume every authenticated account read is broken in production until proven
+otherwise.** That is the core data path for a trading app, so it outranks
+everything else on the list below.
+
+Removing `"type": "module"` is what fixed `apps/notification-worker` — it is
+started with `tsx` from source, has no build step, and no ESM-only syntax. The
+same trick will **not** work for `packages/hyperliquid-sdk`: it uses
+`import.meta.env` in `builder.ts`, `dev-identity.ts` and `hooks.ts`, and is
+consumed by Vite. The options are to make the server talk to Hyperliquid without
+the browser SDK — which is how `api/market/_lib/upstream.ts` already works, and
+how the Privy fix on 2026-08-16 went — or to split the SDK so its server-safe
+half carries no `import.meta`.
+
+The notifications cron is unscheduled again until this is resolved; it was
+erroring every 60 seconds. The route, the fix to its own config import, and the
+smoke coverage all stay.
+
 ## Open work, in the order I would do it
 
 1. ~~**Agent key lifecycle tests**~~ — **done 2026-08-14.** 32 tests in

@@ -3,11 +3,13 @@ import { HttpError, json, withJsonRoute } from "../onramp/_lib/http";
 /**
  * The worker's dependencies are imported on demand, not at module scope.
  *
- * It also has to be on demand: every one of them lives in
- * apps/notification-worker, which is "type": "module", while Vercel compiles
- * this entrypoint to CommonJS. A static import becomes a require() of an ES
- * module and the function dies at load with ERR_REQUIRE_ESM — which is exactly
- * what the config import did, silently, until a smoke check asked.
+ * Note that "on demand" is not what makes these safe to import. Vercel compiles
+ * this entrypoint to CommonJS, and TypeScript rewrites import() to
+ * Promise.resolve().then(() => require()) under that setting — so every one of
+ * these is a require() at runtime, lazy or not. While apps/notification-worker
+ * declared "type": "module", Node refused all five with ERR_REQUIRE_ESM and
+ * this route had never once completed a run. That field is gone; the package is
+ * started with tsx from source and never needed it.
  *
  * createHyperliquidMarketDataService pulls in the whole 2,400-line
  * HyperliquidClient and its viem graph. Loading that eagerly meant an

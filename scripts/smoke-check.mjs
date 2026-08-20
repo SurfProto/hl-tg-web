@@ -27,6 +27,11 @@ const TIMEOUT_MS = Number(process.env.SMOKE_TIMEOUT_MS ?? 15_000);
 
 /** expect: the status a working deployment returns without credentials. */
 const CHECKS = [
+  // Answers 500 listing the module that failed. This is the only check here
+  // that can see a break inside an authenticated path, because those fail on a
+  // require rather than on a request.
+  { method: "GET", path: "/api/health/deps", expect: 200 },
+
   { method: "GET", path: "/api/market/markets", expect: 200 },
   { method: "GET", path: "/api/market/stats", expect: 200 },
   { method: "GET", path: "/api/market/mids", expect: 200 },

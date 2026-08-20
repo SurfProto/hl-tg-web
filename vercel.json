@@ -10,7 +10,9 @@
       "includeFiles": "node_modules/.pnpm/@nktkas+hyperliquid@*/node_modules/@nktkas/hyperliquid/**"
     }
   },
-  "crons": [],
+  "crons": [
+    { "path": "/api/notifications/worker", "schedule": "* * * * *" }
+  ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1" },
     { "handle": "filesystem" },

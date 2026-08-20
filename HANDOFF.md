@@ -92,7 +92,7 @@ pnpm test                                   # 5/5 turbo tasks + the api suite, e
 pnpm exec tsc --noEmit -p tsconfig.json     # exit 0
 ```
 
-531 tests: 193 api, 242 hyperliquid-sdk, 78 tg-mini-app, 14 notification-worker,
+534 tests: 196 api, 242 hyperliquid-sdk, 78 tg-mini-app, 14 notification-worker,
 4 onramp-proxy.
 
 Two structural facts about the test setup:
@@ -286,6 +286,17 @@ credentials and asserts two things:
   `index.html`, so a route that stops existing answers 200 with a page, which a
   status-only check would happily accept.
 
+**`/api/health/deps` is the check that matters most.** The smoke check above
+can only see failures at module *load*; the five-layer chain that broke every
+authenticated account read failed on a `require` **inside** a handler, past the
+auth check, so an unauthenticated probe still got its 401 and everything looked
+healthy. That route loads what the real paths load — the SDK client, its two
+deferred `@nktkas` entries, the rewards client and payout module, all five
+notification-worker modules, the Privy identity lookup — with no credentials, no
+network and no side effects, and answers 500 naming whichever module failed. It
+also means a fix can be verified from a terminal instead of by asking someone to
+open the app on a phone.
+
 It runs on every production deployment and hourly
 (`.github/workflows/smoke.yml`). **It found a dead route on its first run**:
 `/api/notifications/worker` was failing at load with `ERR_REQUIRE_ESM`, because
@@ -355,6 +366,11 @@ Peeling it took three passes, each one a layer down:
 | `ERR_REQUIRE_ESM` on `notification-worker/src/config.js` | package declared `"type": "module"` | removed the field |
 | `ERR_REQUIRE_ESM` on `hyperliquid-sdk/src/client.js` | same | removed the field |
 | `Cannot find module .../@repo/types/src/index.ts` | `require("@repo/types")` resolves through `main`, which points at **TypeScript source** that no longer exists once Vercel compiles to `.js` | import the one runtime constant by relative path |
+| `Cannot find module './src/base.js'` from `@nktkas/hyperliquid/script/mod.js` | Vercel's tracer did not ship the dependency's own files — same as `@hpke` — because the imports use bare specifiers inside `await import()` | named the package in `vercel.json` `functions.includeFiles` |
+
+**All five layers are fixed and confirmed loading in production.**
+`/api/health/deps` reports 11 checked, 0 failed, and the notifications worker
+completes a run every minute — its first ever.
 
 **Removing `"type": "module"` from a workspace package is safe here, and the
 earlier note in this document claiming otherwise was wrong.** The field only
@@ -371,9 +387,11 @@ ESM, and it cannot resolve a package whose `main` points at `.ts`. Importing by
 deep relative path — which `api/` already does for the SDK — sidesteps the
 second problem entirely and is the pattern to follow.
 
-Still unverified at the time of writing: whether the snapshot now returns 200.
-Everything up to the SDK import is proven; check `get_runtime_logs` for
-`/api/account/snapshot` after any authenticated session.
+Still unconfirmed: whether `/api/account/snapshot` returns 200 for a real
+session. Every module it needs now loads in the deployed bundle, and the worker
+exercises the same SDK successfully, so the remaining risk is in the request
+itself rather than in loading the code. Check `get_runtime_logs` after any
+authenticated session.
 
 ## Open work, in the order I would do it
 

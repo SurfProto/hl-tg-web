@@ -4,6 +4,7 @@ import hypeIcon from '../assets/coins/hype.svg';
 import solIcon from '../assets/coins/sol.svg';
 import usdcIcon from '../assets/coins/usdc.svg';
 import usdtIcon from '../assets/coins/usdt.svg';
+import { getIconInitials, getIconSymbol } from '../lib/icon-symbol';
 
 interface TokenIconProps {
   coin: string;
@@ -20,9 +21,13 @@ const LOCAL_COIN_ICONS: Record<string, string> = {
 };
 
 export function TokenIcon({ coin, size = 32 }: TokenIconProps) {
-  const normalizedCoin = coin.toUpperCase();
-  const icon = LOCAL_COIN_ICONS[normalizedCoin];
-  const initials = coin.replace(/[^A-Z0-9]/gi, '').slice(0, 2).toUpperCase();
+  // Callers hold different shapes: fill.coin is dex-prefixed and quote-suffixed,
+  // a market list passes a display name, a plain perp is just BTC. Resolve to
+  // the symbol first, so a dex-listed BTC finds the BTC icon and two markets on
+  // one dex do not both render that dex's first two letters.
+  const symbol = getIconSymbol(coin);
+  const icon = LOCAL_COIN_ICONS[symbol.toUpperCase()];
+  const initials = getIconInitials(coin);
 
   if (!icon) {
     return (
@@ -38,7 +43,7 @@ export function TokenIcon({ coin, size = 32 }: TokenIconProps) {
   return (
     <img
       src={icon}
-      alt={coin}
+      alt={symbol || coin}
       width={size}
       height={size}
       className="rounded-full flex-shrink-0"

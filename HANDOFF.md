@@ -92,7 +92,7 @@ pnpm test                                   # 5/5 turbo tasks + the api suite, e
 pnpm exec tsc --noEmit -p tsconfig.json     # exit 0
 ```
 
-534 tests: 196 api, 242 hyperliquid-sdk, 78 tg-mini-app, 14 notification-worker,
+543 tests: 196 api, 242 hyperliquid-sdk, 87 tg-mini-app, 14 notification-worker,
 4 onramp-proxy.
 
 Two structural facts about the test setup:
@@ -393,6 +393,46 @@ exercises the same SDK successfully, so the remaining risk is in the request
 itself rather than in loading the code. Check `get_runtime_logs` after any
 authenticated session.
 
+## Backlog
+
+### Trader anonymity — the leaderboard shows real Telegram handles
+
+`api/rewards/_lib/program.ts` renders `users.username` at three sites (~318,
+~544, ~722), and that column holds the Telegram handle captured at bootstrap.
+Anyone opening the Points tab sees other people's real handles. Exposure is
+limited today only because rewards are deferred — **this should land before the
+raffle is ever switched on**, not after.
+
+Two steps, in order:
+
+1. **Assigned pseudonym, deterministic from the user id.** Stable, needs no
+   user action, no empty state, ships on its own.
+2. **Self-chosen nickname later**, overriding the assigned one. That is where
+   the actual work is: uniqueness, profanity, impersonation ("HyperliquidAdmin"),
+   and a rename policy.
+
+Needs a nullable `display_name` on `users`, so it is a migration — apply it
+deliberately and verify against the live schema, per the migrations section.
+
+Rejected: truncated wallet addresses. Pseudonymous in appearance, but they tie a
+leaderboard position to an on-chain identity, which discloses more than a handle.
+
+### Icons beyond Tier 0
+
+Tier 0 is done (see `src/lib/icon-symbol.ts`). What is left, in value order:
+
+1. **Deterministic generated avatar for the long tail** — hash the symbol to a
+   hue, render the initials on it. Stable per symbol, no network, nothing to
+   maintain. Note a remote icon CDN does *not* solve this: HIP-3 lists RWAs
+   (GOLD, OIL, equities) that crypto icon sets do not carry, and it would add an
+   external host inside a Telegram WebView.
+2. **Dex disambiguation** — two dexes can both list GOLD. A badge or ring
+   coloured from the dex name keeps them apart.
+3. **Curate the top ~20 by volume as local SVGs**, with a documented path for
+   adding one. Only worth it if someone will actually maintain the set.
+
+`market-categories.ts` already classifies Crypto/Tradfi/etc., so Tradfi symbols
+could take a visually distinct default.
 ## Open work, in the order I would do it
 
 1. ~~**Agent key lifecycle tests**~~ — **done 2026-08-14.** 32 tests in

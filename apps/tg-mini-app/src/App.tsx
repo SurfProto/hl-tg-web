@@ -295,9 +295,9 @@ export function TelegramAuthGate({
   if (loginError) {
     return (
       <div className="tg-root-height bg-background flex flex-col items-center justify-center gap-4 px-6 text-center">
-        <p className="text-red-500 text-sm">{loginError}</p>
+        <p className="text-sm text-negative">{loginError}</p>
         <button
-          className="px-6 py-2 bg-blue-500 text-white rounded-full text-sm font-medium"
+          className="editorial-button-primary"
           onClick={() => {
             setLoginError(null);
             loginWithTelegram().catch((err: unknown) => {

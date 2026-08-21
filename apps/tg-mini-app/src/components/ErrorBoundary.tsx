@@ -46,17 +46,25 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4 px-6 text-center">
+        <div className="tg-root-height bg-background flex flex-col items-center justify-center gap-4 px-6 text-center">
           <p className="text-lg font-semibold text-foreground">
             {i18n.t('errors.somethingWentWrong')}
           </p>
-          {this.state.errorMessage && (
-            <p className="text-sm text-muted-foreground max-w-xs">{this.state.errorMessage}</p>
+          {/*
+            errorMessage is a raw exception string — "a is not a function" and
+            the like. componentDidCatch already sends it to the log and to
+            /api/client-errors, which is where it is useful; on screen it tells
+            a user nothing and reads as a crash. Kept in dev because that is
+            where it saves a round trip to the console.
+
+            import.meta.env.DEV is replaced with the literal false in a
+            production build, so this branch is removed by dead-code
+            elimination rather than merely skipped.
+          */}
+          {import.meta.env.DEV && this.state.errorMessage && (
+            <p className="max-w-xs font-mono text-xs text-muted">{this.state.errorMessage}</p>
           )}
-          <button
-            className="px-6 py-2 bg-blue-500 text-white rounded-full text-sm font-medium"
-            onClick={this.handleReload}
-          >
+          <button className="editorial-button-primary" onClick={this.handleReload}>
             {i18n.t('errors.reloadApp')}
           </button>
         </div>

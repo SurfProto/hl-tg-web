@@ -11,7 +11,8 @@
     }
   },
   "crons": [
-    { "path": "/api/notifications/worker", "schedule": "* * * * *" }
+    { "path": "/api/notifications/worker", "schedule": "* * * * *" },
+    { "path": "/api/market/stats", "schedule": "* * * * *" }
   ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1" },

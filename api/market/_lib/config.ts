@@ -7,6 +7,7 @@ export interface MarketPolicy {
     depthMajor: number;
     depthOther: number;
     stats: number;
+    perpDexs: number;
     candles: number;
     markets: number;
     accountSnapshot: number;
@@ -29,7 +30,16 @@ export const DEFAULT_MARKET_POLICY: MarketPolicy = {
     tickerOther: 15,
     depthMajor: 3,
     depthOther: 10,
-    stats: 10,
+    // fetchStats rebuilt in ~2s and expired in 10, so a user landed on the
+    // rebuild roughly every third request. This is open interest, 24h volume
+    // and funding — live price comes from ticker and mids at 3-5s, so a
+    // longer window here does not make prices stale. Paired with the
+    // warming cron in vercel.json, which only refreshes an expired entry, so
+    // this must stay at or under the cron interval to be warmed at all.
+    stats: 60,
+    // The list of HIP-3 dexes changes when a new dex launches, not by the
+    // second, and it gates the second wave of the stats fan-out.
+    perpDexs: 900,
     candles: 30,
     markets: 300,
     accountSnapshot: 2,

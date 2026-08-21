@@ -78,13 +78,31 @@ function bareName(name: string) {
   return name.includes(":") ? name.split(":").pop()! : name;
 }
 
-async function getPerpDexs(network: Network) {
+async function fetchPerpDexs(network: Network) {
   const response = await postInfo<Array<{ name: string } | null>>(network, {
     type: "perpDexs",
   }).catch(() => [null]);
   return response
     .map((entry, dexIndex) => (entry ? { dex: entry.name, dexIndex } : null))
     .filter(Boolean) as Array<{ dex: string; dexIndex: number }>;
+}
+
+/**
+ * The dex list, cached hard.
+ *
+ * This was an uncached round trip on every stats and markets rebuild, and in
+ * fetchStats it is the gate on the second wave: the per-dex metaAndAssetCtxs
+ * calls cannot start until it returns. Measured against mainnet it cost ~0.65s
+ * of a ~2s rebuild, to re-learn a list that changes when someone launches a
+ * dex.
+ */
+async function getPerpDexs(network: Network) {
+  const { data } = await readThroughCache({
+    key: `${network}:market:perp-dexs`,
+    ttlSeconds: getMarketPolicy().ttlSeconds.perpDexs,
+    fetchFresh: () => fetchPerpDexs(network),
+  });
+  return data;
 }
 
 export async function fetchMarkets(network: Network) {

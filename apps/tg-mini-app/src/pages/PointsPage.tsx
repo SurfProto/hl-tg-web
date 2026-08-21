@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePrivy, useToken } from "@privy-io/react-auth";
 import type { ReferralSummary, RewardsDashboard } from "@repo/types";
@@ -5,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { ReferralCard } from "../components/ReferralCard";
 import { getTelegramStartParam } from "../lib/referrals";
 import { fetchRewardsDashboard } from "../lib/rewards";
+import { log } from "../lib/logger";
 
 function formatCompactNumber(value: number) {
   return new Intl.NumberFormat("en-US", {
@@ -61,6 +63,19 @@ export function PointsPage() {
 
   const dashboard = dashboardQuery.data;
 
+  // The copy rendered below is deliberately generic. This endpoint puts the
+  // API envelope's `error` string straight onto RewardsApiError.message, and
+  // that string is whatever the server sent — currently including Postgres
+  // constraint text like 'null value in column "telegram_id" ... violates
+  // not-null constraint'. Keep the real reason in the log, not on the screen.
+  useEffect(() => {
+    if (!dashboardQuery.error) return;
+
+    log.warn("[points] Rewards dashboard failed to load", {
+      error: dashboardQuery.error,
+    });
+  }, [dashboardQuery.error]);
+
   const handleReferralApplied = async (referral: ReferralSummary) => {
     queryClient.setQueryData<RewardsDashboard | undefined>(
       ["rewardsDashboard", walletAddress, startParam],
@@ -69,7 +84,10 @@ export function PointsPage() {
     await dashboardQuery.refetch();
   };
 
-  if (dashboardQuery.isLoading) {
+  // A disabled query reports isLoading false, and this one stays disabled
+  // until Privy resolves a user. Without the user check the error card below
+  // renders during sign-in, before anything has actually failed.
+  if (!user?.id || dashboardQuery.isLoading) {
     return (
       <div className="editorial-page px-4 py-5">
         <div className="animate-pulse space-y-4">
@@ -88,10 +106,18 @@ export function PointsPage() {
   if (dashboardQuery.isError || !dashboard) {
     return (
       <div className="editorial-page px-4 py-5">
-        <div className="rounded-2xl border border-negative/20 bg-negative/5 p-5 text-sm text-negative">
-          {dashboardQuery.error instanceof Error
-            ? dashboardQuery.error.message
-            : t("errors.generic")}
+        <div className="rounded-2xl border border-negative/20 bg-negative/5 p-5 text-center">
+          <p className="text-sm font-semibold text-negative">
+            {t("errors.somethingWentWrong")}
+          </p>
+          <p className="mt-1 text-sm text-muted">{t("points.loadFailed")}</p>
+          <button
+            type="button"
+            onClick={() => void dashboardQuery.refetch()}
+            className="editorial-button-primary mt-4"
+          >
+            {t("common.retry")}
+          </button>
         </div>
       </div>
     );

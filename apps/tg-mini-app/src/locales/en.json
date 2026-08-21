@@ -219,6 +219,7 @@
     "positionLabel": "Position"
   },
   "points": {
+    "loadFailed": "We couldn't load your points. Check your connection and try again.",
     "referEarn": "Refer & earn",
     "thisWeek": "THIS WEEK",
     "tradingVolume": "Trading volume",

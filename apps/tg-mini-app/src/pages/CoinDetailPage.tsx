@@ -49,6 +49,16 @@ function formatVolume(vol: number): string {
   return `$${vol.toFixed(2)}`;
 }
 
+// Open interest is a quantity of the base asset. Rendering it as notional
+// needs a price, and a missing price used to blank the field entirely even
+// though the quantity itself was loaded — so fall back to base units.
+function formatBaseUnits(units: number): string {
+  if (units >= 1_000_000_000) return `${(units / 1_000_000_000).toFixed(2)}B`;
+  if (units >= 1_000_000) return `${(units / 1_000_000).toFixed(2)}M`;
+  if (units >= 1_000) return `${(units / 1_000).toFixed(2)}K`;
+  return units.toLocaleString(undefined, { maximumFractionDigits: 4 });
+}
+
 function formatFunding(rate: number): string {
   return `${rate >= 0 ? '+' : ''}${(rate * 100).toFixed(4)}%`;
 }
@@ -322,9 +332,11 @@ export function CoinDetailPage() {
                   value={
                     statsState === 'ready' && priceState === 'ready'
                       ? formatVolume(assetCtx!.openInterest * price!)
-                      : statsState === 'loading' || priceState === 'loading'
-                        ? t('common.loading')
-                        : t('coinDetail.marketStatsUnavailable')
+                      : statsState === 'ready'
+                        ? `${formatBaseUnits(assetCtx!.openInterest)} ${baseToken}`
+                        : statsState === 'loading' || priceState === 'loading'
+                          ? t('common.loading')
+                          : t('coinDetail.marketStatsUnavailable')
                   }
                   mono
                 />

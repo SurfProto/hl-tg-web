@@ -12,6 +12,7 @@ import { arbitrum } from "viem/chains";
 import { useMarketData, useSetupTrading } from "@repo/hyperliquid-sdk";
 import { Layout } from "./components/Layout";
 import { HomePage } from "./pages/HomePage";
+import { NotFoundPage } from "./pages/NotFoundPage";
 import { bootstrapProfile } from "./lib/profile";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ToastProvider } from "./components/Toast";
@@ -372,6 +373,7 @@ function AppContent() {
               <Route path="/account/settings/legal" element={<LegalPage />} />
               <Route path="/coin/:symbol" element={<CoinDetailPage />} />
               <Route path="/trade/:symbol" element={<TradePage />} />
+              <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </Suspense>
         </Layout>

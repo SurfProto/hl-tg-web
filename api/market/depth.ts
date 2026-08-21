@@ -2,6 +2,7 @@ import { getNetwork, getTtlForSymbol } from "./_lib/config";
 import { getQueryValue, getRequiredQueryValue, jsonError } from "./_lib/response";
 import { handleCachedPublicRoute } from "./_lib/route";
 import { fetchDepth } from "./_lib/upstream";
+import { normalizeMarketSymbol } from "./_lib/symbol";
 
 function parseLimit(value: string | null) {
   const parsed = Number(value ?? "20");
@@ -11,7 +12,7 @@ function parseLimit(value: string | null) {
 
 export default async function handler(request: any, response: any) {
   try {
-    const symbol = getRequiredQueryValue(request, "symbol").toUpperCase();
+    const symbol = normalizeMarketSymbol(getRequiredQueryValue(request, "symbol"));
     const limit = parseLimit(getQueryValue(request, "limit"));
     await handleCachedPublicRoute(request, response, {
       cacheKey: `market:depth:${symbol}:${limit}`,

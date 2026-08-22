@@ -93,9 +93,17 @@ export function fetchEdgeMarketStats() {
   return requestJson<Record<string, MarketStats>>("/api/market/stats");
 }
 
+/**
+ * One market's stats.
+ *
+ * This used to fetch every market and pick a row, so opening a coin page
+ * downloaded 29KB and parsed 1037 objects to render one. The server filters
+ * from the same cached blob, so this costs no extra rebuild.
+ */
 export async function fetchEdgeAssetCtx(coin: string): Promise<AssetCtx | null> {
-  const stats = await fetchEdgeMarketStats();
-  return stats[coin] ?? stats[coin.toUpperCase()] ?? null;
+  return requestJson<AssetCtx | null>(
+    `/api/market/stats?${params({ symbol: coin })}`,
+  );
 }
 
 export function fetchEdgeMids() {

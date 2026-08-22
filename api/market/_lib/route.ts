@@ -16,6 +16,12 @@ export async function handleCachedPublicRoute<T>(
     cacheKey: string;
     ttlSeconds: number;
     fetchFresh: () => Promise<T>;
+    /**
+     * Narrow what is sent without narrowing what is cached. A filtered view
+     * shares the one cache entry, so asking for a single symbol never costs
+     * an extra rebuild of the whole fan-out.
+     */
+    select?: (data: T) => unknown;
   },
 ) {
   await withRoute(response, async () => {
@@ -37,7 +43,8 @@ export async function handleCachedPublicRoute<T>(
         ttlSeconds: args.ttlSeconds,
         fetchFresh: args.fetchFresh,
       });
-      jsonSuccess(response, result.data, result.meta);
+      const payload = args.select ? args.select(result.data) : result.data;
+      jsonSuccess(response, payload, result.meta);
     } catch (error) {
       if (error instanceof RetryableCacheMissError) {
         throw new HttpError(503, "CACHE_WARMING", error.message);

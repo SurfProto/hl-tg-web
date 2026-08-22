@@ -21,6 +21,12 @@ import { getHomeMarketDisplayState } from "./home-market-state";
 import { getHomeMarketViewState } from "./home-state";
 
 const HOME_ROW_COUNT = 6;
+
+// Rendering the whole universe cost 404 rows and ~5,600 DOM nodes on first
+// paint, inside a phone WebView. The list stays inline and the full set is one
+// tap away rather than behind a sheet — 419bbb1 deliberately removed the
+// all-markets and search sheets, and HomePage.test.tsx pins that.
+const HOME_MARKET_LIMIT = 20;
 const DEFERRED_ROUTE_PREFETCHERS = [
   () => import("./TradePage"),
   () => import("./AccountPage"),
@@ -35,6 +41,7 @@ export function HomePage() {
   const [selectedSubCategory, setSelectedSubCategory] =
     useState<MarketSubCategory | null>(null);
   const [query, setQuery] = useState("");
+  const [showAllMarkets, setShowAllMarkets] = useState(false);
 
   const {
     data: markets,
@@ -160,6 +167,17 @@ export function HomePage() {
     });
   }, [enriched, marketStats, query, selectedCategory, selectedSubCategory]);
 
+  const visibleMarkets = useMemo(
+    () => (showAllMarkets ? sortedFiltered : sortedFiltered.slice(0, HOME_MARKET_LIMIT)),
+    [showAllMarkets, sortedFiltered],
+  );
+
+  // Collapse again whenever the visible set changes underneath, so a filter or
+  // a search does not silently hand back an expanded 400-row list.
+  useEffect(() => {
+    setShowAllMarkets(false);
+  }, [query, selectedCategory, selectedSubCategory]);
+
   return (
     <div className="editorial-page pb-6">
       <BalanceHero />
@@ -257,7 +275,7 @@ export function HomePage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {sortedFiltered.map(({ market }) => {
+            {visibleMarkets.map(({ market }) => {
               const coin = market.name;
               const displayName = getMarketDisplayName(market);
               const iconCoin = getMarketBaseAsset(market);
@@ -292,6 +310,15 @@ export function HomePage() {
           </div>
         )}
         </div>
+        {!showAllMarkets && sortedFiltered.length > HOME_MARKET_LIMIT && (
+          <button
+            type="button"
+            onClick={() => setShowAllMarkets(true)}
+            className="editorial-button-secondary mt-3 w-full"
+          >
+            {t("home.seeAllMarkets", { count: sortedFiltered.length })}
+          </button>
+        )}
       </div>
 
     </div>

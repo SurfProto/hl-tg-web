@@ -129,7 +129,6 @@ export function PointsPage() {
     <div className="editorial-page">
       <div className="editorial-shell">
         <div>
-          <p className="editorial-kicker">{t("nav.rewards")}</p>
           <h1 className="editorial-heading text-foreground">{t("nav.rewards")}</h1>
         </div>
 

@@ -127,6 +127,19 @@ describe("TradePage", () => {
     expect(screen.getByRole("heading", { name: "Review order" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Confirm order" })).toBeInTheDocument();
     expect(mutateAsync).not.toHaveBeenCalled();
+
+    // Both header slots used to render trade.reviewOrder, so the screen read
+    // "REVIEW ORDER" above "Review order".
+    expect(screen.getAllByText("Review order")).toHaveLength(1);
+  });
+
+  // The new-order title was a <span>, so this screen had no heading element at
+  // all, with the same string repeated above it as a kicker.
+  it("gives the order screen a single heading", () => {
+    renderTrade();
+
+    expect(screen.getByRole("heading", { name: "New order" })).toBeInTheDocument();
+    expect(screen.getAllByText("New order")).toHaveLength(1);
   });
 
   it("submits only after confirmation and presents result actions", async () => {

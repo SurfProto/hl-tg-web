@@ -245,6 +245,7 @@
     }
   },
   "account": {
+    "balance": "Баланс",
     "sectionLabel": "Аккаунт",
     "connectedInfo": "Telegram и встроенный кошелёк подключены",
     "logOut": "Выйти",

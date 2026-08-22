@@ -112,7 +112,7 @@ export function AccountPage() {
         </div>
 
         <div className="editorial-card mt-4 px-4 py-4">
-          <p className="editorial-kicker pb-3">{t("nav.account")}</p>
+          <p className="editorial-kicker pb-3">{t("account.balance")}</p>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <div className="editorial-stat-label">{t("account.totalEquity")}</div>

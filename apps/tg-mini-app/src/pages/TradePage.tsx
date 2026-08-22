@@ -572,8 +572,7 @@ export function TradePage() {
     return (
       <div className="editorial-page flex min-h-full flex-col">
         <header className="px-4 pb-4 pt-5">
-          <p className="editorial-kicker">{t("trade.reviewOrder")}</p>
-          <h1 className="editorial-heading mt-2">{t("trade.reviewOrder")}</h1>
+          <h1 className="editorial-heading">{t("trade.reviewOrder")}</h1>
         </header>
         <div className="flex-1 px-4">
           <div className="editorial-card overflow-hidden px-4 py-1">
@@ -643,8 +642,7 @@ export function TradePage() {
       <header className="flex-none px-4 pb-3 pt-5">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
-            <p className="editorial-kicker">{t("trade.newOrder")}</p>
-            <span className="editorial-section-title text-foreground">{t("trade.newOrder")}</span>
+            <h1 className="editorial-section-title text-foreground">{t("trade.newOrder")}</h1>
           </div>
           <button
             type="button"

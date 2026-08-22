@@ -408,7 +408,6 @@ export function PositionsPage() {
   return (
     <div className="editorial-page px-4 py-5">
       <div className="mb-5">
-        <p className="editorial-kicker">{t("nav.positions")}</p>
         <h1 className="editorial-heading text-foreground">{t("nav.positions")}</h1>
         {positions.length > 0 && (
           <div className="mt-4 flex gap-6 rounded-[18px] bg-primary px-4 py-4 text-white">

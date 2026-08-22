@@ -59,8 +59,15 @@ export async function readThroughCache<T>({
   lockWaitMs = 125,
   fetchFresh,
 }: CacheReadOptions<T>): Promise<{ data: T; meta: ResponseMeta }> {
+  const redisStartedAt = Date.now();
   const initial = await redisGet(key);
+  const redisMs = Date.now() - redisStartedAt;
+
+  const parseStartedAt = Date.now();
   const cached = parseCached<T>(initial.value);
+  const parseMs = Date.now() - parseStartedAt;
+  const cachedBytes = initial.value ? initial.value.length : 0;
+  const timings = { redisMs, parseMs, cachedBytes };
   const currentTime = Date.now();
 
   if (cached && isFresh(cached, currentTime)) {
@@ -71,6 +78,7 @@ export async function readThroughCache<T>({
         source: initial.source,
         fetchedAt: cached.fetchedAt,
         ttlSeconds: cached.ttlSeconds,
+        timings,
       },
     };
   }
@@ -88,6 +96,7 @@ export async function readThroughCache<T>({
           source: initial.source,
           fetchedAt: cached.fetchedAt,
           ttlSeconds: cached.ttlSeconds,
+          timings,
         },
       };
     }
@@ -129,7 +138,9 @@ export async function readThroughCache<T>({
   }
 
   try {
+    const upstreamStartedAt = Date.now();
     const data = await fetchFresh();
+    const upstreamMs = Date.now() - upstreamStartedAt;
     const fetchedAt = Date.now();
     await redisSet(
       key,
@@ -148,6 +159,7 @@ export async function readThroughCache<T>({
         source: "upstream",
         fetchedAt,
         ttlSeconds,
+        timings: { ...timings, upstreamMs },
       },
     };
   } catch (error) {
@@ -159,6 +171,7 @@ export async function readThroughCache<T>({
           source: initial.source,
           fetchedAt: cached.fetchedAt,
           ttlSeconds: cached.ttlSeconds,
+          timings,
         },
       };
     }

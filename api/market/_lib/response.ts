@@ -9,6 +9,17 @@ export interface ResponseMeta {
   source: CacheSource;
   fetchedAt: number;
   ttlSeconds: number;
+  /**
+   * Where a request's time went, in milliseconds. Present so latency work is
+   * measured rather than guessed: market:stats holds ~157KB, and a cache hit
+   * still pays a Redis round trip plus a JSON.parse of all of it.
+   */
+  timings?: {
+    redisMs: number;
+    parseMs: number;
+    upstreamMs?: number;
+    cachedBytes?: number;
+  };
 }
 
 export { HttpError };

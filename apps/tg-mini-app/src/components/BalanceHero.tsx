@@ -49,8 +49,8 @@ function formatUsdParts(value: number): { integer: string; decimal: string } {
 function BalanceHeroChartFallback() {
   return (
     <div className="animate-pulse">
-      <div className="h-5 w-28 rounded bg-gray-200" />
-      <div className="mt-4 h-[92px] rounded-xl bg-gray-100" />
+      <div className="h-5 w-28 rounded bg-surface" />
+      <div className="mt-4 h-[92px] rounded-xl bg-surface/60" />
     </div>
   );
 }
@@ -59,9 +59,9 @@ export function BalanceHeroSkeleton() {
   return (
     <section className="px-4 pt-5">
       <div className="animate-pulse">
-        <div className="h-6 w-20 rounded bg-gray-200" />
-        <div className="mt-8 h-12 w-48 rounded bg-gray-200" />
-        <div className="mt-3 h-4 w-36 rounded bg-gray-100" />
+        <div className="h-6 w-20 rounded bg-surface" />
+        <div className="mt-8 h-12 w-48 rounded bg-surface" />
+        <div className="mt-3 h-4 w-36 rounded bg-surface/60" />
       </div>
         <div className={`mt-5 ${HERO_CHART_SLOT_CLASS}`}>
           <BalanceHeroChartFallback />
@@ -135,8 +135,8 @@ export function BalanceHero() {
           </>
         ) : valueState.state === "loading" ? (
           <>
-            <div className="mt-2 h-12 w-48 animate-pulse rounded bg-gray-200" />
-            <div className="mt-3 h-4 w-40 animate-pulse rounded bg-gray-100" />
+            <div className="mt-2 h-12 w-48 animate-pulse rounded bg-surface" />
+            <div className="mt-3 h-4 w-40 animate-pulse rounded bg-surface/60" />
           </>
         ) : (
           <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-muted">

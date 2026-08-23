@@ -86,8 +86,8 @@ export function MarketListItem({
       <div className="text-right flex-shrink-0 min-w-[72px]">
         {priceState === 'loading' ? (
           <div className="flex flex-col items-end animate-pulse">
-            <div className="h-5 w-16 rounded bg-gray-200" />
-            <div className="mt-1 h-3 w-12 rounded bg-gray-100" />
+            <div className="h-5 w-16 rounded bg-surface" />
+            <div className="mt-1 h-3 w-12 rounded bg-surface/60" />
           </div>
         ) : priceState === 'error' ? (
           <div className="text-xs font-medium text-muted">

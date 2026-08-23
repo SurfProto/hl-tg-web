@@ -649,7 +649,7 @@ export function DepositPage() {
                   </p>
                   {isVerifiedUser && (
                     <span
-                      className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white"
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-positive text-white"
                       aria-label={t("deposit.verifiedBadgeAria")}
                       title={t("deposit.verifiedBadgeAria")}
                     >
@@ -901,7 +901,7 @@ export function DepositPage() {
           )}
 
           {fiatError && (
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-negative">
+            <div className="rounded-2xl border border-negative/20 bg-negative/5 px-4 py-3 text-sm text-negative">
               {fiatError}
             </div>
           )}

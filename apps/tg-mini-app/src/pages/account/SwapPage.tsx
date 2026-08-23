@@ -141,7 +141,7 @@ export function SwapPage() {
               setToAsset(fromAsset);
               setAmount("");
             }}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-surface text-lg text-foreground transition-colors active:bg-gray-200"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-surface text-lg text-foreground transition-colors active:bg-separator"
             aria-label={t("swap.flipDirection")}
           >
             {"\u21c5"}

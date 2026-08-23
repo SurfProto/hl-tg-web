@@ -39,8 +39,8 @@ export function BalanceHeroChart() {
   if (isLoading) {
     return (
       <div className="animate-pulse">
-        <div className="h-4 w-28 rounded bg-gray-200" />
-        <div className="mt-4 h-[72px] rounded-xl bg-gray-100" />
+        <div className="h-4 w-28 rounded bg-surface" />
+        <div className="mt-4 h-[72px] rounded-xl bg-surface/60" />
       </div>
     );
   }
@@ -48,9 +48,9 @@ export function BalanceHeroChart() {
   if (isError) {
     return (
       <div>
-        <div className="text-sm font-semibold text-gray-500">0.00%</div>
+        <div className="text-sm font-semibold text-muted">0.00%</div>
         <div className="mt-4 flex h-[72px] items-center justify-center rounded-xl border border-dashed border-separator bg-surface">
-          <p className="text-sm text-gray-400">{t('chart.unavailable')}</p>
+          <p className="text-sm text-muted">{t('chart.unavailable')}</p>
         </div>
       </div>
     );
@@ -59,9 +59,9 @@ export function BalanceHeroChart() {
   if (historyPoints.length === 0) {
     return (
       <div>
-        <div className="text-sm font-semibold text-gray-500">0.00%</div>
+        <div className="text-sm font-semibold text-muted">0.00%</div>
         <div className="mt-4 flex h-[72px] items-center justify-center rounded-xl border border-dashed border-separator bg-surface">
-          <p className="text-sm text-gray-400">{t('chart.empty')}</p>
+          <p className="text-sm text-muted">{t('chart.empty')}</p>
         </div>
       </div>
     );
@@ -75,7 +75,7 @@ export function BalanceHeroChart() {
             ? 'p34k-signal'
             : performance.tone === 'negative'
               ? 'bg-negative/10 text-negative'
-              : 'bg-surface text-gray-500'
+              : 'bg-surface text-muted'
         }`}
       >
         {performance.changePct > 0 ? '+' : ''}

@@ -52,7 +52,7 @@ export function LanguagePage() {
             <span className="text-sm font-semibold text-foreground">{t(option.labelKey)}</span>
             <span
               className={`h-4 w-4 rounded-full border ${
-                language === option.key ? 'border-primary bg-primary' : 'border-gray-300 bg-white'
+                language === option.key ? 'border-primary bg-primary' : 'border-border bg-white'
               }`}
             />
           </button>

@@ -234,12 +234,12 @@ export function ProtectionSheet({
               {renderProtectionSection(
                 "stopLoss",
                 t("protection.stopLoss"),
-                "bg-rose-500 text-white",
+                "bg-negative text-white",
               )}
               {renderProtectionSection(
                 "takeProfit",
                 t("protection.takeProfit"),
-                "bg-emerald-500 text-white",
+                "bg-positive text-white",
               )}
             </div>
 

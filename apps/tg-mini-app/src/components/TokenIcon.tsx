@@ -33,7 +33,7 @@ export function TokenIcon({ coin, size = 32 }: TokenIconProps) {
     return (
       <div
         style={{ width: size, height: size, fontSize: size * 0.35 }}
-        className="rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold flex-shrink-0"
+        className="rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold flex-shrink-0"
       >
         {initials}
       </div>

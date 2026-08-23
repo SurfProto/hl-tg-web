@@ -58,19 +58,19 @@ export function AllMarketsSheet({
         className="relative mt-auto max-h-[92vh] flex flex-col rounded-t-2xl bg-white animate-slide-up overscroll-contain"
       >
         <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
-          <div className="h-1 w-10 rounded-full bg-gray-300" />
+          <div className="h-1 w-10 rounded-full bg-separator" />
         </div>
 
         <div className="flex-shrink-0 px-4 pt-2 pb-1">
           <div className="mb-3 flex items-center justify-between">
             <h2 id="all-markets-title" className="text-base font-bold text-foreground">All Markets</h2>
-            <span className="text-xs font-medium text-gray-400">{markets.length} markets</span>
+            <span className="text-xs font-medium text-muted">{markets.length} markets</span>
           </div>
 
           <label htmlFor="all-markets-search-input" className="sr-only">Search all markets</label>
           <div className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2.5 focus-within:ring-2 focus-within:ring-primary/30">
             <svg
-              className="h-4 w-4 flex-shrink-0 text-gray-400"
+              className="h-4 w-4 flex-shrink-0 text-muted"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -87,13 +87,13 @@ export function AllMarketsSheet({
               autoComplete="off"
               placeholder="Search markets…"
               onChange={(event) => setQuery(event.target.value)}
-              className="flex-1 bg-transparent text-sm text-foreground placeholder-gray-400 focus:outline-none"
+              className="flex-1 bg-transparent text-sm text-foreground placeholder-muted focus:outline-none"
             />
             {query && (
               <button
                 type="button"
                 onClick={() => setQuery('')}
-                className="text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 rounded-full"
+                className="text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 rounded-full"
                 aria-label="Clear all markets search"
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -106,7 +106,7 @@ export function AllMarketsSheet({
 
         <div className="flex-1 divide-y divide-separator overflow-y-auto overscroll-contain">
           {filtered.length === 0 ? (
-            <div className="py-12 text-center text-sm text-gray-400">No markets found</div>
+            <div className="py-12 text-center text-sm text-muted">No markets found</div>
           ) : (
             filtered.map(({ market }) => {
               const coin = market.name;

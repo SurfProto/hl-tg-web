@@ -93,7 +93,7 @@ export function AccountPage() {
               {shellLoading ? (
                 <>
                   <SkeletonBar className="h-6 w-32" />
-                  <SkeletonBar className="mt-1.5 h-4 w-40 bg-gray-100" />
+                  <SkeletonBar className="mt-1.5 h-4 w-40 bg-surface/60" />
                 </>
               ) : (
                 <>

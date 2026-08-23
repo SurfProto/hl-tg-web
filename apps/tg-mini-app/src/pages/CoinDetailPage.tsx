@@ -225,12 +225,12 @@ export function CoinDetailPage() {
             </>
           ) : priceState === 'loading' ? (
             <div className="flex items-center gap-2 text-sm font-medium text-muted">
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-primary" />
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-separator border-t-primary" />
               {t('coinDetail.loadingMarketPrice')}
             </div>
           ) : (
             <div className="flex items-center gap-3">
-              <p className="text-sm font-medium text-amber-600">
+              <p className="text-sm font-medium text-warning">
                 {t('coinDetail.marketPriceUnavailable')}
               </p>
               <button
@@ -396,7 +396,7 @@ export function CoinDetailPage() {
             <button
               type="button"
               onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=short`)}
-              className="flex-1 rounded-xl border border-negative/25 bg-white py-3.5 font-semibold text-negative transition-colors active:bg-red-50"
+              className="flex-1 rounded-xl border border-negative/25 bg-white py-3.5 font-semibold text-negative transition-colors active:bg-negative/10"
             >
               {t('coinDetail.shortButton')} ↓
             </button>

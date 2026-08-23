@@ -887,7 +887,7 @@ export function TradePage() {
         </button>
 
         {validation.reason && !submitError && (
-          <p className="text-xs text-center text-amber-600 mt-2">
+          <p className="text-xs text-center text-warning mt-2">
             {validation.reason}
           </p>
         )}

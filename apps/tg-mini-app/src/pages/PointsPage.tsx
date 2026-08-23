@@ -91,11 +91,11 @@ export function PointsPage() {
     return (
       <div className="editorial-page px-4 py-5">
         <div className="animate-pulse space-y-4">
-          <div className="h-48 rounded-3xl bg-gray-200" />
-          <div className="h-32 rounded-2xl bg-gray-200" />
+          <div className="h-48 rounded-3xl bg-surface" />
+          <div className="h-32 rounded-2xl bg-surface" />
           <div className="space-y-3">
             {Array.from({ length: 3 }, (_, index) => (
-              <div key={index} className="h-16 rounded-2xl bg-gray-200" />
+              <div key={index} className="h-16 rounded-2xl bg-surface" />
             ))}
           </div>
         </div>

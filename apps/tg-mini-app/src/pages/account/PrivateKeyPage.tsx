@@ -14,7 +14,7 @@ export function PrivateKeyPage() {
 
       <div className="rounded-[18px] border border-negative/20 bg-negative/5 p-4">
         <p className="text-sm font-semibold text-negative">{t('privateKey.warningTitle')}</p>
-        <p className="mt-2 text-sm text-red-700">{t('privateKey.warningText')}</p>
+        <p className="mt-2 text-sm text-negative">{t('privateKey.warningText')}</p>
       </div>
 
       <div className="rounded-[18px] border border-separator bg-white p-4 space-y-3">

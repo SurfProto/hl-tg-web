@@ -3,24 +3,45 @@
 @tailwind utilities;
 
 :root {
-  /* Hyperliquid Light Theme — Hybrid Design System */
-  --color-background: #f7f8fd;
-  --color-surface: #eff2fb;
+  /* Hyperliquid Light Theme — Hybrid Design System
+     Every colour Tailwind exposes as a token is stored as RGB channels, because
+     an opacity modifier (bg-negative/10) has to compose an alpha onto the value
+     and cannot do that with a hex string. The hex form below is derived from
+     the channels, so var(--color-x) still works wherever CSS uses it directly
+     and there is only one place to change a colour. */
+  --color-background-rgb: 247 248 253;
+  --color-surface-rgb: 239 242 251;
+  --color-primary-rgb: 52 71 243;
+  --color-primary-dark-rgb: 38 54 212;
+  --color-signal-rgb: 216 255 87;
+  --color-secondary-rgb: 17 22 43;
+  --color-destructive-rgb: 235 77 61;
+  --color-text-primary-rgb: 17 22 43;
+  --color-text-muted-rgb: 138 148 169;
+  --color-separator-rgb: 227 231 240;
+  --color-border-rgb: 227 231 240;
+  --color-positive-rgb: 27 148 93;
+  --color-negative-rgb: 235 77 61;
+  --color-warning-rgb: 180 83 9;
+
+  --color-background: rgb(var(--color-background-rgb));
+  --color-surface: rgb(var(--color-surface-rgb));
   --color-card: #ffffff;
-  --color-primary: #3447f3;
-  --color-primary-dark: #2636d4;
+  --color-primary: rgb(var(--color-primary-rgb));
+  --color-primary-dark: rgb(var(--color-primary-dark-rgb));
   --color-primary-soft: #edf0ff;
   --color-primary-soft-strong: #e0e5ff;
-  --color-signal: #d8ff57;
-  --color-secondary: #11162b;
-  --color-destructive: #eb4d3d;
-  --color-text-primary: #11162b;
+  --color-signal: rgb(var(--color-signal-rgb));
+  --color-secondary: rgb(var(--color-secondary-rgb));
+  --color-destructive: rgb(var(--color-destructive-rgb));
+  --color-text-primary: rgb(var(--color-text-primary-rgb));
   --color-text-secondary: #566078;
-  --color-text-muted: #8a94a9;
-  --color-separator: #e3e7f0;
-  --color-border: #e3e7f0;
-  --color-positive: #1b945d;
-  --color-negative: #eb4d3d;
+  --color-text-muted: rgb(var(--color-text-muted-rgb));
+  --color-separator: rgb(var(--color-separator-rgb));
+  --color-border: rgb(var(--color-border-rgb));
+  --color-positive: rgb(var(--color-positive-rgb));
+  --color-negative: rgb(var(--color-negative-rgb));
+  --color-warning: rgb(var(--color-warning-rgb));
   --color-nav-active: #3447f3;
   --color-nav-inactive: #8a94a9;
   --chart-lite-positive-bg: #f5f8ea;

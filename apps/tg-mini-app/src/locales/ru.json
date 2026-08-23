@@ -1,11 +1,14 @@
 {
   "nav": {
+    "markets": "Рынки",
+    "rewards": "Награды",
     "home": "Главная",
     "positions": "Позиции",
     "points": "Очки",
     "account": "Аккаунт"
   },
   "common": {
+    "unavailable": "Недоступно",
     "all": "Все",
     "copy": "Копировать",
     "copied": "Скопировано",
@@ -45,6 +48,8 @@
     "action": "К рынкам"
   },
   "home": {
+    "seeAll": "Показать все",
+    "marketDataUnavailable": "Данные рынка недоступны.",
     "seeAllMarkets": "Все рынки ({{count}})",
     "ariaSearch": "Поиск рынков",
     "noMarkets": "Нет рынков"
@@ -73,6 +78,17 @@
     "ariaClearSearch": "Очистить поиск рынков"
   },
   "trade": {
+    "newOrder": "Новый ордер",
+    "goingLong": "Лонг",
+    "buy": "Купить",
+    "sell": "Продать",
+    "or": "Или",
+    "profitWhenPriceRises": "прибыль при росте цены",
+    "size": "Размер",
+    "availShort": "Доступно",
+    "liq": "Ликв.",
+    "fee": "Комиссия",
+    "margin": "Маржа",
     "perp": "ПЕРП",
     "orderTypeMarket": "рынок",
     "orderTypeLimit": "лимит",
@@ -162,6 +178,12 @@
     "tpPrice": "TP {{price}}"
   },
   "positions": {
+    "tabOpen": "Открытые",
+    "tabHistory": "История",
+    "unrealizedPnl": "Нереализованный PnL",
+    "margin": "Маржа",
+    "addMargin": "Добавить маржу",
+    "loadingMarkPrice": "Загрузка...",
     "emptyTitle": "Нет открытых позиций",
     "emptySubtitle": "Ваши активные сделки, ордера и исполнения появятся здесь.",
     "startTrading": "Начать торговлю",
@@ -196,6 +218,13 @@
     "positionLabel": "Позиция"
   },
   "points": {
+    "referEarn": "Приглашай и зарабатывай",
+    "thisWeek": "На этой неделе",
+    "tradingVolume": "Торговый объём",
+    "daysActive": "Дней активности",
+    "friendsJoined": "Друзей присоединилось",
+    "quests": "Задания",
+    "topTraders": "Топ трейдеров",
     "loadFailed": "Не удалось загрузить очки. Проверьте соединение и попробуйте снова.",
     "seasonOne": "Сезон первый",
     "zeroXp": "0 XP",
@@ -245,6 +274,17 @@
     }
   },
   "account": {
+    "available": "Доступно",
+    "marginLocked": "Занятая маржа",
+    "volume30d": "Объём за 30д",
+    "pnl30d": "PnL за 30д",
+    "funds": "Средства",
+    "settings": "Настройки",
+    "notifications": "Уведомления",
+    "approvals": "Подтверждения",
+    "personalInfo": "Личная информация",
+    "availableBalance": "Доступный баланс",
+    "withdrawableBalance": "Доступно к выводу",
     "balance": "Баланс",
     "sectionLabel": "Аккаунт",
     "connectedInfo": "Telegram и встроенный кошелёк подключены",
@@ -478,6 +518,8 @@
     "privacy": "Политика конфиденциальности"
   },
   "coinDetail": {
+    "perpLabel": "BTC-PERP",
+    "markPrice": "Маркировочная цена",
     "perp": "ПЕРП",
     "spot": "СПОТ",
     "pastDay": "за день",

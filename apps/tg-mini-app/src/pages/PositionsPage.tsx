@@ -25,7 +25,7 @@ import {
   type PositionDirection,
   type ProtectionDraft,
 } from "../lib/protection";
-import { formatPrice } from "../utils/format";
+import { formatUsdPrice } from "../utils/format";
 
 function formatUsd(value: number) {
   return `$${Math.abs(value).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
@@ -119,7 +119,7 @@ function PositionCard({
               </span>
             </div>
             <div className="editorial-mono mt-1 text-xs text-muted">
-              {Math.abs(position.szi)} @ {formatPrice(position.entryPx)}
+              {Math.abs(position.szi)} @ {formatUsdPrice(position.entryPx)}
             </div>
           </div>
         </div>
@@ -146,7 +146,7 @@ function PositionCard({
         <span>
           <span className="editorial-kicker">{t("positions.markPrice")}</span>{" "}
           <span className="editorial-mono text-foreground font-medium">
-            {priceState === "ready" ? formatPrice(currentPrice!) : "..."}
+            {priceState === "ready" ? formatUsdPrice(currentPrice!) : "..."}
           </span>
         </span>
       </div>
@@ -273,9 +273,9 @@ function OpenOrderCard({
             </div>
             <div className="text-xs text-muted mt-0.5 font-mono">
               {order.sz} @ {protectionKind && order.triggerPx != null
-                ? formatPrice(order.triggerPx)
+                ? formatUsdPrice(order.triggerPx)
                 : order.limitPx
-                  ? formatPrice(order.limitPx)
+                  ? formatUsdPrice(order.limitPx)
                   : "Market"}
             </div>
           </div>

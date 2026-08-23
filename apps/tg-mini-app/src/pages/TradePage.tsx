@@ -29,7 +29,7 @@ import {
   type ProtectionDraft,
 } from "../lib/protection";
 import { getAsyncValueState } from "../lib/async-value-state";
-import { formatPrice } from "../utils/format";
+import { formatUsdPrice } from "../utils/format";
 
 function formatUsdInput(value: number): string {
   const truncated = Math.floor(value * 100) / 100;
@@ -353,10 +353,10 @@ export function TradePage() {
   const protectionSubmitDisabled = orderType === "limit";
   const protectionSummary = [
     protectionDraft.stopLossEnabled && stopLossPx != null
-      ? `SL ${formatPrice(stopLossPx)}`
+      ? `SL ${formatUsdPrice(stopLossPx)}`
       : null,
     protectionDraft.takeProfitEnabled && takeProfitPx != null
-      ? `TP ${formatPrice(takeProfitPx)}`
+      ? `TP ${formatUsdPrice(takeProfitPx)}`
       : null,
   ].filter((value): value is string => value != null);
 
@@ -592,10 +592,10 @@ export function TradePage() {
               [t("trade.leverage"), `${reviewedLeverage}x`],
               [t("trade.margin"), `$${(reviewedTrade.order.sizeUsd / reviewedLeverage).toFixed(2)}`],
               [t("trade.fee"), `$${(reviewedTrade.order.sizeUsd * 0.0005).toFixed(2)}`],
-              [t("trade.liq"), reviewedTrade.liquidationPx != null ? formatPrice(reviewedTrade.liquidationPx) : "-"],
+              [t("trade.liq"), reviewedTrade.liquidationPx != null ? formatUsdPrice(reviewedTrade.liquidationPx) : "-"],
               ...(reviewedTrade.order.orderType === "limit"
                 ? [
-                    [t("trade.limitPrice"), formatPrice(reviewedTrade.order.limitPx ?? 0)],
+                    [t("trade.limitPrice"), formatUsdPrice(reviewedTrade.order.limitPx ?? 0)],
                     [t("trade.timeInForce"), reviewedTrade.order.tif ?? "GTC"],
                   ]
                 : []),
@@ -824,7 +824,7 @@ export function TradePage() {
           <div className="flex items-center justify-between text-sm">
             <span className="editorial-kicker">{t("trade.liq")}</span>
             <span className="editorial-mono font-semibold text-foreground">
-              {liquidationPx != null ? formatPrice(liquidationPx) : "—"}
+              {liquidationPx != null ? formatUsdPrice(liquidationPx) : "—"}
             </span>
           </div>
           <div className="flex items-center justify-between text-sm">

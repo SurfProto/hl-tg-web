@@ -10,7 +10,7 @@ import {
 } from '@repo/hyperliquid-sdk';
 import type { AnyMarket } from '@repo/types';
 import { getAsyncValueState } from '../lib/async-value-state';
-import { formatPrice } from '../utils/format';
+import { formatUsdPrice } from '../utils/format';
 import { MarketListItem } from './MarketListItem';
 
 interface SearchSheetProps {
@@ -144,7 +144,7 @@ export function SearchSheet({ isOpen, onClose, onSelect }: SearchSheetProps) {
                   displayName={displayName}
                   iconCoin={iconCoin}
                   marketType={market.type}
-                  price={hasPrice ? formatPrice(stats!.markPx) : ''}
+                  price={hasPrice ? formatUsdPrice(stats!.markPx) : ''}
                   priceState={priceState}
                   change24h={priceState === 'ready' ? stats?.change24h ?? 0 : null}
                   maxLeverage={market.type === 'perp' ? market.maxLeverage : undefined}

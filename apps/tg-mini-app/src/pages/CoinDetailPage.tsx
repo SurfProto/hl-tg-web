@@ -13,34 +13,9 @@ import {
 import type { AnyMarket, Candle } from '@repo/types';
 import { Chart, type LiteCandleInspection } from '@repo/ui';
 import { StatRow } from '../components/StatRow';
+import { formatUsdPrice, formatUsdPriceParts } from '../utils/format';
 import { getAsyncValueState } from '../lib/async-value-state';
 import { TokenIcon } from '../components/TokenIcon';
-
-function formatPrice(price: number): string {
-  if (price >= 1000) {
-    return `$${price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
-  }
-  if (price >= 1) {
-    return `$${price.toFixed(4)}`;
-  }
-  return `$${price.toFixed(6)}`;
-}
-
-function formatPriceParts(price: number): { integer: string; decimal: string } {
-  if (price >= 1000) {
-    const formatted = price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const parts = formatted.split('.');
-    return { integer: parts[0] || '0', decimal: parts[1] || '00' };
-  }
-  if (price >= 1) {
-    const formatted = price.toFixed(4);
-    const parts = formatted.split('.');
-    return { integer: parts[0] || '0', decimal: parts[1] || '0000' };
-  }
-  const formatted = price.toFixed(6);
-  const parts = formatted.split('.');
-  return { integer: parts[0] || '0', decimal: parts[1] || '000000' };
-}
 
 function formatVolume(vol: number): string {
   if (vol >= 1_000_000_000) return `$${(vol / 1_000_000_000).toFixed(2)}B`;
@@ -171,7 +146,7 @@ export function CoinDetailPage() {
     };
   }, [activeInspection]);
 
-  const priceParts = price != null ? formatPriceParts(price) : { integer: '0', decimal: '00' };
+  const priceParts = price != null ? formatUsdPriceParts(price) : { integer: '0', decimal: '00' };
   const maxLeverage = selectedMarket?.type === 'perp' ? selectedMarket.maxLeverage : null;
 
   return (
@@ -286,20 +261,20 @@ export function CoinDetailPage() {
                   {formatTooltipTimestamp(inspectionTooltip.candle, interval)}
                 </div>
                 <div className="editorial-mono mt-1 text-lg font-semibold tracking-tight text-foreground">
-                  {formatPrice(inspectionTooltip.candle.c)}
+                  {formatUsdPrice(inspectionTooltip.candle.c)}
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] font-medium">
                   <div className="flex items-center justify-between gap-2 text-muted">
                     <span>{t('coinDetail.open')}</span>
-                    <span className="editorial-mono text-foreground">{formatPrice(inspectionTooltip.candle.o)}</span>
+                    <span className="editorial-mono text-foreground">{formatUsdPrice(inspectionTooltip.candle.o)}</span>
                   </div>
                   <div className="flex items-center justify-between gap-2 text-muted">
                     <span>{t('coinDetail.high')}</span>
-                    <span className="editorial-mono text-positive">{formatPrice(inspectionTooltip.candle.h)}</span>
+                    <span className="editorial-mono text-positive">{formatUsdPrice(inspectionTooltip.candle.h)}</span>
                   </div>
                   <div className="flex items-center justify-between gap-2 text-muted">
                     <span>{t('coinDetail.low')}</span>
-                    <span className="editorial-mono text-negative">{formatPrice(inspectionTooltip.candle.l)}</span>
+                    <span className="editorial-mono text-negative">{formatUsdPrice(inspectionTooltip.candle.l)}</span>
                   </div>
                   <div className="flex items-center justify-between gap-2 text-muted">
                     <span>{t('coinDetail.vol')}</span>
@@ -354,7 +329,7 @@ export function CoinDetailPage() {
                 />
                 <StatRow
                   label={t('coinDetail.markPrice')}
-                  value={priceState === 'ready' ? formatPrice(price!) : t('common.loading')}
+                  value={priceState === 'ready' ? formatUsdPrice(price!) : t('common.loading')}
                   mono
                   noBorder
                 />
@@ -371,7 +346,6 @@ export function CoinDetailPage() {
                   value={holdings != null && priceState === 'ready' ? formatVolume(holdings * price!) : '\u2014'}
                   mono
                 />
-                <StatRow label={t('coinDetail.marketCap')} value="$0" mono />
                 <StatRow
                   label={t('coinDetail.volume24h')}
                   value={

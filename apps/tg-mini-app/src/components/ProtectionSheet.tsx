@@ -1,4 +1,4 @@
-import { formatPrice } from "../utils/format";
+import { formatUsdPrice } from "../utils/format";
 import { useTranslation } from "react-i18next";
 import type {
   ProtectionDraft,
@@ -219,7 +219,7 @@ export function ProtectionSheet({
               </div>
               {currentPrice != null && (
                 <div className="rounded-full bg-surface px-3 py-1 text-xs font-semibold text-foreground tabular-nums">
-                  {t("protection.markPrice", { price: formatPrice(currentPrice) })}
+                  {t("protection.markPrice", { price: formatUsdPrice(currentPrice) })}
                 </div>
               )}
             </div>
@@ -246,7 +246,7 @@ export function ProtectionSheet({
             <div className="mt-1 rounded-[18px] bg-surface px-4 py-3 text-sm text-muted">
               {referencePrice != null
                 ? t("protection.referenceInfo", {
-                    price: formatPrice(referencePrice),
+                    price: formatUsdPrice(referencePrice),
                     size: Math.abs(size).toLocaleString("en-US", {
                       maximumFractionDigits: 6,
                     }),

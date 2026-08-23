@@ -1,25 +1,52 @@
 /**
- * Format a price for display with up to 5 significant figures, no trailing zeros.
+ * Format a USD price for display.
  *
- * Examples:
- *   68000    → "$68,000"
- *   83.3235  → "$83.32"
+ * Decimals are fixed per magnitude band and never stripped, so a price keeps
+ * the same width as it ticks and a column of them lines up. The previous
+ * version ran every result through parseFloat, which dropped trailing zeros:
+ * 999.50 rendered as "$999.5" and 91.10 as "$91.1", so the same asset changed
+ * width tick to tick. Prices at or above 1000 also had no minimum, so they
+ * alternated between "$79,161" and "$79,161.4".
+ *
+ * Named apart from the SDK's formatPrice(rawPrice, market), which formats
+ * against an asset's own tick size rather than by magnitude. Two exported
+ * functions with the same name and different signatures is a poor thing to
+ * have anywhere near money.
+ *
+ *   79161.4  → "$79,161.40"
+ *   999.5    → "$999.50"
+ *   91.15    → "$91.15"
+ *   7.5548   → "$7.5548"
  *   0.09572  → "$0.09572"
- *   0.000012 → "$0.000012"
+ *   0.000012 → "$0.00001200"
  */
-export function formatPrice(price: number): string {
+export function formatUsdPrice(price: number): string {
   if (!Number.isFinite(price) || price <= 0) return '—';
-  if (price >= 1000) {
-    return `$${price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
-  }
-  if (price >= 1) {
-    // Strip trailing zeros, keep up to 4 decimal places
-    return `$${parseFloat(price.toFixed(4))}`;
-  }
-  // For sub-$1 prices: enough decimal places to show ~5 significant figures.
-  // e.g. 0.09572 → ceil(-log10(0.09572)) = ceil(1.02) = 2, +4 = 6 decimals → "0.095720" → parseFloat → "0.09572"
-  const decimalPlaces = Math.max(2, Math.ceil(-Math.log10(price)) + 4);
-  return `$${parseFloat(price.toFixed(decimalPlaces))}`;
+
+  const decimals =
+    price >= 10 ? 2
+    : price >= 1 ? 4
+    : price >= 0.01 ? 5
+    : 8;
+
+  return `$${price.toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  })}`;
+}
+
+/**
+ * The same price, split so a hero can set the whole and the fraction at
+ * different sizes. Derived from formatUsdPrice rather than reimplementing the
+ * bands, which is how the coin page's hero and its own tooltip came to
+ * disagree about the same number.
+ */
+export function formatUsdPriceParts(price: number): { integer: string; decimal: string } {
+  const formatted = formatUsdPrice(price);
+  if (formatted === '—') return { integer: '0', decimal: '00' };
+
+  const [integer, decimal = ''] = formatted.slice(1).split('.');
+  return { integer, decimal };
 }
 
 /**

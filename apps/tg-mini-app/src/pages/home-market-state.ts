@@ -1,5 +1,5 @@
 import type { MarketStats } from "@repo/types";
-import { formatPrice } from "../utils/format";
+import { formatUsdPrice } from "../utils/format";
 
 function formatVolume(vol: number): string {
   if (vol >= 1_000_000_000) return `$${(vol / 1_000_000_000).toFixed(1)}B`;
@@ -23,7 +23,7 @@ export function getHomeMarketDisplayState({
   if (stats) {
     return {
       dataState: "ready",
-      price: formatPrice(stats.markPx),
+      price: formatUsdPrice(stats.markPx),
       change24h: stats.change24h,
       volume: formatVolume(stats.dayNtlVlm),
     };

@@ -188,7 +188,9 @@ describe("CoinDetailPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "inspect" }));
 
     expect(screen.getByText("Open")).toBeInTheDocument();
-    expect(screen.getByText("$111.0000")).toBeInTheDocument();
+    // formatUsdPrice, shared with the market rows: two decimals at this
+    // magnitude. The page used to carry its own formatter that rendered four.
+    expect(screen.getByText("$111.00")).toBeInTheDocument();
     expect(screen.getByText("$2.50K")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Short ↓" }),

@@ -102,7 +102,7 @@ export function AccountPage() {
                     {telegramUsername ? `@${telegramUsername}` : t("account.traderFallback")}
                   </h1>
                   <p className="editorial-mono mt-1 text-sm text-white/70 truncate">
-                    {walletAddress ? formatAddress(walletAddress) : ""} · VIP {user?.vipTier ?? 0}
+                    {walletAddress ? `${formatAddress(walletAddress)} · ` : ""}VIP {user?.vipTier ?? 0}
                   </p>
                 </>
               )}

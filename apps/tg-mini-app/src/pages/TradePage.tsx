@@ -360,13 +360,21 @@ export function TradePage() {
       : null,
   ].filter((value): value is string => value != null);
 
+  // Depend on reset, not on the mutation object. useMutation returns a fresh
+  // object literal every render, so depending on tradingSetup re-ran this
+  // effect on every render; while signed out it then called reset(), which
+  // notifies the observer, which renders again — an unbounded loop for anyone
+  // not authenticated. reset is bound once in the MutationObserver constructor
+  // and the observer is created through useState, so its identity is stable.
+  const resetTradingSetup = tradingSetup.reset;
+
   useEffect(() => {
     if (!authenticated) {
       setupWalletRef.current = null;
-      tradingSetup.reset();
+      resetTradingSetup();
       setSetupVisible(false);
     }
-  }, [authenticated, tradingSetup]);
+  }, [authenticated, resetTradingSetup]);
 
   const isPending =
     placeOrder.isPending ||

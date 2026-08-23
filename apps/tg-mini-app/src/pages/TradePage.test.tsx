@@ -142,6 +142,45 @@ describe("TradePage", () => {
     expect(screen.getAllByText("New order")).toHaveLength(1);
   });
 
+  // useSetupTrading hands back a new object every render, so depending on it
+  // re-ran the signed-out branch on every render. In the real app reset()
+  // notifies the mutation observer, so that render triggered another one and
+  // the screen looped until React gave up. The mocked reset here does not
+  // re-render, so the loop cannot be reproduced directly — what this pins is
+  // the cause: the effect must not re-run just because the page re-rendered.
+  it("resets setup once on sign-out, not on every render", () => {
+    authenticated = false;
+
+    renderTrade();
+    expect(setupReset).toHaveBeenCalledTimes(1);
+
+    // Each of these re-renders the page.
+    fireEvent.click(screen.getByRole("button", { name: "Enter amount" }));
+    fireEvent.click(screen.getByRole("button", { name: /Sell/ }));
+
+    expect(setupReset).toHaveBeenCalledTimes(1);
+  });
+
+  // The other half of the same change: narrowing the dependencies must not
+  // stop the effect firing when auth actually changes.
+  it("still resets setup when the user signs out", () => {
+    authenticated = true;
+
+    const { rerender } = renderTrade();
+    expect(setupReset).not.toHaveBeenCalled();
+
+    authenticated = false;
+    rerender(
+      <MemoryRouter initialEntries={["/trade/BTC?side=long"]}>
+        <Routes>
+          <Route path="/trade/:symbol" element={<TradePage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(setupReset).toHaveBeenCalledTimes(1);
+  });
+
   it("submits only after confirmation and presents result actions", async () => {
     renderTrade();
 

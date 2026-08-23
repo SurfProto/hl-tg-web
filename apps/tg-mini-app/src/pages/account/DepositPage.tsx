@@ -507,10 +507,12 @@ export function DepositPage() {
     <div className="editorial-page px-4 py-5">
       {view === "choice" && (
         <div className="space-y-4">
-          <p className="editorial-kicker">{t("nav.account")}</p>
-          <h1 className="editorial-heading text-foreground">
-            {t("deposit.title")}
-          </h1>
+          <div>
+            <p className="editorial-kicker">{t("nav.account")}</p>
+            <h1 className="editorial-heading text-foreground">
+              {t("deposit.title")}
+            </h1>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <button
               type="button"

@@ -7,8 +7,10 @@ export function PrivateKeyPage() {
 
   return (
     <div className="editorial-page px-4 py-5 space-y-4">
-      <p className="editorial-kicker">{t('nav.account')}</p>
-      <h1 className="editorial-heading text-foreground">{t('privateKey.title')}</h1>
+      <div>
+        <p className="editorial-kicker">{t('nav.account')}</p>
+        <h1 className="editorial-heading text-foreground">{t('privateKey.title')}</h1>
+      </div>
 
       <div className="rounded-[18px] border border-negative/20 bg-negative/5 p-4">
         <p className="text-sm font-semibold text-negative">{t('privateKey.warningTitle')}</p>

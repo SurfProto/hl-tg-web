@@ -136,7 +136,7 @@ export function PointsPage() {
           <div className="editorial-kicker text-white/55">
             {dashboard.season.name} · YOUR POINTS
           </div>
-          <div className="editorial-mono mt-3 text-[3.25rem] font-semibold leading-none tracking-[-0.06em]">
+          <div className="editorial-display mt-3">
             {formatCompactNumber(dashboard.season.xpTotal)}
           </div>
           <div className="mt-2 text-sm text-white/70">
@@ -173,7 +173,7 @@ export function PointsPage() {
         <div className="space-y-3">
           <div className="editorial-card flex items-center justify-between px-4 py-4">
             <div>
-              <div className="editorial-section-title text-[1.4rem]">{t("points.tradingVolume")}</div>
+              <div className="editorial-section-title">{t("points.tradingVolume")}</div>
               <div className="mt-1 text-sm text-muted">{formatUsd(dashboard.season.eligibleVolume)}</div>
             </div>
             <div className="editorial-mono text-lg font-semibold text-positive">
@@ -182,7 +182,7 @@ export function PointsPage() {
           </div>
           <div className="editorial-card flex items-center justify-between px-4 py-4">
             <div>
-              <div className="editorial-section-title text-[1.4rem]">{t("points.daysActive")}</div>
+              <div className="editorial-section-title">{t("points.daysActive")}</div>
               <div className="mt-1 text-sm text-muted">{dashboard.weeklyRaffle.userRank ? `${dashboard.weeklyRaffle.userRank} of 7` : "—"}</div>
             </div>
             <div className="editorial-mono text-lg font-semibold text-positive">
@@ -191,7 +191,7 @@ export function PointsPage() {
           </div>
           <div className="editorial-card flex items-center justify-between px-4 py-4">
             <div>
-              <div className="editorial-section-title text-[1.4rem]">{t("points.friendsJoined")}</div>
+              <div className="editorial-section-title">{t("points.friendsJoined")}</div>
               <div className="mt-1 text-sm text-muted">{dashboard.referral.fundedReferralCount}</div>
             </div>
             <div className="editorial-mono text-lg font-semibold text-positive">

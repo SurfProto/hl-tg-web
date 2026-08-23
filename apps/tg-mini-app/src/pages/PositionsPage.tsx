@@ -109,7 +109,7 @@ function PositionCard({
             <div className="flex items-center gap-2">
               <span className="font-bold text-foreground">{displayName}</span>
               <span
-                className={`editorial-stat-label rounded-full px-2 py-1 ${
+                className={`editorial-kicker rounded-full px-2 py-1 ${
                   isLong
                     ? "bg-primary/10 text-primary"
                     : "bg-secondary/10 text-secondary"
@@ -139,12 +139,12 @@ function PositionCard({
       <div className="mb-4 flex items-center justify-between text-xs text-muted">
         <div className="flex gap-4">
           <span>
-            <span className="editorial-stat-label">{t("positions.margin")}</span>{" "}
+            <span className="editorial-kicker">{t("positions.margin")}</span>{" "}
             <span className="editorial-mono text-foreground font-medium">{formatUsd(position.marginUsed ?? 0)}</span>
           </span>
         </div>
         <span>
-          <span className="editorial-stat-label">{t("positions.markPrice")}</span>{" "}
+          <span className="editorial-kicker">{t("positions.markPrice")}</span>{" "}
           <span className="editorial-mono text-foreground font-medium">
             {priceState === "ready" ? formatPrice(currentPrice!) : "..."}
           </span>
@@ -412,14 +412,14 @@ export function PositionsPage() {
         {positions.length > 0 && (
           <div className="mt-4 flex gap-6 rounded-[18px] bg-primary px-4 py-4 text-white">
             <div className="flex-1">
-              <div className="editorial-stat-label text-white/65">{t("positions.unrealizedPnl")}</div>
-              <div className={`editorial-mono mt-2 text-[2rem] font-semibold ${totalUnrealizedPnl >= 0 ? "text-signal" : "text-white"}`}>
+              <div className="editorial-kicker text-white/65">{t("positions.unrealizedPnl")}</div>
+              <div className={`editorial-display-sm mt-2 ${totalUnrealizedPnl >= 0 ? "text-signal" : "text-white"}`}>
                 {formatPnl(totalUnrealizedPnl)}
               </div>
             </div>
             <div className="flex-1 text-right">
-              <div className="editorial-stat-label text-white/65">{t("positions.margin")}</div>
-              <div className="editorial-mono mt-2 text-[2rem] font-semibold text-white">
+              <div className="editorial-kicker text-white/65">{t("positions.margin")}</div>
+              <div className="editorial-display-sm mt-2 text-white">
                 {formatUsd(totalMargin)}
               </div>
             </div>

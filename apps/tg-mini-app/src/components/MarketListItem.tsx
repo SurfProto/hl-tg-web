@@ -69,7 +69,7 @@ export function MarketListItem({
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold text-foreground truncate">{displayName}</span>
           {maxLeverage ? (
-            <span className="rounded-full bg-surface px-1.5 py-0.5 text-[10px] font-semibold text-muted">
+            <span className="rounded-full bg-surface px-1.5 py-0.5 text-[11px] font-semibold text-muted">
               {maxLeverage}x
             </span>
           ) : null}

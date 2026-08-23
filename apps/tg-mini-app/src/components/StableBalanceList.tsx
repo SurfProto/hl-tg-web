@@ -31,7 +31,7 @@ export function StableBalanceList({
             key={balance.asset}
             className="rounded-full border border-border bg-[var(--color-primary-soft)] px-3 py-2"
           >
-            <p className="editorial-stat-label">
+            <p className="editorial-kicker">
               {balance.asset}
             </p>
             <p className="editorial-mono mt-1 text-sm font-semibold text-foreground">
@@ -51,7 +51,7 @@ export function StableBalanceList({
             key={balance.asset}
             className="rounded-[22px] border border-border bg-[var(--color-primary-soft)] p-3"
           >
-            <p className="editorial-stat-label">
+            <p className="editorial-kicker">
               {balance.asset}
             </p>
             <p className="editorial-mono mt-2 text-base font-semibold text-foreground">

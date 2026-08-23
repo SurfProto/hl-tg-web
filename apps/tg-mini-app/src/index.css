@@ -276,14 +276,7 @@ body {
     @apply px-4 pb-6 pt-5;
   }
 
-  .editorial-title {
-    font-family: var(--font-display);
-    font-size: clamp(1.9rem, 5.8vw, 2.45rem);
-    font-weight: 700;
-    line-height: 1.02;
-    letter-spacing: -0.055em;
-  }
-
+  /* Page title. Every screen that names itself uses this one. */
   .editorial-heading {
     font-family: var(--font-display);
     font-size: 1.75rem;
@@ -292,6 +285,7 @@ body {
     letter-spacing: -0.055em;
   }
 
+  /* Section title, for a heading *inside* a page rather than the page's own. */
   .editorial-section-title {
     font-family: var(--font-display);
     font-size: 1.25rem;
@@ -300,9 +294,13 @@ body {
     letter-spacing: -0.035em;
   }
 
+  /* The one micro-label: eyebrows, stat labels, nav labels. It replaced
+     editorial-stat-label, which was 0.68rem/500 against this one's 0.65rem/600
+     — 10.88px next to 10.4px, close enough that nobody could say which to
+     reach for and far enough apart to read as a mistake. */
   .editorial-kicker {
     font-family: var(--font-mono);
-    font-size: 0.65rem;
+    font-size: 0.6875rem;
     font-weight: 600;
     line-height: 1.1;
     letter-spacing: 0.14em;
@@ -310,9 +308,45 @@ body {
     color: var(--color-text-muted);
   }
 
+  /* The eyebrow sits above a page title on eleven screens, three of which set
+     mt-2 and eight of which set nothing. The gap belongs to the pattern. */
+  .editorial-kicker + h1 {
+    margin-top: 0.5rem;
+  }
+
   .editorial-mono {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
+  }
+
+  /* Hero numbers, three steps. Everything below carries the mono family and
+     tabular figures, so these replace an editorial-mono + text-[…] + weight +
+     tracking run rather than sitting on top of one. */
+  .editorial-display {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 2.5rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.06em;
+  }
+
+  .editorial-display-sm {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 1.75rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.05em;
+  }
+
+  .editorial-display-xs {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.04em;
   }
 
   .editorial-card {
@@ -367,15 +401,6 @@ body {
     color: var(--color-primary);
   }
 
-  .editorial-stat-label {
-    font-family: var(--font-mono);
-    font-size: 0.68rem;
-    font-weight: 500;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--color-text-muted);
-  }
-
   .p34k-bottom-nav {
     border-top: 1px solid var(--color-separator);
     background: rgba(255, 255, 255, 0.98);
@@ -392,7 +417,7 @@ body {
 
   .p34k-powered {
     color: var(--color-text-muted);
-    font-size: 0.68rem;
+    font-size: 0.6875rem;
     font-weight: 600;
     letter-spacing: 0.04em;
   }

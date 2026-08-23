@@ -70,8 +70,10 @@ export function NotificationsPage() {
 
   return (
     <div className="editorial-page px-4 py-5 space-y-4">
-      <p className="editorial-kicker">{t('nav.account')}</p>
-      <h1 className="editorial-heading text-foreground">{t('notifications.title')}</h1>
+      <div>
+        <p className="editorial-kicker">{t('nav.account')}</p>
+        <h1 className="editorial-heading text-foreground">{t('notifications.title')}</h1>
+      </div>
       <p className="text-sm text-muted">{t('notifications.description')}</p>
 
       <div className="rounded-[18px] border border-separator bg-white p-4">

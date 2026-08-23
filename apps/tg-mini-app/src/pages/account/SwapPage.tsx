@@ -108,8 +108,10 @@ export function SwapPage() {
   return (
     <div className="editorial-page px-4 py-5 space-y-4">
       <div>
-        <p className="editorial-kicker">{t("nav.account")}</p>
-        <h1 className="editorial-heading mt-2 text-foreground">{t("swap.title")}</h1>
+        <div>
+          <p className="editorial-kicker">{t("nav.account")}</p>
+          <h1 className="editorial-heading text-foreground">{t("swap.title")}</h1>
+        </div>
         <p className="mt-1 text-sm text-muted">
           {isUnifiedLike
             ? t("swap.descriptionUnified")

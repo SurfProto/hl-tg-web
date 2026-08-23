@@ -115,7 +115,7 @@ export function AccountPage() {
           <p className="editorial-kicker pb-3">{t("account.balance")}</p>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <div className="editorial-stat-label">{t("account.totalEquity")}</div>
+              <div className="editorial-kicker">{t("account.totalEquity")}</div>
               {shellLoading ? (
                 <SkeletonBar className="mt-1.5 h-6 w-24" />
               ) : (
@@ -125,7 +125,7 @@ export function AccountPage() {
               )}
             </div>
             <div>
-              <div className="editorial-stat-label">{t("account.marginLocked")}</div>
+              <div className="editorial-kicker">{t("account.marginLocked")}</div>
               {shellLoading ? (
                 <SkeletonBar className="mt-1.5 h-6 w-24" />
               ) : (
@@ -135,7 +135,7 @@ export function AccountPage() {
               )}
             </div>
             <div>
-              <div className="editorial-stat-label">{t("account.availableBalance")}</div>
+              <div className="editorial-kicker">{t("account.availableBalance")}</div>
               {shellLoading ? (
                 <SkeletonBar className="mt-1.5 h-6 w-24" />
               ) : (
@@ -145,7 +145,7 @@ export function AccountPage() {
               )}
             </div>
             <div>
-              <div className="editorial-stat-label">{t("account.withdrawableBalance")}</div>
+              <div className="editorial-kicker">{t("account.withdrawableBalance")}</div>
               {shellLoading ? (
                 <SkeletonBar className="mt-1.5 h-6 w-24" />
               ) : (

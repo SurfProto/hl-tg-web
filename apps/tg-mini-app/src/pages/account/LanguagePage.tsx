@@ -34,8 +34,10 @@ export function LanguagePage() {
 
   return (
     <div className="editorial-page px-4 py-5 space-y-4">
-      <p className="editorial-kicker">{t('nav.account')}</p>
-      <h1 className="editorial-heading text-foreground">{t('language.title')}</h1>
+      <div>
+        <p className="editorial-kicker">{t('nav.account')}</p>
+        <h1 className="editorial-heading text-foreground">{t('language.title')}</h1>
+      </div>
       <div className="space-y-3">
         {LANGUAGES.map((option) => (
           <button

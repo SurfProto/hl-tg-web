@@ -549,7 +549,7 @@ export function TradePage() {
             {tradeResult.protectionWarning ? "!" : "OK"}
           </div>
           <p className="editorial-kicker mt-6">{t("trade.orderResult")}</p>
-          <h1 className="editorial-heading mt-2 text-foreground">
+          <h1 className="editorial-heading text-foreground">
             {tradeResult.protectionWarning
               ? t("trade.protectionWarningTitle")
               : t("trade.orderPlacedTitle")}
@@ -606,7 +606,7 @@ export function TradePage() {
                 : []),
             ].map(([label, value]) => (
               <div key={label} className="flex items-center justify-between border-b border-separator py-4 last:border-b-0">
-                <span className="editorial-stat-label">{label}</span>
+                <span className="editorial-kicker">{label}</span>
                 <span className="editorial-mono text-sm font-semibold text-foreground">{value}</span>
               </div>
             ))}
@@ -650,7 +650,7 @@ export function TradePage() {
       <header className="flex-none px-4 pb-3 pt-5">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
-            <h1 className="editorial-section-title text-foreground">{t("trade.newOrder")}</h1>
+            <h1 className="editorial-heading text-foreground">{t("trade.newOrder")}</h1>
           </div>
           <button
             type="button"
@@ -701,7 +701,7 @@ export function TradePage() {
             <div className="editorial-kicker mb-2 opacity-80">
               {t("trade.goingLong")}
             </div>
-            <div className="editorial-mono flex items-center gap-1 text-[2rem] font-semibold leading-none">
+            <div className="editorial-display-sm flex items-center gap-1">
               {t("trade.buy")} <span className="text-lg">↑</span>
             </div>
             {activeSide === "buy" && (
@@ -722,7 +722,7 @@ export function TradePage() {
             <div className="editorial-kicker mb-2 opacity-80">
               {t("trade.or")}
             </div>
-            <div className="editorial-mono text-[2rem] font-semibold leading-none">{t("trade.sell")}</div>
+            <div className="editorial-display-sm">{t("trade.sell")}</div>
           </button>
         </div>
       </div>
@@ -732,7 +732,7 @@ export function TradePage() {
         {/* Size Input */}
         <div className="editorial-card p-5">
           <div className="flex items-center justify-between mb-2">
-            <span className="editorial-stat-label">
+            <span className="editorial-kicker">
               {t("trade.size")} · USD
             </span>
             <span className="editorial-mono text-xs text-muted">
@@ -740,10 +740,10 @@ export function TradePage() {
             </span>
           </div>
           <div className="flex items-baseline gap-0.5">
-            <span className="editorial-mono text-[3rem] font-semibold tracking-[-0.06em] text-foreground">
+            <span className="editorial-display text-foreground">
               ${amountParts.integer}
             </span>
-            <span className="editorial-mono text-2xl font-semibold tracking-[-0.05em] text-foreground">
+            <span className="editorial-display-xs text-foreground">
               .{amountParts.decimal}
             </span>
           </div>
@@ -775,10 +775,10 @@ export function TradePage() {
         {isPerp && (
           <div className="editorial-card mt-4 p-5">
             <div className="flex items-center justify-between mb-3">
-              <span className="editorial-stat-label">
+              <span className="editorial-kicker">
                 {t("trade.leverage")}
               </span>
-              <span className="editorial-mono text-[2rem] font-semibold text-foreground">
+              <span className="editorial-display-sm text-foreground">
                 {leverage}×
               </span>
             </div>
@@ -822,19 +822,19 @@ export function TradePage() {
         {/* Trade Stats */}
         <div className="editorial-card mt-4 space-y-3 p-5">
           <div className="flex items-center justify-between text-sm">
-            <span className="editorial-stat-label">{t("trade.liq")}</span>
+            <span className="editorial-kicker">{t("trade.liq")}</span>
             <span className="editorial-mono font-semibold text-foreground">
               {liquidationPx != null ? formatPrice(liquidationPx) : "—"}
             </span>
           </div>
           <div className="flex items-center justify-between text-sm">
-            <span className="editorial-stat-label">{t("trade.fee")}</span>
+            <span className="editorial-kicker">{t("trade.fee")}</span>
             <span className="editorial-mono font-semibold text-foreground">
               ${(amountNum * 0.0005).toFixed(2)}
             </span>
           </div>
           <div className="flex items-center justify-between text-sm">
-            <span className="editorial-stat-label">{t("trade.margin")}</span>
+            <span className="editorial-kicker">{t("trade.margin")}</span>
             <span className="editorial-mono font-semibold text-foreground">
               ${(amountNum / leverage).toFixed(2)}
             </span>
@@ -847,7 +847,7 @@ export function TradePage() {
           className="editorial-card mt-4 flex w-full items-center justify-between p-4 text-left"
         >
           <div>
-            <span className="editorial-stat-label">{t("trade.protection")}</span>
+            <span className="editorial-kicker">{t("trade.protection")}</span>
             <p className="mt-1 max-w-[15rem] text-sm text-muted">
               {orderType === "limit"
                 ? t("trade.addProtectionAfterFills")

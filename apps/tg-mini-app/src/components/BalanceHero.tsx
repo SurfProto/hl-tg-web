@@ -120,10 +120,10 @@ export function BalanceHero() {
         {valueState.state === "ready" ? (
           <>
             <p className="mt-2 flex items-baseline gap-0.5">
-              <span className="editorial-mono text-[2.65rem] font-semibold tracking-[-0.06em] text-foreground">
+              <span className="editorial-display text-foreground">
                 ${totalValueParts.integer}
               </span>
-              <span className="editorial-mono text-[1.7rem] font-semibold tracking-[-0.05em] text-foreground">
+              <span className="editorial-display-sm text-foreground">
                 .{totalValueParts.decimal}
               </span>
             </p>

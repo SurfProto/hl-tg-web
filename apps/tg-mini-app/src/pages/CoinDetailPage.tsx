@@ -208,10 +208,10 @@ export function CoinDetailPage() {
           {priceState === 'ready' ? (
             <>
               <div className="flex items-baseline gap-0.5">
-                <span className="editorial-mono text-[3.05rem] font-semibold tracking-[-0.06em] text-foreground">
+                <span className="editorial-display text-foreground">
                   ${priceParts.integer}
                 </span>
-                <span className="editorial-mono text-[2rem] font-semibold tracking-[-0.05em] text-foreground">
+                <span className="editorial-display-xs text-foreground">
                   .{priceParts.decimal}
                 </span>
               </div>
@@ -282,7 +282,7 @@ export function CoinDetailPage() {
                   top: `${inspectionTooltip.top}px`,
                 }}
               >
-                <div className="editorial-stat-label">
+                <div className="editorial-kicker">
                   {formatTooltipTimestamp(inspectionTooltip.candle, interval)}
                 </div>
                 <div className="editorial-mono mt-1 text-lg font-semibold tracking-tight text-foreground">

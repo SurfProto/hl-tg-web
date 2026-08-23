@@ -13,7 +13,7 @@ export function AccountSettingsMenu() {
   return (
     <div className="editorial-page px-4 py-5">
       <p className="editorial-kicker">Account</p>
-      <h1 className="editorial-heading mb-5 mt-2 text-foreground">Account settings</h1>
+      <h1 className="editorial-heading mb-5 text-foreground">Account settings</h1>
       <div className="overflow-hidden rounded-[18px] border border-separator bg-white">
         {SETTINGS_ROUTES.map((route, index) => (
           <Link

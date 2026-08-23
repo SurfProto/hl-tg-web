@@ -141,7 +141,7 @@ export function Layout({ children }: LayoutProps) {
                 {({ isActive }) => (
                   <>
                     <Icon active={isActive} />
-                    <span className={`text-[10px] uppercase tracking-[0.12em] ${isActive ? 'font-bold' : 'font-semibold'}`}>{label}</span>
+                    <span className={`editorial-kicker font-sans text-current ${isActive ? 'font-bold' : 'font-semibold'}`}>{label}</span>
                   </>
                 )}
               </NavLink>

@@ -111,13 +111,13 @@ export function ReferralCard({ accessToken, referral, onApplied }: ReferralCardP
 
       <div className="p34k-signal mt-4 flex items-center justify-between rounded-xl px-4 py-3">
         <div>
-          <p className="editorial-stat-label">{t("points.referralCode")}</p>
+          <p className="editorial-kicker">{t("points.referralCode")}</p>
           <p className="editorial-mono mt-1 text-sm font-semibold text-foreground">
             {referral.referralCode}
           </p>
         </div>
         <div className="text-right">
-          <p className="editorial-stat-label">{t("points.referral.fundedTotal")}</p>
+          <p className="editorial-kicker">{t("points.referral.fundedTotal")}</p>
           <p className="editorial-mono mt-1 text-sm font-semibold text-foreground">
             {referral.fundedReferralCount}/{referral.referredCount}
           </p>
@@ -149,7 +149,7 @@ export function ReferralCard({ accessToken, referral, onApplied }: ReferralCardP
         </div>
       ) : (
         <div className="mt-4 rounded-xl border border-border bg-white p-3">
-          <label className="editorial-stat-label" htmlFor="manual-referral-code">
+          <label className="editorial-kicker" htmlFor="manual-referral-code">
             {t("points.enterReferralCode")}
           </label>
           <div className="mt-2 flex gap-2">

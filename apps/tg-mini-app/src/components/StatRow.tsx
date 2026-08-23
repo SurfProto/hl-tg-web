@@ -19,7 +19,7 @@ export function StatRow({ label, value, valueColor = 'neutral', mono = false, no
 
   return (
     <div className={`flex items-center justify-between py-4 ${borderClass}`}>
-      <span className="editorial-stat-label min-w-0 truncate pr-3">{label}</span>
+      <span className="editorial-kicker min-w-0 truncate pr-3">{label}</span>
       <span className={`flex-shrink-0 text-right text-sm font-semibold ${valueClass} ${fontClass}`}>{value}</span>
     </div>
   );

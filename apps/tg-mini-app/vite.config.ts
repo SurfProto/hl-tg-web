@@ -1,12 +1,25 @@
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
-import { defineConfig } from 'vitest/config';
-import react from '@vitejs/plugin-react';
-import { apiPlugin } from '../../scripts/vite-plugin-api';
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+import { defineConfig } from "vitest/config";
+import react from "@vitejs/plugin-react";
+import { apiPlugin } from "../../scripts/vite-plugin-api";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+
+// Which build a report came from. Vercel exposes the commit at build time and
+// nothing else in the app knew its own version, so a client report could not
+// be tied to the code that produced it. Falls back to "dev" locally, where the
+// answer is whatever is in the working tree.
+const buildId = (
+  process.env.VERCEL_GIT_COMMIT_SHA ??
+  process.env.GITHUB_SHA ??
+  "dev"
+).slice(0, 7);
 
 export default defineConfig({
+  define: {
+    __BUILD_ID__: JSON.stringify(buildId),
+  },
   // apiPlugin serves the repo-root api/ functions from this dev server. Without
   // it every /api/* request falls through to the SPA fallback and returns
   // index.html, which is why local development could not exercise the app.
@@ -28,32 +41,32 @@ export default defineConfig({
   resolve: {
     // Forces single React instance across all dependencies (pnpm-compatible)
     dedupe: [
-      'react',
-      'react-dom',
-      'react/jsx-runtime',
-      'react/jsx-dev-runtime',
+      "react",
+      "react-dom",
+      "react/jsx-runtime",
+      "react/jsx-dev-runtime",
     ],
   },
   build: {
-    outDir: 'dist',
+    outDir: "dist",
     sourcemap: true,
     rollupOptions: {
       output: {
         manualChunks: {
-          react: ['react', 'react-dom'],
+          react: ["react", "react-dom"],
         },
       },
     },
   },
   test: {
-    environment: 'jsdom',
-    setupFiles: ['./src/test/setup.ts'],
+    environment: "jsdom",
+    setupFiles: ["./src/test/setup.ts"],
     css: true,
-    exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
+    exclude: ["e2e/**", "node_modules/**", "dist/**"],
     coverage: {
-      provider: 'v8',
-      reporter: ['text', 'html'],
-      reportsDirectory: './coverage',
+      provider: "v8",
+      reporter: ["text", "html"],
+      reportsDirectory: "./coverage",
     },
   },
 });

@@ -1,12 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  clearAgentKey,
+  TSUNAMI_AGENT_NAME,
+  buildAgentName,
+  clearStoredAgentKey,
   generateAgentKey,
   getAgentAddress,
+  getStoredAgentApprovedAt,
   getStoredAgentExpiry,
   getStoredAgentKey,
   isAgentKeyExpired,
+  isTsunamiAgentName,
+  storeAgentApprovedAt,
   storeAgentExpiry,
   storeAgentKey,
 } from "./agent";
@@ -123,7 +128,7 @@ describe("agent key storage", () => {
     storeAgentKey(WALLET, KEY_ONE);
     expect(getStoredAgentKey(WALLET_LOWER)).toBe(KEY_ONE);
 
-    clearAgentKey(WALLET);
+    clearStoredAgentKey(WALLET);
     storeAgentKey(WALLET_LOWER, KEY_TWO);
     expect(getStoredAgentKey(WALLET)).toBe(KEY_TWO);
   });
@@ -237,12 +242,12 @@ describe("isAgentKeyExpired", () => {
   });
 });
 
-describe("clearAgentKey", () => {
+describe("clearStoredAgentKey", () => {
   it("removes both the key and its expiry", () => {
     storeAgentKey(WALLET, KEY_ONE);
     storeAgentExpiry(WALLET, 1_760_000_000_000);
 
-    clearAgentKey(WALLET);
+    clearStoredAgentKey(WALLET);
 
     expect(getStoredAgentKey(WALLET)).toBeNull();
     expect(getStoredAgentExpiry(WALLET)).toBeNull();
@@ -253,7 +258,7 @@ describe("clearAgentKey", () => {
     storeAgentKey(WALLET_LOWER, KEY_ONE);
     storeAgentExpiry(WALLET_LOWER, 1_760_000_000_000);
 
-    clearAgentKey(WALLET);
+    clearStoredAgentKey(WALLET);
 
     expect(storage.length).toBe(0);
   });
@@ -262,13 +267,13 @@ describe("clearAgentKey", () => {
     storeAgentKey(WALLET, KEY_ONE);
     storeAgentKey(OTHER_WALLET, KEY_TWO);
 
-    clearAgentKey(WALLET);
+    clearStoredAgentKey(WALLET);
 
     expect(getStoredAgentKey(OTHER_WALLET)).toBe(KEY_TWO);
   });
 
   it("is a no-op when nothing is stored", () => {
-    expect(() => clearAgentKey(WALLET)).not.toThrow();
+    expect(() => clearStoredAgentKey(WALLET)).not.toThrow();
     expect(getStoredAgentKey(WALLET)).toBeNull();
   });
 });
@@ -307,7 +312,7 @@ describe("reapproval", () => {
     vi.setSystemTime(1_760_000_000_000);
 
     const first = approve(WALLET, Date.now() + DAY_MS);
-    clearAgentKey(WALLET);
+    clearStoredAgentKey(WALLET);
     const second = approve(WALLET, Date.now() + DAY_MS);
 
     expect(second).not.toBe(first);
@@ -324,5 +329,64 @@ describe("reapproval", () => {
     expect(a).not.toBe(b);
     expect(approve(WALLET, Date.now() + DAY_MS)).toBe(a);
     expect(approve(OTHER_WALLET, Date.now() + DAY_MS)).toBe(b);
+  });
+});
+
+describe("buildAgentName", () => {
+  it("keeps the name constant and carries the expiry as a suffix", () => {
+    // The constant part is what makes a later approval replace this agent
+    // rather than register a second one; the suffix is how the exchange is
+    // told when the approval should lapse.
+    const name = buildAgentName(1_760_000_000_000);
+
+    expect(name).toBe(`${TSUNAMI_AGENT_NAME} valid_until 1760000000000`);
+  });
+
+  it("produces the same name for two different expiries", () => {
+    const first = buildAgentName(1_000);
+    const second = buildAgentName(2_000);
+
+    expect(first.split(" valid_until ")[0]).toBe(
+      second.split(" valid_until ")[0],
+    );
+  });
+});
+
+describe("isTsunamiAgentName", () => {
+  it("accepts the bare name and the name with the expiry suffix", () => {
+    // Which of the two the exchange echoes back is unconfirmed, and matching
+    // too strictly would drop a live agent from reconciliation.
+    expect(isTsunamiAgentName(TSUNAMI_AGENT_NAME)).toBe(true);
+    expect(isTsunamiAgentName(buildAgentName(1_760_000_000_000))).toBe(true);
+    expect(isTsunamiAgentName(`  ${TSUNAMI_AGENT_NAME}  `)).toBe(true);
+  });
+
+  it("rejects another integration's agent", () => {
+    expect(isTsunamiAgentName("some-other-bot")).toBe(false);
+    expect(isTsunamiAgentName("tsnm-trade-agent-2")).toBe(false);
+    expect(isTsunamiAgentName(undefined)).toBe(false);
+    expect(isTsunamiAgentName(null)).toBe(false);
+    expect(isTsunamiAgentName("")).toBe(false);
+  });
+});
+
+describe("storeAgentApprovedAt", () => {
+  it("round-trips the approval time", () => {
+    storeAgentApprovedAt(WALLET, 1_760_000_000_000);
+    expect(getStoredAgentApprovedAt(WALLET)).toBe(1_760_000_000_000);
+  });
+
+  it("is cleared along with the key", () => {
+    // The grace window it bounds must not outlive the key it belongs to.
+    storeAgentKey(WALLET, KEY_ONE);
+    storeAgentApprovedAt(WALLET, 1_760_000_000_000);
+
+    clearStoredAgentKey(WALLET);
+
+    expect(getStoredAgentApprovedAt(WALLET)).toBeNull();
+  });
+
+  it("answers null when nothing was stored", () => {
+    expect(getStoredAgentApprovedAt(WALLET)).toBeNull();
   });
 });

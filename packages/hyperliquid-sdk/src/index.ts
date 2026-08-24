@@ -66,6 +66,8 @@ export {
   useRevokeBuilderFee,
   useAgentApprovalStatus,
   useApproveAgentTrading,
+  useRevokeAgentTrading,
+  useAgentRecoveryIncident,
   useUnifiedAccountApproval,
   useSetUnifiedAccount,
   useHip3DexAbstractionApproval,
@@ -89,12 +91,38 @@ export {
 
 // Agent wallet helpers
 export {
+  AGENT_APPROVAL_WINDOW_MS,
+  TSUNAMI_AGENT_NAME,
+  buildAgentName,
   generateAgentKey,
   getAgentAddress,
   getStoredAgentKey,
+  isTsunamiAgentName,
   storeAgentKey,
   clearAgentKey,
+  clearStoredAgentKey,
 } from "./agent";
+
+// Trading authorization failures and the recovery they trigger
+export {
+  AgentAuthorizationError,
+  isAgentAuthorizationError,
+  isUserRejectedSignature,
+  maskAddress,
+  redactAddresses,
+} from "./exchange-response";
+export {
+  clearAgentRecoveryIncident,
+  getLastAgentRecoveryIncident,
+  reportAgentRecoveryIncident,
+  subscribeToAgentRecovery,
+} from "./agent-recovery";
+export type { AgentRecoveryIncident } from "./agent-recovery";
+export {
+  AGENT_PROPAGATION_GRACE_MS,
+  reduceAgentApproval,
+} from "./trading-setup";
+export type { AgentApprovalState } from "./trading-setup";
 
 // Shared constants (chain addresses, IDs)
 export {

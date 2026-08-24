@@ -77,6 +77,25 @@ export type ApprovalRequirementState =
   | "approved"
   | "missing"
   | "stale";
+
+/**
+ * Why trading is or is not authorized, as opposed to whether it is.
+ *
+ * `ApprovalRequirementState` answers the question the order button asks and
+ * collapses every failure into "missing". These are the distinctions a user
+ * needs to act: a key that was never created, one that ran out, one another
+ * device replaced, one too new to have appeared yet, one we could not check,
+ * and one the exchange refused mid-trade despite looking valid.
+ */
+export type AgentAuthorizationReason =
+  | "active"
+  | "missing-local-key"
+  | "expired"
+  | "revoked-or-replaced"
+  | "remote-only"
+  | "awaiting-propagation"
+  | "verification-unavailable"
+  | "signature-rejected";
 export type TradingSetupStep = "agent" | "builder" | "unified";
 
 export interface StableBalanceState {

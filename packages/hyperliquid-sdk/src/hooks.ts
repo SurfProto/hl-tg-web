@@ -14,13 +14,23 @@ import {
   isBuilderConfigured,
 } from "./builder";
 import {
+  TSUNAMI_AGENT_NAME,
+  clearStoredAgentKey,
   generateAgentKey,
   getAgentAddress,
+  getStoredAgentApprovedAt,
   getStoredAgentKey,
+  storeAgentApprovedAt,
   storeAgentKey,
   storeAgentExpiry,
   isAgentKeyExpired,
 } from "./agent";
+import {
+  clearAgentRecoveryIncident,
+  getLastAgentRecoveryIncident,
+  subscribeToAgentRecovery,
+  type AgentRecoveryIncident,
+} from "./agent-recovery";
 import {
   evaluateTradingSetupStatus,
   getUnifiedApprovalState as getUnifiedApprovalSnapshot,
@@ -42,6 +52,7 @@ import {
   type AgentApprovalState,
   type UnifiedApprovalState,
 } from "./trading-setup";
+import { isUserRejectedSignature } from "./exchange-response";
 import type {
   AccountState,
   ApprovalRequirementState,
@@ -82,6 +93,7 @@ import {
 } from "./edge-proxy";
 
 const publicClientCache = new Map<"mainnet" | "testnet", HyperliquidClient>();
+const accountClientCache = new Map<string, HyperliquidClient>();
 const STABLE_SWAP_ASSETS = getSupportedStableAssets();
 const SPOT_USDC_DUST_THRESHOLD = 0.01;
 const UNIFIED_ACCOUNT_PREFERENCE_PREFIX = "hl_pref_unified_";
@@ -153,9 +165,7 @@ function storeBuilderApproved(addr: string, feeTenthsBp: number): void {
   }
 }
 
-function getStoredUnifiedMode(
-  addr: string,
-): UnifiedApprovalState | undefined {
+function getStoredUnifiedMode(addr: string): UnifiedApprovalState | undefined {
   try {
     const v = window.localStorage.getItem(UNIFIED_MODE_KEY(addr));
     if (!v) return undefined;
@@ -179,12 +189,31 @@ function storeUnifiedMode(
   }
 }
 
+/**
+ * Stop signing with a key, everywhere it is held.
+ *
+ * Both copies or neither: the in-memory signer is restored from storage on the
+ * next render, so clearing one without the other quietly reinstates the key
+ * that just failed.
+ */
+function forgetAgentKey(client: HyperliquidClient, walletAddress: string) {
+  client.clearAgentKey();
+  try {
+    clearStoredAgentKey(walletAddress);
+  } catch {
+    // ignore localStorage errors in embedded environments
+  }
+}
+
 function getLocalAgentApprovalState(
   client: HyperliquidClient,
   walletAddress: string,
 ): AgentApprovalState {
   const privateKey = getStoredAgentKey(walletAddress);
   if (!privateKey) {
+    // Storage is the durable source of truth. If it was cleared while this
+    // session was open, do not leave a signer alive only in module memory.
+    client.clearAgentKey();
     return {
       address: null,
       approved: false,
@@ -192,6 +221,9 @@ function getLocalAgentApprovalState(
       isExpired: false,
       validUntil: null,
       state: "missing",
+      reason: "missing-local-key",
+      name: null,
+      approvedAt: null,
       remoteConfirmed: false,
       lastVerifiedAt: null,
     };
@@ -201,13 +233,18 @@ function getLocalAgentApprovalState(
     client.setAgentKey(privateKey);
   }
 
+  const expired = isAgentKeyExpired(walletAddress);
+
   return {
     address: getAgentAddress(privateKey),
-    approved: !isAgentKeyExpired(walletAddress),
+    approved: !expired,
     hasLocalKey: true,
-    isExpired: isAgentKeyExpired(walletAddress),
+    isExpired: expired,
     validUntil: null,
-    state: isAgentKeyExpired(walletAddress) ? "missing" : "approved",
+    state: expired ? "missing" : "approved",
+    reason: expired ? "expired" : "active",
+    name: TSUNAMI_AGENT_NAME,
+    approvedAt: getStoredAgentApprovedAt(walletAddress),
     remoteConfirmed: false,
     lastVerifiedAt: null,
   };
@@ -219,12 +256,9 @@ async function getAgentApprovalState(
   previousState?: AgentApprovalState,
 ): Promise<AgentApprovalState> {
   const localState = getLocalAgentApprovalState(client, walletAddress);
-  const hasLocalAgent =
-    localState.hasLocalKey && !localState.isExpired && localState.address;
-
-  const extraAgents = hasLocalAgent
-    ? await client.getExtraAgents().catch(() => null)
-    : null;
+  // Named remote approval is useful even when this browser has lost its local
+  // key: the user can still revoke it with the main wallet signature.
+  const extraAgents = await client.getExtraAgents().catch(() => null);
 
   const { next, validUntilToPersist } = reduceAgentApproval({
     localState,
@@ -235,6 +269,13 @@ async function getAgentApprovalState(
 
   if (validUntilToPersist != null) {
     storeAgentExpiry(walletAddress, validUntilToPersist);
+  }
+
+  if (
+    next.hasLocalKey &&
+    (next.reason === "revoked-or-replaced" || next.reason === "expired")
+  ) {
+    forgetAgentKey(client, walletAddress);
   }
 
   return next;
@@ -368,26 +409,74 @@ export function useAccountToken(): () => Promise<string | null> {
 export function useHyperliquid() {
   const { user } = usePrivy();
   const { wallets } = useWallets();
-  const [provider, setProvider] = useState<unknown>(null);
+  const [providerState, setProviderState] = useState<{
+    scope: string;
+    provider: unknown;
+  } | null>(null);
   const testnet = import.meta.env.VITE_HYPERLIQUID_TESTNET === "true";
   const walletAddress = user?.wallet?.address ?? null;
+  const clientScope = walletAddress
+    ? `${walletAddress.toLowerCase()}:${testnet ? "testnet" : "mainnet"}`
+    : null;
+  const previousClientScope = useRef<string | null>(clientScope);
 
   // getEthereumProvider() is async on ConnectedWallet — resolve it once and store
-  const embeddedWallet = wallets.find((w) => w.walletClientType === "privy");
+  const embeddedWallet = wallets.find(
+    (w) =>
+      w.walletClientType === "privy" &&
+      walletAddress != null &&
+      w.address?.toLowerCase() === walletAddress.toLowerCase(),
+  );
   useEffect(() => {
-    if (!embeddedWallet) return;
-    embeddedWallet.getEthereumProvider().then(setProvider);
-  }, [embeddedWallet]);
+    let cancelled = false;
+    if (!embeddedWallet || !clientScope) {
+      setProviderState(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const providerScope = clientScope;
+    embeddedWallet.getEthereumProvider().then((provider) => {
+      if (!cancelled) setProviderState({ scope: providerScope, provider });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [clientScope, embeddedWallet]);
+
+  // A wallet switch renders before the next provider promise resolves. Never
+  // let the prior account's provider cross that render boundary.
+  const provider =
+    providerState?.scope === clientScope ? providerState.provider : null;
 
   const client = useMemo(() => {
-    if (!walletAddress) return null;
-    return new HyperliquidClient({
+    if (!walletAddress || !clientScope) return null;
+    const existing = accountClientCache.get(clientScope);
+    if (existing) return existing;
+
+    const created = new HyperliquidClient({
       masterAccountAddress: walletAddress,
       walletAddress,
       customSigner: provider ?? undefined,
       testnet,
     });
-  }, [walletAddress, provider, testnet]);
+    accountClientCache.set(clientScope, created);
+    return created;
+  }, [clientScope, provider, testnet, walletAddress]);
+
+  useEffect(() => {
+    const previous = previousClientScope.current;
+    if (previous && previous !== clientScope) {
+      accountClientCache.get(previous)?.clearAgentKey();
+      accountClientCache.delete(previous);
+    }
+    previousClientScope.current = clientScope;
+  }, [clientScope]);
+
+  useEffect(() => {
+    if (client && provider) client.setCustomSigner(provider);
+  }, [client, provider]);
 
   // Restore agent key from localStorage — runs once per wallet address change, not on every render
   useEffect(() => {
@@ -399,6 +488,12 @@ export function useHyperliquid() {
   }, [client, walletAddress]);
 
   return { client, isConnected: Boolean(client) };
+}
+
+/** Test-only reset so a retained signer never leaks state between cases. */
+export function __resetHyperliquidClientRegistryForTests(): void {
+  for (const client of accountClientCache.values()) client.clearAgentKey();
+  accountClientCache.clear();
 }
 
 /**
@@ -715,8 +810,9 @@ export function useCancelOrder() {
     onMutate: async ({ oid }) => {
       await queryClient.cancelQueries({ queryKey: openOrdersKey });
       const previous = queryClient.getQueryData<OpenOrder[]>(openOrdersKey);
-      queryClient.setQueryData<OpenOrder[]>(openOrdersKey, (old) =>
-        old?.filter((o) => o.oid !== oid) ?? [],
+      queryClient.setQueryData<OpenOrder[]>(
+        openOrdersKey,
+        (old) => old?.filter((o) => o.oid !== oid) ?? [],
       );
       return { previous };
     },
@@ -1238,7 +1334,11 @@ export function useStableSwap() {
         }
 
         const initialSpotUsdc = roundStableAmount(
-          await waitForSpotBalance(client, "USDC", (available) => available >= 0),
+          await waitForSpotBalance(
+            client,
+            "USDC",
+            (available) => available >= 0,
+          ),
         );
         await placeStableLeg(fromAsset, "USDC", normalizedAmount);
         const intermediateUsdc = roundStableAmount(
@@ -1428,9 +1528,16 @@ export function useAgentApprovalStatus() {
         ? getLocalAgentApprovalState(client, walletAddress)
         : undefined,
     enabled: !!client && !!walletAddress,
-    // Check once per session. Mid-session invalidation surfaces via the
-    // order-placement error path. See plan Fix #4.
-    staleTime: Infinity,
+    // Local storage makes the first render immediate, but it is not proof that
+    // the exchange still authorizes this key. Always reconcile once on mount.
+    staleTime: 30_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    // A newly approved agent can take a moment to appear in extraAgents. Poll
+    // only while that bounded grace is active; the reducer turns the state into
+    // revoked-or-replaced after two minutes, which stops these checks.
+    refetchInterval: (query) =>
+      query.state.data?.reason === "awaiting-propagation" ? 5_000 : false,
   });
 }
 
@@ -1443,22 +1550,39 @@ export function useApproveAgentTrading() {
   return useMutation({
     mutationFn: async () => {
       if (!client || !walletAddress) throw new Error("Not connected");
-      const privateKey = getStoredAgentKey(walletAddress) ?? generateAgentKey();
+
+      // A new key every time, never the stored one. Reauthorizing is what a
+      // user does when the old key stopped working, and re-approving that same
+      // key is the one outcome that cannot help. Hyperliquid also warns
+      // against reusing an address it has deregistered, because the nonce
+      // state that made replay impossible may already have been pruned.
+      const privateKey = generateAgentKey();
       const agentAddress = getAgentAddress(privateKey);
+
+      // Nothing is persisted until the exchange has accepted the approval, so
+      // a rejected or abandoned signature leaves the previous state intact
+      // rather than storing a key that was never approved.
       const { expiryMs } = await client.approveAgent(agentAddress);
-      storeAgentExpiry(walletAddress, expiryMs);
+
       storeAgentKey(walletAddress, privateKey);
+      storeAgentExpiry(walletAddress, expiryMs);
+      storeAgentApprovedAt(walletAddress, Date.now());
       client.setAgentKey(privateKey);
+
+      return { agentAddress };
     },
-    onSuccess: () => {
-      const privateKey = walletAddress ? getStoredAgentKey(walletAddress) : null;
+    onSuccess: ({ agentAddress }) => {
+      clearAgentRecoveryIncident(walletAddress);
       queryClient.setQueryData(["agentApproval", walletAddress], {
-        address: privateKey ? getAgentAddress(privateKey) : null,
+        address: agentAddress,
         approved: true,
         hasLocalKey: true,
         isExpired: false,
         validUntil: null,
         state: "approved",
+        reason: "awaiting-propagation",
+        name: TSUNAMI_AGENT_NAME,
+        approvedAt: Date.now(),
         remoteConfirmed: false,
         lastVerifiedAt: Date.now(),
       } satisfies AgentApprovalState);
@@ -1468,11 +1592,108 @@ export function useApproveAgentTrading() {
   });
 }
 
+/**
+ * Revoke this account's trading authorization.
+ *
+ * Three outcomes, and they are not interchangeable. A signature the user
+ * declined changes nothing anywhere, so the local key stays usable. A
+ * confirmed replacement means the exchange no longer holds our agent. Anything
+ * else — a request that failed after signing, a verification that could not be
+ * read — leaves the remote side genuinely unknown, and the honest response is
+ * to stop this device from signing while saying plainly that the revocation is
+ * unconfirmed.
+ */
+export function useRevokeAgentTrading() {
+  const { client } = useHyperliquid();
+  const { user } = usePrivy();
+  const queryClient = useQueryClient();
+  const walletAddress = user?.wallet?.address;
+
+  return useMutation({
+    mutationFn: async () => {
+      if (!client || !walletAddress) throw new Error("Not connected");
+
+      let remoteConfirmed = false;
+      try {
+        ({ remoteConfirmed } = await client.revokeAgent());
+      } catch (error) {
+        if (isUserRejectedSignature(error)) throw error;
+
+        // Signed, then something went wrong. The approval may or may not have
+        // landed, so the key has to stop being used either way.
+        forgetAgentKey(client, walletAddress);
+        throw error;
+      }
+
+      forgetAgentKey(client, walletAddress);
+      return { remoteConfirmed };
+    },
+    onSuccess: () => {
+      clearAgentRecoveryIncident(walletAddress);
+      queryClient.invalidateQueries({ queryKey: ["agentApproval"] });
+      queryClient.invalidateQueries({ queryKey: ["userState"] });
+    },
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ["agentApproval"] });
+    },
+  });
+}
+
+/**
+ * The trading action that was refused for lack of a valid agent, if one was.
+ *
+ * Subscribes to the client's incident store rather than to any one mutation,
+ * because the sheet has to open from whichever screen the user was on and the
+ * refusal can come from any of eleven actions. The retained incident is read
+ * on mount so a screen that was still loading when the failure happened does
+ * not miss it.
+ */
+export function useAgentRecoveryIncident() {
+  const { user } = usePrivy();
+  const queryClient = useQueryClient();
+  const walletAddress = user?.wallet?.address ?? null;
+  const [incident, setIncident] = useState<AgentRecoveryIncident | null>(() =>
+    getLastAgentRecoveryIncident(walletAddress),
+  );
+
+  useEffect(() => {
+    setIncident(getLastAgentRecoveryIncident(walletAddress));
+    return subscribeToAgentRecovery(setIncident, walletAddress);
+  }, [walletAddress]);
+
+  // Effects run after a render. Scope synchronously as well so account A's
+  // retained raw response cannot appear for one frame after switching to B.
+  const scopedIncident =
+    incident &&
+    walletAddress &&
+    incident.accountAddress.toLowerCase() === walletAddress.toLowerCase()
+      ? incident
+      : null;
+
+  // The approval query is cached for the session, so without this the app goes
+  // on believing trading is authorized after the exchange has said otherwise —
+  // and the order button stays lit on a key that no longer exists. Refetching
+  // reconciles against the exchange and settles what is actually true.
+  useEffect(() => {
+    if (!scopedIncident) return;
+    queryClient.invalidateQueries({ queryKey: ["agentApproval"] });
+  }, [queryClient, scopedIncident]);
+
+  const dismiss = useCallback(() => {
+    clearAgentRecoveryIncident(walletAddress);
+    setIncident(null);
+  }, [walletAddress]);
+
+  return { incident: scopedIncident, dismiss };
+}
+
 export function useUnifiedAccountApproval() {
   const { user } = usePrivy();
   const userStateQuery = useUserState();
   const walletAddress = user?.wallet?.address;
-  const storedMode = walletAddress ? getStoredUnifiedMode(walletAddress) : undefined;
+  const storedMode = walletAddress
+    ? getStoredUnifiedMode(walletAddress)
+    : undefined;
 
   const data = useMemo(() => {
     return getUnifiedApprovalSnapshot(userStateQuery.data, storedMode);
@@ -1590,8 +1811,14 @@ export function useSetupTrading(_target?: { isHip3?: boolean } | null) {
         needsAgentApproval: true,
         needsBuilderApproval: isBuilderConfigured(),
         needsUnifiedEnable: false,
-        pendingSteps: ["agent", ...(isBuilderConfigured() ? (["builder"] as const) : [])],
-        blockingSteps: ["agent", ...(isBuilderConfigured() ? (["builder"] as const) : [])],
+        pendingSteps: [
+          "agent",
+          ...(isBuilderConfigured() ? (["builder"] as const) : []),
+        ],
+        blockingSteps: [
+          "agent",
+          ...(isBuilderConfigured() ? (["builder"] as const) : []),
+        ],
         stepStates: {
           agent: "missing",
           builder: isBuilderConfigured() ? "missing" : "approved",
@@ -1651,7 +1878,10 @@ export function useSetupTrading(_target?: { isHip3?: boolean } | null) {
       abstractionMode: unifiedState.abstractionMode,
       prefersUnifiedAccount: getUnifiedPreference(walletAddress),
       agentApproval: nextAgent.data,
-      builderMaxFee: typeof nextBuilder.data === "number" ? nextBuilder.data : builderApproval.data,
+      builderMaxFee:
+        typeof nextBuilder.data === "number"
+          ? nextBuilder.data
+          : builderApproval.data,
       builderError: Boolean(nextBuilder.isError),
       unifiedApproval: nextUnified.data,
       unifiedError: Boolean(nextUnified.isError),
@@ -1675,11 +1905,15 @@ export function useSetupTrading(_target?: { isHip3?: boolean } | null) {
       let privateKey = getStoredAgentKey(walletAddress);
 
       if (currentStatus.needsAgentApproval) {
-        privateKey = privateKey ?? generateAgentKey();
+        // Always a new key when an approval is needed — see
+        // useApproveAgentTrading for why reusing the stored one is the one
+        // thing that cannot fix a key the exchange has stopped accepting.
+        privateKey = generateAgentKey();
         const agentAddress = getAgentAddress(privateKey);
         const { expiryMs } = await client.approveAgent(agentAddress);
-        storeAgentExpiry(walletAddress, expiryMs);
         storeAgentKey(walletAddress, privateKey);
+        storeAgentExpiry(walletAddress, expiryMs);
+        storeAgentApprovedAt(walletAddress, Date.now());
         client.setAgentKey(privateKey);
         queryClient.setQueryData(["agentApproval", walletAddress], {
           address: agentAddress,
@@ -1688,6 +1922,9 @@ export function useSetupTrading(_target?: { isHip3?: boolean } | null) {
           isExpired: false,
           validUntil: expiryMs,
           state: "approved",
+          reason: "awaiting-propagation",
+          name: TSUNAMI_AGENT_NAME,
+          approvedAt: Date.now(),
           remoteConfirmed: false,
           lastVerifiedAt: Date.now(),
         } satisfies AgentApprovalState);
@@ -1993,7 +2230,8 @@ export function usePortfolioHistory(period: PortfolioRange = "7d") {
       if (!accessToken) {
         throw new Error("Missing access token");
       }
-      return (await fetchAccountPortfolio(accessToken, period)).accountValueHistory;
+      return (await fetchAccountPortfolio(accessToken, period))
+        .accountValueHistory;
     },
     enabled: Boolean(scope),
     staleTime: 60_000,

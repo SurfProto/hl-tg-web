@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AGENT_PROPAGATION_GRACE_MS,
   getBuilderApprovalState,
   getUnifiedApprovalRequirementState,
   reduceAgentApproval,
@@ -16,6 +17,9 @@ const localApproved: AgentApprovalState = {
   isExpired: false,
   validUntil: null,
   state: "approved",
+  reason: "active",
+  name: "tsnm-trade-agent",
+  approvedAt: NOW,
   remoteConfirmed: false,
   lastVerifiedAt: null,
 };
@@ -27,6 +31,9 @@ const noLocalKey: AgentApprovalState = {
   isExpired: false,
   validUntil: null,
   state: "missing",
+  reason: "missing-local-key",
+  name: null,
+  approvedAt: null,
   remoteConfirmed: false,
   lastVerifiedAt: null,
 };
@@ -65,7 +72,9 @@ describe("getUnifiedApprovalRequirementState", () => {
   });
 
   it("separates a failed check from a completed one", () => {
-    expect(getUnifiedApprovalRequirementState(undefined, false)).toBe("checking");
+    expect(getUnifiedApprovalRequirementState(undefined, false)).toBe(
+      "checking",
+    );
     expect(getUnifiedApprovalRequirementState(undefined, true)).toBe("stale");
   });
 });
@@ -84,6 +93,29 @@ describe("reduceAgentApproval", () => {
       lastVerifiedAt: NOW,
     });
     expect(validUntilToPersist).toBeNull();
+  });
+
+  it("finds a named remote authorization after local storage is lost", () => {
+    const { next } = reduceAgentApproval({
+      localState: noLocalKey,
+      extraAgents: [
+        {
+          address: "0xRemoteAgent",
+          name: "tsnm-trade-agent",
+          validUntil: NOW + 60_000,
+        },
+      ],
+      now: NOW,
+    });
+
+    expect(next).toMatchObject({
+      address: "0xRemoteAgent",
+      approved: false,
+      hasLocalKey: false,
+      remoteConfirmed: true,
+      reason: "remote-only",
+      lastVerifiedAt: NOW,
+    });
   });
 
   it("treats an expired local key as missing", () => {
@@ -197,6 +229,146 @@ describe("reduceAgentApproval", () => {
     expect(next.lastVerifiedAt).toBe(NOW - 9_000);
   });
 
+  it("stops waiting for propagation once the grace window has passed", () => {
+    // The same absence as the case above, read a few minutes later. Waiting
+    // forever is how an agent revoked from another device went unnoticed until
+    // a trade failed.
+    const { next } = reduceAgentApproval({
+      localState: {
+        ...localApproved,
+        approvedAt: NOW - AGENT_PROPAGATION_GRACE_MS - 1,
+      },
+      extraAgents: [{ address: "0xSomeoneElse" }],
+      previousState: { ...localApproved, remoteConfirmed: false },
+      now: NOW,
+    });
+
+    expect(next).toMatchObject({
+      state: "missing",
+      approved: false,
+      reason: "revoked-or-replaced",
+    });
+  });
+
+  it("ends the grace early when our name is held by another address", () => {
+    // Not an absence to wait out: the name is registered, just not to us,
+    // which is what another device reauthorizing looks like.
+    const { next } = reduceAgentApproval({
+      localState: localApproved,
+      extraAgents: [
+        {
+          address: "0xSomeoneElse",
+          name: "tsnm-trade-agent",
+          validUntil: NOW + 60_000,
+        },
+      ],
+      previousState: { ...localApproved, remoteConfirmed: false },
+      now: NOW,
+    });
+
+    expect(next).toMatchObject({
+      state: "missing",
+      approved: false,
+      reason: "revoked-or-replaced",
+    });
+  });
+
+  it("honors propagation grace when reauthorization still echoes the predecessor", () => {
+    const { next } = reduceAgentApproval({
+      localState: localApproved,
+      extraAgents: [
+        {
+          address: "0xPreviousAgent",
+          name: "tsnm-trade-agent",
+          validUntil: NOW + 60_000,
+        },
+      ],
+      previousState: {
+        ...localApproved,
+        reason: "awaiting-propagation",
+        remoteConfirmed: false,
+      },
+      now: NOW,
+    });
+
+    expect(next).toMatchObject({
+      state: "stale",
+      approved: true,
+      reason: "awaiting-propagation",
+    });
+  });
+
+  it("fails closed on duplicate Tsunami agents after propagation grace", () => {
+    const { next } = reduceAgentApproval({
+      localState: {
+        ...localApproved,
+        approvedAt: NOW - AGENT_PROPAGATION_GRACE_MS - 1,
+      },
+      extraAgents: [
+        { address: "0xAgent", name: "tsnm-trade-agent" },
+        { address: "0xOtherAgent", name: "tsnm-trade-agent" },
+      ],
+      previousState: {
+        ...localApproved,
+        reason: "awaiting-propagation",
+      },
+      now: NOW,
+    });
+
+    expect(next).toMatchObject({
+      approved: false,
+      state: "missing",
+      reason: "revoked-or-replaced",
+    });
+  });
+
+  it("recognises our name whether or not the expiry suffix is echoed back", () => {
+    // Which form the exchange stores is unconfirmed, so both have to count.
+    const { next } = reduceAgentApproval({
+      localState: localApproved,
+      extraAgents: [
+        {
+          address: "0xSomeoneElse",
+          name: `tsnm-trade-agent valid_until ${NOW}`,
+        },
+      ],
+      previousState: { ...localApproved, remoteConfirmed: false },
+      now: NOW,
+    });
+
+    expect(next.reason).toBe("revoked-or-replaced");
+  });
+
+  it("reports an unreachable lookup as unverified, not as revoked", () => {
+    const { next } = reduceAgentApproval({
+      localState: localApproved,
+      extraAgents: null,
+      now: NOW,
+    });
+
+    expect(next).toMatchObject({
+      state: "stale",
+      approved: true,
+      reason: "verification-unavailable",
+    });
+  });
+
+  it("keeps the name the exchange reports", () => {
+    const { next } = reduceAgentApproval({
+      localState: localApproved,
+      extraAgents: [
+        {
+          address: "0xAgent",
+          name: "tsnm-trade-agent",
+          validUntil: NOW + 60_000,
+        },
+      ],
+      now: NOW,
+    });
+
+    expect(next).toMatchObject({ reason: "active", name: "tsnm-trade-agent" });
+  });
+
   it("treats a listed agent with no expiry as approved", () => {
     const { next, validUntilToPersist } = reduceAgentApproval({
       localState: localApproved,
@@ -204,7 +376,11 @@ describe("reduceAgentApproval", () => {
       now: NOW,
     });
 
-    expect(next).toMatchObject({ state: "approved", approved: true, validUntil: null });
+    expect(next).toMatchObject({
+      state: "approved",
+      approved: true,
+      validUntil: null,
+    });
     expect(validUntilToPersist).toBeNull();
   });
 });

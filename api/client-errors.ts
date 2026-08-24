@@ -24,7 +24,70 @@ const LIMITS = {
   url: 500,
   userAgent: 300,
   kind: 40,
+  code: 60,
+  action: 60,
+  buildId: 40,
+  agentAddress: 24,
 } as const;
+
+/** The only two networks a report may claim to come from. */
+const NETWORKS = ["mainnet", "testnet"] as const;
+const EXCHANGE_ERROR_CODES = ["AGENT_AUTHORIZATION_REJECTED"] as const;
+const TRADING_ACTIONS = [
+  "cancelAllOrders",
+  "cancelPositionProtection",
+  "cancelOrder",
+  "closePosition",
+  "modifyOrder",
+  "placeOrder",
+  "placeSpotOrder",
+  "placeTriggerOrder",
+  "upsertPositionProtection",
+  "updateIsolatedMargin",
+  "updateLeverage",
+] as const;
+
+/**
+ * The fields an `exchange-action` report may add, and nothing else.
+ *
+ * Built by picking rather than by spreading, deliberately. This endpoint takes
+ * unauthenticated input from a client that can send whatever it likes, and a
+ * pass-through would put whatever that is into the logs — an order size, a
+ * balance, a master wallet address, a key. Anything not named here is dropped,
+ * including an agent address that arrived unmasked: the client masks it, and
+ * a value that still looks like a full address is not trusted to be one that
+ * should be kept.
+ */
+function parseExchangeActionDetail(value: unknown) {
+  if (value == null || typeof value !== "object") return null;
+  const detail = value as Record<string, unknown>;
+
+  const network = NETWORKS.find((candidate) => candidate === detail.network);
+
+  const rawAgentAddress =
+    typeof detail.agentAddress === "string" ? detail.agentAddress.trim() : null;
+  const agentAddress =
+    rawAgentAddress && /^0x[a-fA-F0-9]{4}…[a-fA-F0-9]{4}$/.test(rawAgentAddress)
+      ? rawAgentAddress
+      : null;
+  const code = EXCHANGE_ERROR_CODES.find(
+    (candidate) => candidate === detail.code,
+  );
+  const action = TRADING_ACTIONS.find(
+    (candidate) => candidate === detail.action,
+  );
+  const rawBuildId =
+    typeof detail.buildId === "string" ? detail.buildId.trim() : "";
+  const buildId = /^[A-Za-z0-9._-]{1,40}$/.test(rawBuildId) ? rawBuildId : null;
+
+  return {
+    code: code ?? null,
+    action: action ?? null,
+    network: network ?? null,
+    buildId,
+    agentAddress,
+  };
+}
 
 /**
  * Per-IP ceiling. A crash inside a render loop can fire continuously, and the
@@ -39,13 +102,47 @@ function truncate(value: unknown, max: number): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
-  return trimmed.length > max ? `${trimmed.slice(0, max)}…[truncated]` : trimmed;
+  return trimmed.length > max
+    ? `${trimmed.slice(0, max)}…[truncated]`
+    : trimmed;
+}
+
+/** Defense in depth: no caller-controlled log string may retain keys/wallets. */
+function sanitizeLogText(value: unknown, max: number): string | null {
+  if (typeof value !== "string") return null;
+  const redacted = value
+    // Keys before addresses: the first 40 hex characters of a key must never
+    // be mistaken for an address and leave its remainder behind.
+    .replace(/(?:0x)?[a-fA-F0-9]{64}\b/g, "[redacted-secret]")
+    .replace(/0x[a-fA-F0-9]{40}\b/g, "[redacted-address]");
+  return truncate(redacted, max);
+}
+
+function sanitizeReportUrl(value: unknown): string | null {
+  // Redact before truncating so a long key cannot be cut into a fragment that
+  // no longer matches the secret pattern.
+  const raw = sanitizeLogText(value, LIMITS.url);
+  if (!raw) return null;
+
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
+      return null;
+    return sanitizeLogText(`${parsed.origin}${parsed.pathname}`, LIMITS.url);
+  } catch {
+    // A relative path is still useful, but no untrusted query or fragment is.
+    return sanitizeLogText(raw.split(/[?#]/, 1)[0], LIMITS.url);
+  }
 }
 
 function getClientIp(request: any): string {
   const forwarded = request.headers?.["x-forwarded-for"];
   const first = Array.isArray(forwarded) ? forwarded[0] : forwarded;
-  return String(first ?? "unknown").split(",")[0]!.trim() || "unknown";
+  return (
+    String(first ?? "unknown")
+      .split(",")[0]!
+      .trim() || "unknown"
+  );
 }
 
 function parseBody(request: any): Record<string, unknown> {
@@ -84,7 +181,7 @@ export default async function handler(request: any, response: any) {
     return;
   }
 
-  const message = truncate(body.message, LIMITS.message);
+  const message = sanitizeLogText(body.message, LIMITS.message);
   if (!message) {
     response.status(400).json({ success: false, code: "MESSAGE_REQUIRED" });
     return;
@@ -104,14 +201,17 @@ export default async function handler(request: any, response: any) {
   }
 
   console.error("[client-error]", {
-    kind: truncate(body.kind, LIMITS.kind) ?? "unknown",
+    kind: sanitizeLogText(body.kind, LIMITS.kind) ?? "unknown",
     message,
-    stack: truncate(body.stack, LIMITS.stack),
-    componentStack: truncate(body.componentStack, LIMITS.componentStack),
-    url: truncate(body.url, LIMITS.url),
+    detail: parseExchangeActionDetail(body.detail),
+    stack: sanitizeLogText(body.stack, LIMITS.stack),
+    componentStack: sanitizeLogText(body.componentStack, LIMITS.componentStack),
+    // Treat this as untrusted even though the app strips it too. A crafted
+    // unauthenticated report must not smuggle session data into runtime logs.
+    url: sanitizeReportUrl(body.url),
     userAgent:
-      truncate(body.userAgent, LIMITS.userAgent) ??
-      truncate(request.headers?.["user-agent"], LIMITS.userAgent),
+      sanitizeLogText(body.userAgent, LIMITS.userAgent) ??
+      sanitizeLogText(request.headers?.["user-agent"], LIMITS.userAgent),
     reportedAt: new Date().toISOString(),
   });
 

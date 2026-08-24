@@ -10,6 +10,8 @@
  * its own reporting, and never sends the same crash twice.
  */
 
+import { maskAddress, redactAddresses } from "@repo/hyperliquid-sdk";
+
 const ENDPOINT = "/api/client-errors";
 
 /** A render loop can throw the same error thousands of times. Send it once. */
@@ -25,20 +27,58 @@ let reporting = false;
 export type ClientErrorKind =
   | "error-boundary"
   | "window-error"
-  | "unhandled-rejection";
+  | "unhandled-rejection"
+  | "exchange-action";
+
+/**
+ * What a refused exchange action is allowed to say about itself.
+ *
+ * Everything here is either a fixed vocabulary or already masked. Nothing that
+ * identifies the account or the trade goes in — no master wallet address, no
+ * order payload, no size, no balance, and under no circumstances a private
+ * key. The agent address is masked because two reports being about the same
+ * agent is worth knowing, and which agent it is, is not.
+ */
+export interface ExchangeActionDetail {
+  code: string;
+  action: string;
+  network: "mainnet" | "testnet";
+  buildId: string;
+  /** Masked, e.g. `0x1234…5678`. */
+  agentAddress: string | null;
+}
 
 export interface ClientErrorReport {
   kind: ClientErrorKind;
   message: string;
   stack?: string | null;
   componentStack?: string | null;
+  detail?: ExchangeActionDetail | null;
 }
 
 function fingerprint(report: ClientErrorReport): string {
   // The first stack frame is enough to tell two crashes apart without letting
   // a varying line number defeat the deduplication.
   const firstFrame = report.stack?.split("\n")[1]?.trim() ?? "";
-  return `${report.kind}:${report.message}:${firstFrame}`;
+  // An exchange rejection carries no stack, and every rejection of a given
+  // kind shares one message. Without the action in the key, a session in which
+  // a close, a cancel and a leverage change were all refused would report the
+  // first and drop the rest — which is the shape the counts exist to measure.
+  const detail = report.detail
+    ? `:${report.detail.action}:${report.detail.code}:${report.detail.agentAddress ?? "unknown-agent"}`
+    : "";
+  return `${report.kind}:${report.message}:${firstFrame}${detail}`;
+}
+
+function reportPageUrl(): string | null {
+  try {
+    const { origin, pathname } = window.location;
+    return origin && origin !== "null"
+      ? `${origin}${pathname}`
+      : pathname || null;
+  } catch {
+    return null;
+  }
 }
 
 export function __resetErrorReportingForTests() {
@@ -65,7 +105,10 @@ export function reportClientError(report: ClientErrorReport): void {
     message: report.message,
     stack: report.stack ?? null,
     componentStack: report.componentStack ?? null,
-    url: window.location?.href ?? null,
+    detail: report.detail ?? null,
+    // Telegram launch data, wallet hints and other session material can live
+    // in the query string or hash. The route is enough to locate the failure.
+    url: reportPageUrl(),
     userAgent: navigator?.userAgent ?? null,
   });
 
@@ -81,17 +124,17 @@ export function reportClientError(report: ClientErrorReport): void {
       headers: { "content-type": "application/json" },
       body,
       keepalive: true,
-    })
-      .then(done, done);
+    }).then(done, done);
   } catch {
     // fetch itself can throw synchronously in a sufficiently broken runtime.
     done();
   }
 }
 
-export function toReportableError(
-  error: unknown,
-): { message: string; stack: string | null } {
+export function toReportableError(error: unknown): {
+  message: string;
+  stack: string | null;
+} {
   if (error instanceof Error) {
     return { message: error.message || error.name, stack: error.stack ?? null };
   }
@@ -101,4 +144,32 @@ export function toReportableError(
   } catch {
     return { message: "Unknown error", stack: null };
   }
+}
+
+/**
+ * Report a trading action the exchange refused for lack of a valid agent.
+ *
+ * Redaction happens here rather than at the call site so there is one place to
+ * check, and so a caller cannot forget: the exchange's own message names the
+ * agent address in full, and that message is the useful part of the report.
+ */
+export function reportExchangeActionFailure(args: {
+  code: string;
+  action: string;
+  exchangeMessage: string;
+  agentAddress: string | null;
+  network: "mainnet" | "testnet";
+  buildId: string;
+}): void {
+  reportClientError({
+    kind: "exchange-action",
+    message: redactAddresses(args.exchangeMessage),
+    detail: {
+      code: args.code,
+      action: args.action,
+      network: args.network,
+      buildId: args.buildId,
+      agentAddress: args.agentAddress ? maskAddress(args.agentAddress) : null,
+    },
+  });
 }

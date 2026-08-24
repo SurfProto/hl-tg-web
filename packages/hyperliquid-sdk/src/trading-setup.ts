@@ -1,4 +1,9 @@
-import type { AccountState, ApprovalRequirementState } from "@repo/types";
+import type {
+  AccountState,
+  AgentAuthorizationReason,
+  ApprovalRequirementState,
+} from "@repo/types";
+import { isTsunamiAgentName, TSUNAMI_AGENT_NAME } from "./agent";
 
 /**
  * Whether the app believes an account can trade, extracted from hooks.ts.
@@ -25,12 +30,36 @@ export type AgentApprovalState = {
   state: ApprovalRequirementState;
   remoteConfirmed: boolean;
   lastVerifiedAt: number | null;
+  /**
+   * Why `state` reads the way it does. `state` drives the order button;
+   * this drives what a user is told when the button is off, and the two
+   * are not the same question — "missing" covers a key that was never
+   * created and one the exchange has since refused.
+   */
+  reason: AgentAuthorizationReason;
+  /** The name the agent is registered under, when the exchange reported one. */
+  name: string | null;
+  /** When the local key was approved, which bounds the propagation grace. */
+  approvedAt: number | null;
 };
 
 export type RemoteAgent = {
   address?: string;
+  name?: string;
   validUntil?: unknown;
 };
+
+/**
+ * How long an approval may be absent from `extraAgents` before absence is read
+ * as revocation.
+ *
+ * A fresh approval takes a moment to appear, and treating that moment as
+ * revocation would send a user back through setup they just finished. Treating
+ * it as permission forever is the opposite failure, and the one that used to
+ * be here: a key that never once appeared stayed usable indefinitely, so an
+ * agent revoked from another device was never noticed until a trade failed.
+ */
+export const AGENT_PROPAGATION_GRACE_MS = 2 * 60 * 1000;
 
 export function getBuilderApprovalState(
   feeTenthsBp: number | undefined,
@@ -73,12 +102,55 @@ export function reduceAgentApproval({
   previousState?: AgentApprovalState;
   now: number;
 }): { next: AgentApprovalState; validUntilToPersist: number | null } {
-  if (!localState.hasLocalKey || localState.isExpired || !localState.address) {
+  if (!localState.hasLocalKey || !localState.address) {
+    const remoteAgent = extraAgents?.find((agent) =>
+      isTsunamiAgentName(agent.name),
+    );
+    const remoteValidUntil =
+      typeof remoteAgent?.validUntil === "number"
+        ? remoteAgent.validUntil
+        : null;
+    const remoteExpired =
+      remoteValidUntil != null ? remoteValidUntil <= now : false;
+
+    if (remoteAgent?.address) {
+      return {
+        next: {
+          ...localState,
+          address: remoteAgent.address,
+          approved: false,
+          hasLocalKey: false,
+          isExpired: remoteExpired,
+          validUntil: remoteValidUntil,
+          state: "missing",
+          reason: remoteExpired ? "expired" : "remote-only",
+          name: remoteAgent.name ?? TSUNAMI_AGENT_NAME,
+          remoteConfirmed: !remoteExpired,
+          lastVerifiedAt: now,
+        },
+        validUntilToPersist: null,
+      };
+    }
+
     return {
       next: {
         ...localState,
         approved: false,
         state: "missing",
+        reason: "missing-local-key",
+        lastVerifiedAt: now,
+      },
+      validUntilToPersist: null,
+    };
+  }
+
+  if (localState.isExpired) {
+    return {
+      next: {
+        ...localState,
+        approved: false,
+        state: "missing",
+        reason: "expired",
         lastVerifiedAt: now,
       },
       validUntilToPersist: null,
@@ -89,33 +161,96 @@ export function reduceAgentApproval({
   // known answer rather than treating an unreachable API as a revoked agent.
   if (extraAgents == null) {
     return {
-      next: { ...localState, state: "stale", approved: true },
+      next: {
+        ...localState,
+        state: "stale",
+        approved: true,
+        reason: "verification-unavailable",
+      },
       validUntilToPersist: null,
     };
   }
 
   const approvedAgent = extraAgents.find(
-    (agent) => agent.address?.toLowerCase() === localState.address?.toLowerCase(),
+    (agent) =>
+      agent.address?.toLowerCase() === localState.address?.toLowerCase(),
   );
   const validUntil =
     typeof approvedAgent?.validUntil === "number"
       ? approvedAgent.validUntil
       : null;
+  const withinGrace =
+    localState.approvedAt != null &&
+    now - localState.approvedAt <= AGENT_PROPAGATION_GRACE_MS;
+  const explicitlyAwaitingPropagation =
+    previousState?.reason === "awaiting-propagation" && withinGrace;
+  const otherNamedAgents = extraAgents.filter(
+    (agent) =>
+      isTsunamiAgentName(agent.name) &&
+      agent.address?.toLowerCase() !== localState.address?.toLowerCase(),
+  );
+
+  // During replacement, the exchange can briefly return the predecessor, or
+  // both predecessor and successor. That is exactly the stale-read window the
+  // grace exists for. After the grace, a duplicate is an invariant failure and
+  // trading is stopped rather than silently accumulating authorizations.
+  if (approvedAgent && otherNamedAgents.length > 0) {
+    if (explicitlyAwaitingPropagation) {
+      return {
+        next: {
+          ...localState,
+          state: "stale",
+          approved: true,
+          reason: "awaiting-propagation",
+          remoteConfirmed: false,
+          lastVerifiedAt: previousState?.lastVerifiedAt ?? null,
+        },
+        validUntilToPersist: null,
+      };
+    }
+
+    return {
+      next: {
+        ...localState,
+        approved: false,
+        state: "missing",
+        reason: "revoked-or-replaced",
+        remoteConfirmed: false,
+        lastVerifiedAt: now,
+      },
+      validUntilToPersist: null,
+    };
+  }
 
   if (!approvedAgent) {
+    // Our name held by an address that is not ours is not ambiguous: another
+    // device approved over this key, and Hyperliquid deregistered it. That is
+    // worth more than the absence itself, so it ends the grace immediately.
+    const replacedByAnother = extraAgents.some(
+      (agent) =>
+        isTsunamiAgentName(agent.name) &&
+        agent.address?.toLowerCase() !== localState.address?.toLowerCase(),
+    );
+
     // Absent from a list that previously carried it means it really is gone.
-    // Absent from the first list we ever read is more likely propagation delay
-    // right after approval, so the key stays usable and unconfirmed.
-    if (previousState?.remoteConfirmed) {
+    // Absent from the first list we ever read, moments after approving, is
+    // more likely propagation delay — but only for as long as that delay
+    // plausibly lasts.
+    if (
+      previousState?.remoteConfirmed ||
+      (replacedByAnother && !explicitlyAwaitingPropagation) ||
+      !withinGrace
+    ) {
       return {
         next: {
           ...localState,
           approved: false,
           state: "missing",
+          reason: "revoked-or-replaced",
           remoteConfirmed: false,
           lastVerifiedAt: now,
         },
-        validUntilToPersist: validUntil,
+        validUntilToPersist: null,
       };
     }
 
@@ -124,9 +259,10 @@ export function reduceAgentApproval({
         ...localState,
         state: "stale",
         approved: true,
+        reason: "awaiting-propagation",
         lastVerifiedAt: previousState?.lastVerifiedAt ?? null,
       },
-      validUntilToPersist: validUntil,
+      validUntilToPersist: null,
     };
   }
 
@@ -140,6 +276,8 @@ export function reduceAgentApproval({
       isExpired: remoteExpired,
       validUntil,
       state: remoteExpired ? "missing" : "approved",
+      reason: remoteExpired ? "expired" : "active",
+      name: approvedAgent.name ?? localState.name ?? TSUNAMI_AGENT_NAME,
       remoteConfirmed: !remoteExpired,
       lastVerifiedAt: now,
     },

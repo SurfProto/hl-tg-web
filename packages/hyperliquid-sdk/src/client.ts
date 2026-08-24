@@ -32,11 +32,24 @@ import {
   getAvailableCollateralForMarket,
 } from "./account-state";
 import {
+  AgentAuthorizationError,
   findStatusError,
   isRateLimitError,
   isRetryableLeverageError,
+  isTradingAction,
+  isUnknownSignerMessage,
+  isUserRejectedSignature,
   mapExchangeErrorMessage,
 } from "./exchange-response";
+import {
+  AGENT_APPROVAL_WINDOW_MS,
+  buildAgentName,
+  clearStoredAgentKey,
+  generateAgentKey,
+  getAgentAddress,
+  isTsunamiAgentName,
+} from "./agent";
+import { reportAgentRecoveryIncident } from "./agent-recovery";
 import {
   formatPrice,
   getAggressiveMarketPrice,
@@ -211,9 +224,16 @@ export class HyperliquidClient {
   private config: HyperliquidClientConfig;
   private marketCache: MarketCache | null = null;
   private marketCacheLoad: Promise<MarketCache> | null = null;
-  private builderApprovalCache: { result: ReturnType<typeof getBuilderConfig>; expiresAt: number } | null = null;
-  private userStateCache: { data: AccountState; expiresAt: number } | null = null;
-  private midsCache: { data: Record<string, string>; expiresAt: number } | null = null;
+  private builderApprovalCache: {
+    result: ReturnType<typeof getBuilderConfig>;
+    expiresAt: number;
+  } | null = null;
+  private userStateCache: { data: AccountState; expiresAt: number } | null =
+    null;
+  private midsCache: {
+    data: Record<string, string>;
+    expiresAt: number;
+  } | null = null;
   private assetCtxsCache: {
     data: any[];
     perpUniverse: any[];
@@ -240,6 +260,16 @@ export class HyperliquidClient {
       masterAccountAddress: config.masterAccountAddress ?? config.walletAddress,
     };
     this.wsManager = new WebSocketManager(this.testnet);
+  }
+
+  /**
+   * Attach the connected main-wallet provider without replacing the
+   * account-scoped client (and therefore without splitting agent-key state).
+   */
+  setCustomSigner(customSigner: unknown): void {
+    if (!customSigner || this.config.customSigner === customSigner) return;
+    this.config.customSigner = customSigner;
+    this.walletClientInstance = null;
   }
 
   private getHttpApiUrl(): string {
@@ -296,7 +326,9 @@ export class HyperliquidClient {
       }
 
       if (!response.ok) {
-        throw new Error(`Exchange request failed with status ${response.status}`);
+        throw new Error(
+          `Exchange request failed with status ${response.status}`,
+        );
       }
 
       return response.json() as Promise<T>;
@@ -402,6 +434,23 @@ export class HyperliquidClient {
     return this.agentPrivateKey !== null;
   }
 
+  /** The address of the agent currently signing, or null when there is none. */
+  agentAddress(): string | null {
+    return this.agentPrivateKey ? getAgentAddress(this.agentPrivateKey) : null;
+  }
+
+  /**
+   * Forget the in-memory agent signer.
+   *
+   * Useless on its own, and deliberately narrow: the hook layer reinstates a
+   * signer from localStorage on the next render, so a key the exchange has
+   * refused has to be dropped from both places or it comes straight back.
+   */
+  clearAgentKey(): void {
+    this.agentPrivateKey = null;
+    this.agentWalletClientInstance = null;
+  }
+
   private async ensureMarketCache(): Promise<MarketCache> {
     if (this.marketCache) return this.marketCache;
     // Concurrent first callers used to each run the whole build and each get a
@@ -443,7 +492,9 @@ export class HyperliquidClient {
     const perp: Record<string, CachedMarket> = {};
     const perpDexs = perpDexsResponse
       .map((entry, dexIndex) =>
-        entry ? { dex: entry.name, dexIndex, collateralAsset: undefined } : null,
+        entry
+          ? { dex: entry.name, dexIndex, collateralAsset: undefined }
+          : null,
       )
       .filter(Boolean) as Array<{
       dex: string;
@@ -644,9 +695,7 @@ export class HyperliquidClient {
    */
   async loadAllHip3Dexes(): Promise<void> {
     const cache = await this.ensureMarketCache();
-    await Promise.all(
-      cache.perpDexs.map(({ dex }) => this.ensureHip3Dex(dex)),
-    );
+    await Promise.all(cache.perpDexs.map(({ dex }) => this.ensureHip3Dex(dex)));
   }
 
   /** Dexes whose universe is in the cache — what every per-dex fan-out uses. */
@@ -706,15 +755,10 @@ export class HyperliquidClient {
     return null;
   }
 
-  private async resolveMarketPrice(
-    market: CachedMarket,
-  ): Promise<
-    | {
-        executionSource: "mid" | "assetCtx" | "orderbook";
-        price: number;
-      }
-    | null
-  > {
+  private async resolveMarketPrice(market: CachedMarket): Promise<{
+    executionSource: "mid" | "assetCtx" | "orderbook";
+    price: number;
+  } | null> {
     const cachedMid = this.getCachedMidPrice(market);
     if (cachedMid != null) {
       return { executionSource: "mid", price: cachedMid };
@@ -763,7 +807,13 @@ export class HyperliquidClient {
     availableBalance?: number,
     options?: { requireBalance?: boolean },
   ): OrderValidationResult {
-    return validateOrderInput(order, market, referencePrice, availableBalance, options);
+    return validateOrderInput(
+      order,
+      market,
+      referencePrice,
+      availableBalance,
+      options,
+    );
   }
 
   private generateCloid(): `0x${string}` {
@@ -819,7 +869,10 @@ export class HyperliquidClient {
     if (!builder) return undefined;
 
     const now = Date.now();
-    if (this.builderApprovalCache && now < this.builderApprovalCache.expiresAt) {
+    if (
+      this.builderApprovalCache &&
+      now < this.builderApprovalCache.expiresAt
+    ) {
       return this.builderApprovalCache.result;
     }
 
@@ -828,7 +881,10 @@ export class HyperliquidClient {
       throw new Error("Builder fee approval is required before trading.");
     }
 
-    this.builderApprovalCache = { result: builder, expiresAt: now + 5 * 60 * 1000 };
+    this.builderApprovalCache = {
+      result: builder,
+      expiresAt: now + 5 * 60 * 1000,
+    };
     return builder;
   }
 
@@ -836,6 +892,7 @@ export class HyperliquidClient {
     action: string,
     context: Record<string, unknown>,
     error: unknown,
+    outcome: import("./exchange-response").AgentRecoveryOutcome = "not-executed",
   ): never {
     // mapExchangeErrorMessage replaces the upstream error with a friendlier
     // message and cannot carry the original, so the real failure would be
@@ -845,7 +902,48 @@ export class HyperliquidClient {
     // original before mapping.
     console.error(`[hyperliquid] ${action} failed`, { context, error });
 
+    // Nested trading helpers already classified and reported this refusal.
+    // Preserve its action, account and partial-outcome metadata verbatim.
+    if (error instanceof AgentAuthorizationError) throw error;
+
     if (error instanceof Error) {
+      // The exchange raises the same "does not exist" for an API wallet it has
+      // deregistered and for a master account that never deposited, and the two
+      // need opposite advice — reauthorize versus deposit. Only this object
+      // knows which signer actually went out, so the two are told apart here
+      // rather than in the message mapper, which sees the string alone.
+      if (
+        isTradingAction(action) &&
+        this.agentPrivateKey !== null &&
+        isUnknownSignerMessage(error.message)
+      ) {
+        const authorizationError = new AgentAuthorizationError({
+          action,
+          accountAddress: this.walletAddress,
+          agentAddress: this.agentAddress(),
+          exchangeMessage: error.message,
+          outcome,
+          message:
+            "Trading authorization is no longer valid. Reauthorize trading to continue.",
+        });
+
+        // Drop the key before the error leaves this frame. The exchange has
+        // already refused it, so every later action signed with it fails the
+        // same way; keeping it only buys a second identical failure. Both
+        // copies have to go — the hook layer restores a signer from storage on
+        // the next render, so clearing memory alone brings it right back.
+        this.clearAgentKey();
+        try {
+          clearStoredAgentKey(this.walletAddress);
+        } catch {
+          // A storage that refuses to be written is not a reason to swallow
+          // the trading error the caller is waiting for.
+        }
+
+        reportAgentRecoveryIncident(authorizationError);
+        throw authorizationError;
+      }
+
       throw new Error(
         mapExchangeErrorMessage(action, error.message) ?? error.message,
       );
@@ -1195,8 +1293,14 @@ export class HyperliquidClient {
   }
 
   // Get user state. Pass { fresh: true } to bypass the short-lived internal cache.
-  async getUserState({ fresh }: { fresh?: boolean } = {}): Promise<AccountState> {
-    if (!fresh && this.userStateCache && Date.now() < this.userStateCache.expiresAt) {
+  async getUserState({
+    fresh,
+  }: { fresh?: boolean } = {}): Promise<AccountState> {
+    if (
+      !fresh &&
+      this.userStateCache &&
+      Date.now() < this.userStateCache.expiresAt
+    ) {
       return this.userStateCache.data;
     }
     const cache = await this.ensureMarketCache();
@@ -1288,6 +1392,7 @@ export class HyperliquidClient {
 
   async placeOrder(order: Order) {
     let normalized: NormalizedOrderContext | undefined;
+    let leverageMayHaveChanged = false;
     try {
       const client = await this.getTradingClient();
       normalized = await this.normalizeOrder({
@@ -1300,7 +1405,15 @@ export class HyperliquidClient {
       }
 
       const [, builder] = await Promise.all([
-        this.ensurePerpLeverage(normalized.market, order.leverage, order.reduceOnly),
+        this.ensurePerpLeverage(
+          normalized.market,
+          order.leverage,
+          order.reduceOnly,
+        ).then(() => {
+          leverageMayHaveChanged = Boolean(
+            order.leverage && order.leverage > 0 && !order.reduceOnly,
+          );
+        }),
         this.ensureBuilderApproval(),
       ]);
 
@@ -1334,6 +1447,7 @@ export class HyperliquidClient {
           pricing: normalized?.debug,
         },
         error,
+        leverageMayHaveChanged ? "partially-executed" : "not-executed",
       );
     }
   }
@@ -1410,6 +1524,7 @@ export class HyperliquidClient {
   }
 
   async upsertPositionProtection(request: PositionProtectionRequest) {
+    let cancelledExistingProtection = false;
     try {
       const client = await this.getTradingClient();
       const market = await this.resolveMarket(request.coin, "perp");
@@ -1446,6 +1561,7 @@ export class HyperliquidClient {
             cancels: cancelOids.map((o) => ({ a: market.asset, o })),
           }),
         );
+        cancelledExistingProtection = true;
       }
 
       if (toPlace.length === 0) {
@@ -1495,6 +1611,7 @@ export class HyperliquidClient {
         "upsertPositionProtection",
         { ...request },
         error,
+        cancelledExistingProtection ? "partially-executed" : "not-executed",
       );
     }
   }
@@ -1763,12 +1880,12 @@ export class HyperliquidClient {
 
   // Approve agent wallet to act on behalf of this user
   async approveAgent(agentAddress: string): Promise<{ expiryMs: number }> {
-    const expiryMs = Date.now() + 180 * 24 * 60 * 60 * 1000; // 180 days
+    const expiryMs = Date.now() + AGENT_APPROVAL_WINDOW_MS;
     try {
       const client = await this.getMainWalletClient();
       await client.approveAgent({
         agentAddress: agentAddress as `0x${string}`,
-        agentName: `tsnm-trade-agent valid_until ${expiryMs}`,
+        agentName: buildAgentName(expiryMs),
       });
       return { expiryMs };
     } catch (error) {
@@ -1776,6 +1893,63 @@ export class HyperliquidClient {
       // normalizeExchangeError always throws, but TypeScript needs this
       throw error;
     }
+  }
+
+  /**
+   * Revoke trading authorization by replacing the named agent with one whose
+   * key is destroyed immediately.
+   *
+   * Hyperliquid has no "revoke agent" action. What it has is the rule that an
+   * approval under an existing name deregisters the agent currently holding
+   * that name, so revocation is expressed as an approval nobody can use. The
+   * replacement is a freshly generated address rather than the zero address:
+   * the zero address is not documented to be accepted, and reusing any earlier
+   * agent address is explicitly discouraged, because a deregistered agent's
+   * nonce state may be pruned and its old signatures replayed.
+   *
+   * Errors are left to the caller. It has to separate a signature the user
+   * declined, which changes nothing, from a transport failure, which leaves
+   * the outcome genuinely unknown — and only the caller can act on either.
+   */
+  async revokeAgent(): Promise<{
+    previousAgentAddress: string | null;
+    replacementAddress: string;
+    remoteConfirmed: boolean;
+  }> {
+    const previousAgentAddress = this.agentAddress();
+    const replacementKey = generateAgentKey();
+    const replacementAddress = getAgentAddress(replacementKey);
+    const expiryMs = Date.now() + AGENT_APPROVAL_WINDOW_MS;
+
+    try {
+      const client = await this.getMainWalletClient();
+      await client.approveAgent({
+        agentAddress: replacementAddress as `0x${string}`,
+        agentName: buildAgentName(expiryMs),
+      });
+    } catch (error) {
+      // The hook keeps the current key when the user cancels. Preserve the
+      // provider's 4001/code shape so that decision survives this boundary.
+      if (isUserRejectedSignature(error)) throw error;
+      this.normalizeExchangeError("revokeAgent", { replacementAddress }, error);
+      throw error;
+    }
+
+    // Read the account back rather than trusting the write. Anything still
+    // holding one of our names after the replacement landed means revocation
+    // did not do what it claims — including agents from before the name was
+    // held constant, which no single replacement can displace.
+    const remoteConfirmed = await this.getExtraAgents()
+      .then((agents) =>
+        agents.every(
+          (agent: { address?: string; name?: string }) =>
+            !isTsunamiAgentName(agent.name) ||
+            agent.address?.toLowerCase() === replacementAddress.toLowerCase(),
+        ),
+      )
+      .catch(() => false);
+
+    return { previousAgentAddress, replacementAddress, remoteConfirmed };
   }
 
   // Approve builder fee for this user
@@ -2107,11 +2281,7 @@ export class HyperliquidClient {
         },
       });
     } catch (error) {
-      this.normalizeExchangeError(
-        "setUserDexAbstraction",
-        { enabled },
-        error,
-      );
+      this.normalizeExchangeError("setUserDexAbstraction", { enabled }, error);
     }
   }
 

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetErrorReportingForTests,
   reportClientError,
+  reportExchangeActionFailure,
   toReportableError,
 } from "./error-reporting";
 
@@ -15,6 +16,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  window.history.replaceState(null, "", "/");
   vi.unstubAllGlobals();
 });
 
@@ -44,11 +46,18 @@ describe("reportClientError", () => {
     });
   });
 
-  it("includes the page and user agent for context", async () => {
+  it("includes the page without query or hash secrets", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/trade?wallet=0x1111111111111111111111111111111111111111#tgWebAppData=secret",
+    );
     reportClientError({ kind: "window-error", message: "boom" });
 
     const body = bodyOf(0);
-    expect(typeof body.url).toBe("string");
+    expect(body.url).toBe(`${window.location.origin}/trade`);
+    expect(body.url).not.toContain("wallet");
+    expect(body.url).not.toContain("tgWebAppData");
     expect(typeof body.userAgent).toBe("string");
   });
 
@@ -117,6 +126,33 @@ describe("reportClientError", () => {
 
     reportClientError({ kind: "error-boundary", message: "second" });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("reportExchangeActionFailure", () => {
+  it("does not deduplicate failures from different agent authorizations", async () => {
+    const base = {
+      code: "AGENT_AUTHORIZATION_REJECTED",
+      action: "closePosition",
+      exchangeMessage: "User or API Wallet does not exist.",
+      network: "mainnet" as const,
+      buildId: "build-1",
+    };
+
+    reportExchangeActionFailure({
+      ...base,
+      agentAddress: "0x1111111111111111111111111111111111111111",
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    reportExchangeActionFailure({
+      ...base,
+      agentAddress: "0x2222222222222222222222222222222222222222",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(bodyOf(0).detail.agentAddress).toBe("0x1111…1111");
+    expect(bodyOf(1).detail.agentAddress).toBe("0x2222…2222");
   });
 });
 

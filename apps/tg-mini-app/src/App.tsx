@@ -16,6 +16,7 @@ import { NotFoundPage } from "./pages/NotFoundPage";
 import { bootstrapProfile } from "./lib/profile";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ToastProvider } from "./components/Toast";
+import { AgentRecoverySheet } from "./components/AgentRecoverySheet";
 import { PortfolioRangeProvider } from "./hooks/usePortfolioRange";
 import { log } from "./lib/logger";
 import { teardownStartupShell } from "./lib/startup";
@@ -198,8 +199,11 @@ function StartupShellController({
   authSettled: boolean;
   ready: boolean;
 }) {
-  const { data: markets, isError: marketsError, isLoading: marketsLoading } =
-    useMarketData();
+  const {
+    data: markets,
+    isError: marketsError,
+    isLoading: marketsLoading,
+  } = useMarketData();
   const startupShellTornDownRef = React.useRef(false);
 
   useEffect(() => {
@@ -221,11 +225,7 @@ function StartupShellController({
   return null;
 }
 
-export function TelegramAuthGate({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export function TelegramAuthGate({ children }: { children: React.ReactNode }) {
   const privy = usePrivy() as unknown as PrivyWithTelegram;
   const { getAccessToken } = useToken();
   const { t } = useTranslation();
@@ -276,7 +276,10 @@ export function TelegramAuthGate({
     if (!ready) return;
 
     const currentUserId = authenticated ? (user?.id ?? null) : null;
-    if (previousUserId.current !== null && previousUserId.current !== currentUserId) {
+    if (
+      previousUserId.current !== null &&
+      previousUserId.current !== currentUserId
+    ) {
       queryClient.clear();
     }
     previousUserId.current = currentUserId;
@@ -370,6 +373,9 @@ function AppContent() {
               <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </Suspense>
+          {/* Above the routes, not inside one: a refused trading action can
+              come from any screen, and the recovery it needs is the same. */}
+          <AgentRecoverySheet />
         </Layout>
       </TelegramAuthGate>
     </BrowserRouter>

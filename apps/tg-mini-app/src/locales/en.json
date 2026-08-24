@@ -49,7 +49,6 @@
   },
   "home": {
     "seeAllMarkets": "See all {{count}} markets",
-    "seeAll": "SEE ALL",
     "ariaSearch": "Search markets",
     "noMarkets": "No markets",
     "marketDataUnavailable": "Market data unavailable."
@@ -80,8 +79,8 @@
   "trade": {
     "perp": "PERP",
     "newOrder": "New order",
-    "orderTypeMarket": "market",
-    "orderTypeLimit": "limit",
+    "orderTypeMarket": "Market",
+    "orderTypeLimit": "Limit",
     "leverage": "Leverage",
     "protection": "Protection",
     "goingLong": "GOING LONG",
@@ -519,18 +518,14 @@
     "privacy": "Privacy Policy"
   },
   "coinDetail": {
-    "perp": "PERP",
     "perpLabel": "BTC-PERP",
     "spot": "SPOT",
     "markPrice": "Mark Price",
-    "pastDay": "past day",
-    "change24h": "24h Change",
     "volume24h": "24h Volume",
     "openInterest": "Open Interest",
     "fundingRate": "Funding Rate",
     "holdings": "Holdings",
     "holdingsValue": "Holdings Value",
-    "marketCap": "Market Cap",
     "longButton": "Long ↑",
     "shortButton": "Short ↓",
     "buyButton": "Buy",

@@ -16,16 +16,12 @@ const mockUseMids = vi.fn();
 function translate(key: string) {
   return (
     {
-      "coinDetail.perp": "PERP",
       "coinDetail.spot": "SPOT",
-      "coinDetail.pastDay": "past day",
-      "coinDetail.change24h": "24h Change",
       "coinDetail.volume24h": "24h Volume",
       "coinDetail.openInterest": "Open Interest",
       "coinDetail.fundingRate": "Funding Rate",
       "coinDetail.holdings": "Holdings",
       "coinDetail.holdingsValue": "Holdings Value",
-      "coinDetail.marketCap": "Market Cap",
       // These carry their arrows in the locale files. The mock used to omit
       // them while the JSX appended its own, so the assertion below passed on
       // a name the app never actually rendered — it showed "Long ↑ ↑".

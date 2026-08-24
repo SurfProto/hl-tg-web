@@ -48,11 +48,7 @@ export function SegmentedControl<T extends string>({
 
               onChange(option.value);
             }}
-            // capitalize compensates for lowercase source strings: the order-type
-            // labels are "market" and "limit" in both locales, and the markup this
-            // replaced carried the same class. Sentence-case values would be the
-            // real fix.
-            className={`flex-1 rounded-lg py-2.5 text-sm font-semibold capitalize transition-colors ${
+            className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-colors ${
               selected ? 'bg-white text-primary' : 'text-muted'
             }`}
           >

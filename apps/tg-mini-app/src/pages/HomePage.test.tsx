@@ -24,7 +24,6 @@ vi.mock("react-i18next", () => ({
       const table: Record<string, string> = {
         "nav.markets": "Markets",
         "home.ariaSearch": "Search markets",
-        "home.seeAll": "See all",
         "home.seeAllMarkets": "See all {{count}} markets",
         "home.noMarkets": "No markets",
       };
@@ -113,7 +112,6 @@ describe("HomePage", () => {
     expect(screen.getByText("ETH")).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Search markets" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "See all" })).not.toBeInTheDocument();
   });
 
   it("offers no expansion when the list already fits", () => {

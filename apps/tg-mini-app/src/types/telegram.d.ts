@@ -4,6 +4,8 @@ interface TelegramWebApp {
     start_param?: string;
     user?: { id: number; first_name: string; username?: string };
   };
+  version?: string;
+  isVersionAtLeast?(version: string): boolean;
   ready(): void;
   expand(): void;
   close(): void;

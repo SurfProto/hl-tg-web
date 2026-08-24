@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useHaptics } from '../hooks/useHaptics';
@@ -89,22 +89,46 @@ export function Layout({ children }: LayoutProps) {
     root.style.setProperty('--tg-secondary-bg-color', '#eff2fb');
   }, []);
 
+  // A deep link opens straight onto a sub-route with nothing behind it, and
+  // navigate(-1) there sits doing nothing. location.key is 'default' only on
+  // the entry the app was opened at.
+  const goBack = useCallback(() => {
+    if (location.key !== 'default') {
+      navigate(-1);
+      return;
+    }
+
+    navigate('/', { replace: true });
+  }, [location.key, navigate]);
+
+  // Telegram's BackButton is the primary control on these routes, and it is
+  // also the only one they had. It does not exist outside Telegram, and it
+  // does nothing before Bot API 6.1 — the client says so itself:
+  // "[Telegram.WebApp] BackButton is not supported in version 6.0". Since
+  // these same routes hide the bottom nav, that left no navigation at all.
+  //
+  // Absent isVersionAtLeast the answer is "no", which errs towards showing the
+  // in-page control: a second way back is a smaller problem than none.
+  const [telegramBackSupported, setTelegramBackSupported] = useState(false);
+
   useEffect(() => {
     const tg = window.Telegram?.WebApp;
-    if (!tg) return;
+    const supported = Boolean(tg?.BackButton && tg.isVersionAtLeast?.('6.1'));
+    setTelegramBackSupported(supported);
+
+    if (!tg || !supported) return;
 
     if (hideNav) {
       tg.BackButton?.show();
-      const handler = () => navigate(-1);
-      tg.BackButton?.onClick(handler);
+      tg.BackButton?.onClick(goBack);
       return () => {
-        tg.BackButton?.offClick(handler);
+        tg.BackButton?.offClick(goBack);
         tg.BackButton?.hide();
       };
     }
 
     tg.BackButton?.hide();
-  }, [hideNav, navigate]);
+  }, [goBack, hideNav]);
 
   const handleTabChange = (path: string) => {
     if (path !== activeTab) {
@@ -122,6 +146,20 @@ export function Layout({ children }: LayoutProps) {
   return (
     <div className="tg-root-height bg-background text-foreground flex flex-col">
       <main className={`flex-1 overflow-y-auto ${hideNav ? '' : 'page-above-bottom-nav'}`}>
+        {hideNav && !telegramBackSupported && (
+          <div className="px-4 pt-4">
+            <button
+              type="button"
+              onClick={() => {
+                haptics.light();
+                goBack();
+              }}
+              className="editorial-button-ghost"
+            >
+              {t('common.back')}
+            </button>
+          </div>
+        )}
         {children}
       </main>
 

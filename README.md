@@ -109,8 +109,18 @@ For the VPS deployment of the external notifications worker, see [apps/notificat
 - ✅ Market and limit orders
 - ✅ Positions and portfolio tracking
 - ✅ Builder code enforcement (automatic)
+- ✅ Recoverable and user-revocable Hyperliquid agent authorization
 - ✅ Testnet toggle
 - ✅ Desktop webapp (PWA-ready)
+
+### Rewards safety status
+
+The Points program is being hardened as an XP-only system. Until the
+server-enforced XP-only release lands, keep `REWARDS_TREASURY_PRIVATE_KEY` unset
+and do not manually invoke `/api/rewards/weekly-raffle`. The current cash payout
+path is not approved for production use. See the
+[Points XP-only hardening design](docs/superpowers/specs/2026-08-24-points-xp-only-hardening-design.md)
+for the required safety and correctness work.
 
 ## License
 

@@ -40,7 +40,9 @@
   --color-separator: rgb(var(--color-separator-rgb));
   --color-border: rgb(var(--color-border-rgb));
   --color-positive: rgb(var(--color-positive-rgb));
+  --color-positive-dark: #167a4d;
   --color-negative: rgb(var(--color-negative-rgb));
+  --color-negative-dark: #d13d2e;
   --color-warning: rgb(var(--color-warning-rgb));
   --color-nav-active: #3447f3;
   --color-nav-inactive: #8a94a9;
@@ -389,6 +391,13 @@ body {
     color: var(--color-text-secondary);
   }
 
+  /* Chips had three sizes at four call sites, all set inline. The sizes are
+     real — a row of six leverage values wants less padding than a tab — so
+     they are named rather than removed. */
+  .editorial-chip-compact {
+    @apply rounded-[14px] px-3 py-1.5;
+  }
+
   .editorial-chip-active {
     background: var(--color-primary);
     color: white;
@@ -414,6 +423,31 @@ body {
 
   .editorial-button-secondary:active {
     background: var(--color-surface);
+  }
+
+  /* The buy/sell pair is the most important control in the app and carried
+     three treatments: on a perp a bespoke outline Short against a primary
+     Long, and on spot secondary against primary. One geometry now, with
+     direction carried by the same green and red the app already uses for
+     PnL. */
+  .editorial-button-positive {
+    @apply rounded-xl px-5 py-3.5 text-sm font-semibold text-white transition-colors;
+    background: var(--color-positive);
+    box-shadow: none;
+  }
+
+  .editorial-button-positive:active {
+    background: var(--color-positive-dark);
+  }
+
+  .editorial-button-negative {
+    @apply rounded-xl px-5 py-3.5 text-sm font-semibold text-white transition-colors;
+    background: var(--color-negative);
+    box-shadow: none;
+  }
+
+  .editorial-button-negative:active {
+    background: var(--color-negative-dark);
   }
 
   .editorial-button-ghost {

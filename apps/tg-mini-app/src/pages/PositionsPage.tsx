@@ -12,6 +12,7 @@ import {
 } from "@repo/hyperliquid-sdk";
 import type { OpenOrder } from "@repo/types";
 import { ProtectionSheet } from "../components/ProtectionSheet";
+import { SegmentedControl } from "../components/SegmentedControl";
 import { TokenIcon } from "../components/TokenIcon";
 import { getAsyncValueState } from "../lib/async-value-state";
 import { useHaptics } from "../hooks/useHaptics";
@@ -428,29 +429,17 @@ export function PositionsPage() {
       </div>
 
       {/* Tab Bar */}
-      <div className="mb-5 flex gap-2 overflow-x-auto scrollbar-hide">
-        {(
-          [
-            { key: "positions", label: `${t("positions.tabOpen")} · ${positions.length}` },
-            { key: "orders", label: `${t("positions.tabOrders")} · ${openOrders?.length ?? 0}` },
-            { key: "fills", label: t("positions.tabHistory") },
-          ] as const
-        ).map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => {
-              haptics.selection();
-              setActiveTab(key);
-            }}
-            className={`editorial-chip flex-shrink-0 px-4 py-2.5 ${
-              activeTab === key
-                ? "editorial-chip-active"
-                : ""
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="mb-5">
+        <SegmentedControl
+          label={t("nav.positions")}
+          value={activeTab}
+          onChange={setActiveTab}
+          options={[
+            { value: "positions", label: `${t("positions.tabOpen")} · ${positions.length}` },
+            { value: "orders", label: `${t("positions.tabOrders")} · ${openOrders?.length ?? 0}` },
+            { value: "fills", label: t("positions.tabHistory") },
+          ]}
+        />
       </div>
 
       {activeTab === "positions" && (

@@ -26,8 +26,11 @@ function translate(key: string) {
       "coinDetail.holdings": "Holdings",
       "coinDetail.holdingsValue": "Holdings Value",
       "coinDetail.marketCap": "Market Cap",
-      "coinDetail.longButton": "Long",
-      "coinDetail.shortButton": "Short",
+      // These carry their arrows in the locale files. The mock used to omit
+      // them while the JSX appended its own, so the assertion below passed on
+      // a name the app never actually rendered — it showed "Long ↑ ↑".
+      "coinDetail.longButton": "Long ↑",
+      "coinDetail.shortButton": "Short ↓",
       "coinDetail.buyButton": "Buy",
       "coinDetail.sellButton": "Sell",
       "coinDetail.open": "Open",

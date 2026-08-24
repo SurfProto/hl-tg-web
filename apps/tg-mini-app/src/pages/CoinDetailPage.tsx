@@ -361,16 +361,16 @@ export function CoinDetailPage() {
             <button
               type="button"
               onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=short`)}
-              className="flex-1 rounded-xl border border-negative/25 bg-white py-3.5 font-semibold text-negative transition-colors active:bg-negative/10"
+              className="editorial-button-negative flex-1"
             >
-              {t('coinDetail.shortButton')} ↓
+              {t('coinDetail.shortButton')}
             </button>
             <button
               type="button"
               onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=long`)}
-              className="editorial-button-primary flex-1"
+              className="editorial-button-positive flex-1"
             >
-              {t('coinDetail.longButton')} ↑
+              {t('coinDetail.longButton')}
             </button>
           </>
         ) : (
@@ -378,14 +378,14 @@ export function CoinDetailPage() {
             <button
               type="button"
               onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=sell`)}
-              className="editorial-button-secondary flex-1"
+              className="editorial-button-negative flex-1"
             >
               {t('coinDetail.sellButton')}
             </button>
             <button
               type="button"
               onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=buy`)}
-              className="editorial-button-primary flex-1"
+              className="editorial-button-positive flex-1"
             >
               {t('coinDetail.buyButton')}
             </button>

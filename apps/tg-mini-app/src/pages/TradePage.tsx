@@ -17,6 +17,7 @@ import {
 import type { AnyMarket, Order } from "@repo/types";
 import { NumPad } from "../components/NumPad";
 import { ProtectionSheet } from "../components/ProtectionSheet";
+import { SegmentedControl } from "../components/SegmentedControl";
 import { TokenIcon } from "../components/TokenIcon";
 import { TradingSetupSheet } from "../components/TradingSetupSheet";
 import { useHaptics } from "../hooks/useHaptics";
@@ -660,24 +661,19 @@ export function TradePage() {
       </header>
 
       <div className="px-4 pb-4">
-        <div className="flex rounded-xl bg-surface p-1">
-          {(["market", "limit"] as const).map((type) => (
-            <button
-              key={type}
-              type="button"
-              onClick={() => {
-                setSubmitError(null);
-                setStep("amount");
-                setOrderType(type);
-              }}
-              className={`flex-1 rounded-lg py-2.5 text-sm font-semibold capitalize ${
-                orderType === type ? "bg-white text-primary" : "text-muted"
-              }`}
-            >
-              {type === "market" ? t("trade.orderTypeMarket") : t("trade.orderTypeLimit")}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          label={t("trade.orderType", { type: "" }).trim() || t("trade.newOrder")}
+          value={orderType}
+          onChange={(type) => {
+            setSubmitError(null);
+            setStep("amount");
+            setOrderType(type);
+          }}
+          options={[
+            { value: "market", label: t("trade.orderTypeMarket") },
+            { value: "limit", label: t("trade.orderTypeLimit") },
+          ]}
+        />
       </div>
 
       {/* Buy/Sell Toggle */}
@@ -800,7 +796,7 @@ export function TradePage() {
                   key={value}
                   type="button"
                   onClick={() => handleLeveragePill(value)}
-                  className={`editorial-chip rounded-[14px] px-3 py-1.5 ${
+                  className={`editorial-chip editorial-chip-compact ${
                     leverage === value
                       ? "editorial-chip-active"
                       : ""

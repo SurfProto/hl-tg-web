@@ -540,6 +540,7 @@
     "vol": "Объём",
     "loadingMarketPrice": "Загрузка цены...",
     "marketPriceUnavailable": "Цена недоступна.",
+    "marketStats": "Статистика рынка",
     "marketStatsUnavailable": "Статистика рынка недоступна."
   },
   "tradingSetup": {

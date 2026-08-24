@@ -541,6 +541,7 @@
     "vol": "Vol",
     "loadingMarketPrice": "Loading market price...",
     "marketPriceUnavailable": "Market price unavailable.",
+    "marketStats": "Market stats",
     "marketStatsUnavailable": "Market stats unavailable."
   },
   "tradingSetup": {

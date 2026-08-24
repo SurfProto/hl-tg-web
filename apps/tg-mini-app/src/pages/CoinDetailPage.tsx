@@ -287,7 +287,7 @@ export function CoinDetailPage() {
         </div>
 
         <div className="mt-5">
-          <p className="editorial-kicker pb-2">{t('nav.markets')}</p>
+          <p className="editorial-kicker pb-2">{t('coinDetail.marketStats')}</p>
           <div className="editorial-card overflow-hidden px-4 py-1">
             {isPerp ? (
               <>

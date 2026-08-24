@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useToast } from "../hooks/useToast";
 import { buildTelegramReferralLink, normalizeReferralCode, openReferralInvite } from "../lib/referrals";
 import { applyReferralCode, RewardsApiError } from "../lib/rewards";
+import { log } from "../lib/logger";
 
 function getReferralErrorMessage(error: unknown, t: (key: string) => string) {
   if (error instanceof RewardsApiError) {
@@ -17,12 +18,17 @@ function getReferralErrorMessage(error: unknown, t: (key: string) => string) {
       case "SELF_REFERRAL_NOT_ALLOWED":
         return t("points.referral.errors.self");
       default:
-        return error.message;
+        // An unrecognised code means the server said something this screen has
+        // no copy for, and that string is written for an operator rather than
+        // a user.
+        log.warn("[referral] unmapped rewards error", { code: error.code, error });
+        return t("errors.somethingWentWrong");
     }
   }
 
   if (error instanceof Error) {
-    return error.message;
+    log.warn("[referral] referral apply failed", { error });
+    return t("errors.somethingWentWrong");
   }
 
   return t("errors.somethingWentWrong");

@@ -26,6 +26,7 @@ import {
   type OnrampQuoteRequest,
 } from "../../lib/onramp";
 import { useToast } from "../../components/Toast";
+import { log } from "../../lib/logger";
 
 type DepositView = "choice" | "fiat" | "crypto";
 
@@ -219,7 +220,8 @@ export function DepositPage() {
         }
       } catch (error) {
         if (cancelled) return;
-        setFiatFailure(error instanceof Error ? error.message : t("deposit.genericFiatError"));
+        log.warn("[deposit] fiat on-ramp step failed", { error });
+        setFiatFailure(t("deposit.genericFiatError"));
         setFiatState("email_required");
       } finally {
         if (!cancelled) {
@@ -280,7 +282,8 @@ export function DepositPage() {
         }
       } catch (error) {
         if (!cancelled) {
-          setFiatFailure(error instanceof Error ? error.message : t("deposit.genericFiatError"));
+          log.warn("[deposit] fiat on-ramp step failed", { error });
+          setFiatFailure(t("deposit.genericFiatError"));
         }
       }
     };
@@ -342,7 +345,8 @@ export function DepositPage() {
       setQuoteRequest({ amount, walletAddress: resolvedPayoutAddress });
       setFiatState(response.state);
     } catch (error) {
-      setFiatFailure(error instanceof Error ? error.message : t("deposit.genericFiatError"));
+      log.warn("[deposit] fiat on-ramp step failed", { error });
+      setFiatFailure(t("deposit.genericFiatError"));
       setFiatState("ready");
     } finally {
       setIsQuoting(false);
@@ -406,7 +410,8 @@ export function DepositPage() {
         openExternal(response.order.invoiceUrl);
       }
     } catch (error) {
-      setFiatFailure(error instanceof Error ? error.message : t("deposit.genericFiatError"));
+      log.warn("[deposit] fiat on-ramp step failed", { error });
+      setFiatFailure(t("deposit.genericFiatError"));
       setFiatState("ready");
     } finally {
       setIsCheckingOut(false);
@@ -451,7 +456,8 @@ export function DepositPage() {
         void queryClient.invalidateQueries();
       }
     } catch (error) {
-      setFiatFailure(error instanceof Error ? error.message : t("deposit.genericFiatError"));
+      log.warn("[deposit] fiat on-ramp step failed", { error });
+      setFiatFailure(t("deposit.genericFiatError"));
     } finally {
       setIsRefreshingStatus(false);
     }

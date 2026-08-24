@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "./Toast";
 import { ReferralCard } from "./ReferralCard";
+import { RewardsApiError } from "../lib/rewards";
 
 const openReferralInvite = vi.fn();
 const applyReferralCode = vi.fn();
@@ -25,6 +26,21 @@ vi.mock("../lib/referrals", async (importOriginal) => {
 
 vi.mock("../lib/rewards", () => ({
   applyReferralCode: (...args: unknown[]) => applyReferralCode(...args),
+  // Declared inside the factory on purpose: vi.mock is hoisted above the file
+  // body, so a class declared outside is still in its temporal dead zone when
+  // this runs. The line above survives only because the arrow defers its
+  // reference.
+  RewardsApiError: class RewardsApiError extends Error {
+    code?: string;
+    status: number;
+
+    constructor(message: string, status: number, code?: string) {
+      super(message);
+      this.name = "RewardsApiError";
+      this.code = code;
+      this.status = status;
+    }
+  },
 }));
 
 function renderCard() {
@@ -103,5 +119,47 @@ describe("ReferralCard", () => {
         expect.objectContaining({ hasReferrer: true }),
       );
     });
+  });
+
+  it("uses the copy written for a referral failure it knows", async () => {
+    applyReferralCode.mockRejectedValue(
+      new RewardsApiError("whatever the server said", 400, "REFERRAL_CODE_NOT_FOUND"),
+    );
+
+    renderCard();
+    fireEvent.change(screen.getByLabelText("points.enterReferralCode"), {
+      target: { value: "FRIEND99" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "points.applyReferralCode" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("points.referral.errors.notFound")).toBeInTheDocument();
+    });
+  });
+
+  // An unmapped code means the server said something this screen has no copy
+  // for. That is the same channel that put a Postgres not-null constraint in
+  // front of users on the Points tab.
+  it("does not put an unmapped server error in front of the user", async () => {
+    applyReferralCode.mockRejectedValue(
+      new RewardsApiError(
+        'null value in column "telegram_id" of relation "users" violates not-null constraint',
+        500,
+        "SOMETHING_THE_UI_HAS_NEVER_HEARD_OF",
+      ),
+    );
+
+    renderCard();
+    fireEvent.change(screen.getByLabelText("points.enterReferralCode"), {
+      target: { value: "FRIEND99" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "points.applyReferralCode" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("errors.somethingWentWrong")).toBeInTheDocument();
+    });
+
+    expect(document.body.textContent).not.toContain("telegram_id");
+    expect(document.body.textContent).not.toContain("violates");
   });
 });

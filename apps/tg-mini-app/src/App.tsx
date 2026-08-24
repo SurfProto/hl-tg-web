@@ -241,9 +241,7 @@ export function TelegramAuthGate({
     setLoginError(null);
     loginWithTelegram().catch((err: unknown) => {
       log.warn("[auth] Telegram login failed", { error: err });
-      const message =
-        err instanceof Error ? err.message : t("errors.loginFailed");
-      setLoginError(message);
+      setLoginError(t("errors.loginFailed"));
     });
   }, [authenticated, isTMA, loginWithTelegram, ready, t]);
 
@@ -302,11 +300,7 @@ export function TelegramAuthGate({
             setLoginError(null);
             loginWithTelegram().catch((err: unknown) => {
               log.warn("[auth] Telegram login retry failed", { error: err });
-              const message =
-                err instanceof Error
-                  ? err.message
-                  : t("errors.loginFailed");
-              setLoginError(message);
+              setLoginError(t("errors.loginFailed"));
             });
           }}
         >

@@ -20,8 +20,6 @@ import { log } from "../lib/logger";
 import { getHomeMarketDisplayState } from "./home-market-state";
 import { getHomeMarketViewState } from "./home-state";
 
-const HOME_ROW_COUNT = 6;
-
 // Rendering the whole universe cost 404 rows and ~5,600 DOM nodes on first
 // paint, inside a phone WebView. The list stays inline and the full set is one
 // tap away rather than behind a sheet — 419bbb1 deliberately removed the
@@ -251,8 +249,8 @@ export function HomePage() {
       <div className="px-4">
         <div className="overflow-hidden rounded-[18px] border border-border bg-white">
         {homeMarketViewState === "loading" ? (
-          <div className="divide-y divide-separator">
-            {Array.from({ length: HOME_ROW_COUNT }, (_, index) => (
+          <div className="space-y-2">
+            {Array.from({ length: HOME_MARKET_LIMIT }, (_, index) => (
               <MarketListItemSkeleton key={index} />
             ))}
           </div>

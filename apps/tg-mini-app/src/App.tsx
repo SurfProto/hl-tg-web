@@ -117,64 +117,27 @@ const queryClient = new QueryClient({
   },
 });
 
+// One fallback covers Positions, Points, Trade, Coin detail and every Account
+// sub-page while their chunk loads, so it deliberately imitates none of them.
+// The previous version was shaped like the Account page — a hero card, two list
+// cards, then 2/2/3 grids — and promised the wrong layout to every route but
+// that one.
+//
+// What these screens do share is a page header and a stack of cards, and that
+// is all this claims. The header block matches the real eyebrow-to-title
+// spacing rather than approximating it.
 function RouteFallback() {
   return (
-    <div className="min-h-full bg-background">
-      <div className="space-y-4 px-4 py-5 animate-pulse">
-        <div className="rounded-[28px] border border-separator bg-white p-5 shadow-sm">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="h-3 w-16 rounded bg-surface" />
-              <div className="mt-3 h-8 w-36 rounded bg-surface" />
-              <div className="mt-2 h-4 w-40 rounded bg-surface" />
-            </div>
-            <div className="h-11 w-11 rounded-full bg-surface" />
-          </div>
-        </div>
+    <div className="editorial-page px-4 py-5">
+      <div className="animate-pulse">
+        <div className="h-3 w-20 rounded bg-surface" />
+        <div className="mt-2 h-7 w-44 rounded bg-surface" />
 
-        <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="h-4 w-28 rounded bg-surface" />
-              <div className="mt-2 h-4 w-24 rounded bg-surface" />
-            </div>
-            <div className="h-9 w-16 rounded-full bg-surface" />
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-separator bg-white p-4 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="h-4 w-28 rounded bg-surface" />
-              <div className="mt-2 h-3 w-32 rounded bg-surface" />
-            </div>
-            <div className="h-10 w-36 rounded-full bg-surface" />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          {Array.from({ length: 2 }, (_, index) => (
-            <div
-              key={index}
-              className="h-[92px] rounded-2xl border border-separator bg-white shadow-sm"
-            />
-          ))}
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          {Array.from({ length: 2 }, (_, index) => (
-            <div
-              key={index}
-              className="h-[92px] rounded-2xl border border-separator bg-white shadow-sm"
-            />
-          ))}
-        </div>
-
-        <div className="grid grid-cols-3 gap-3">
+        <div className="mt-6 space-y-3">
           {Array.from({ length: 3 }, (_, index) => (
             <div
               key={index}
-              className="h-12 rounded-2xl border border-separator bg-white shadow-sm"
+              className="h-24 rounded-[18px] border border-border bg-white"
             />
           ))}
         </div>

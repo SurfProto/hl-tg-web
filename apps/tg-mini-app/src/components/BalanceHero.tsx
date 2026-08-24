@@ -110,7 +110,7 @@ export function BalanceHero() {
     <section className="px-4 pt-5">
       <div className="flex items-end justify-between pb-8">
         <div className="p34k-wordmark">P34k</div>
-        <p className="p34k-powered">Powered by Hyperliquid</p>
+        <p className="p34k-powered">{t('balanceHero.poweredBy')}</p>
       </div>
       <div>
         <p className="editorial-kicker">

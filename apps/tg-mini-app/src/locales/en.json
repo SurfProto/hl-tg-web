@@ -560,6 +560,7 @@
     "setupFailed": "Setup failed. Please try again."
   },
   "balanceHero": {
+    "poweredBy": "Powered by Hyperliquid",
     "totalEquity": "Total Equity",
     "availableForTrading": "Available for trading {{amount}}",
     "deposit": "Deposit",

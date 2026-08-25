@@ -4,6 +4,16 @@ import {
   DEFAULT_XP_PER_USD,
 } from "./engine";
 
+/**
+ * Configuration reachable from an ordinary rewards request.
+ *
+ * There is deliberately no treasury key here. While the program is XP-only no
+ * request path may move money, and the cheapest way to guarantee that is to
+ * make the key unreachable from the value every handler holds rather than to
+ * rely on a runtime check somebody can later invert. `REWARDS_TREASURY_PRIVATE_KEY`
+ * is still read — but only by `payout.ts` via its own `getPayoutConfig`, which
+ * no deployed handler imports. Setting the variable has no effect on the API.
+ */
 export interface RewardsConfig {
   firstTradeThresholdUsd: number;
   fundedDepositThresholdUsd: number;
@@ -13,7 +23,6 @@ export interface RewardsConfig {
   rewardsAdminKey: string | null;
   supabaseServiceRoleKey: string;
   supabaseUrl: string;
-  treasuryPrivateKey: `0x${string}` | null;
   weeklyRewardPoolUsd: number;
   weeklyTopTraderCohortSize: number;
   weeklyWinnerCount: number;
@@ -79,7 +88,6 @@ export function getRewardsConfig(env: NodeJS.ProcessEnv = process.env): RewardsC
     rewardsAdminKey: env.REWARDS_ADMIN_KEY ?? null,
     supabaseServiceRoleKey: getRequired(env, "SUPABASE_SERVICE_ROLE_KEY"),
     supabaseUrl: getRequired(env, "SUPABASE_URL"),
-    treasuryPrivateKey: (env.REWARDS_TREASURY_PRIVATE_KEY as `0x${string}` | undefined) ?? null,
     weeklyRewardPoolUsd,
     weeklyTopTraderCohortSize: Math.max(
       1,

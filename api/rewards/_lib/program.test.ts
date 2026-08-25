@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { RewardsConfig } from "./config";
 
 const supabaseAdmin = vi.hoisted(() => ({
   applyReferralCodeIfEligible: vi.fn(),
@@ -10,6 +11,11 @@ const supabaseAdmin = vi.hoisted(() => ({
   getRewardLedgerEntries: vi.fn(),
   getRewardLedgerEntriesBySource: vi.fn(),
   getSeasonLeaderboardRows: vi.fn(),
+  getSeasonXpTotals: vi.fn(),
+  getActiveSeason: vi.fn(),
+  getGrantedQuestIds: vi.fn(),
+  getFillCheckpointStatus: vi.fn(),
+  setUserReferrer: vi.fn(),
   getSuccessfulOnrampDeposits: vi.fn(),
   getUserById: vi.fn(),
   getUserPointsForSeason: vi.fn(),
@@ -29,25 +35,33 @@ const payout = vi.hoisted(() => ({
 
 vi.mock("./supabase-admin", () => supabaseAdmin);
 vi.mock("./payout", () => payout);
-vi.mock("@repo/hyperliquid-sdk", () => ({
-  HyperliquidClient: vi.fn(),
-}));
-vi.mock("./engine", () => ({
-  buildQuestSnapshot: vi.fn(() => ({
-    quests: [],
-    completedQuestIds: [],
-  })),
-  buildTopTraderLeaderboard: vi.fn(() => ({
-    entries: [],
-    userDistanceToCutoff: null,
-    userRank: null,
-    cutoffVolume: 0,
-  })),
-  buildVolumeXpGrants: vi.fn(() => []),
-  isAppAttributedFill: vi.fn(() => true),
-}));
+vi.mock("@repo/hyperliquid-sdk", () => ({ HyperliquidClient: vi.fn() }));
 
-describe("syncRewardsDashboard", () => {
+function config(): RewardsConfig {
+  return {
+    firstTradeThresholdUsd: 50,
+    fundedDepositThresholdUsd: 50,
+    hyperliquidTestnet: false,
+    privyAppId: null,
+    rafflePrizeAmounts: [100],
+    rewardsAdminKey: "admin-secret",
+    supabaseServiceRoleKey: "service-role",
+    supabaseUrl: "https://example.supabase.co",
+    weeklyRewardPoolUsd: 100,
+    weeklyTopTraderCohortSize: 10,
+    weeklyWinnerCount: 1,
+    xpPerUsd: 1,
+  };
+}
+
+/** The ledger rows a single sync tried to write. */
+function writtenEntries() {
+  return supabaseAdmin.upsertRewardLedgerEntries.mock.calls.flatMap(
+    (call) => call[1] as Array<Record<string, unknown>>,
+  );
+}
+
+describe("getRewardsDashboard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     supabaseAdmin.getOrCreateRewardsUser.mockResolvedValue({
@@ -59,6 +73,19 @@ describe("syncRewardsDashboard", () => {
     });
     supabaseAdmin.ensureReferralCode.mockImplementation(async (_config, user) => user);
     supabaseAdmin.applyReferralCodeIfEligible.mockImplementation(async (_config, args) => args.user);
+    supabaseAdmin.getGrantedQuestIds.mockResolvedValue([]);
+    supabaseAdmin.getFillCheckpointStatus.mockResolvedValue({
+      consecutiveFailures: 0,
+      cursorTime: "2026-04-01T00:00:00.000Z",
+      lastSuccessAt: new Date().toISOString(),
+      retentionRisk: false,
+    });
+    supabaseAdmin.getActiveSeason.mockResolvedValue({
+      id: "season-1",
+      name: "Season 1",
+      starts_at: "2026-04-01T00:00:00.000Z",
+      ends_at: "2026-05-01T00:00:00.000Z",
+    });
     supabaseAdmin.getOrCreateActiveSeason.mockResolvedValue({
       id: "season-1",
       name: "Season 1",
@@ -73,69 +100,259 @@ describe("syncRewardsDashboard", () => {
     });
     supabaseAdmin.getExistingVolumeXpFillKeys.mockResolvedValue(new Set());
     supabaseAdmin.upsertRewardLedgerEntries.mockResolvedValue([]);
-    supabaseAdmin.getRewardLedgerEntries.mockResolvedValue([
-      {
-        id: "ledger-1",
-        amount: 25,
-        asset: "USDC",
-        createdAt: "2026-04-14T00:00:00.000Z",
-        description: "Pending payout",
-        metadata: null,
-        postedAt: null,
-        questId: null,
-        rewardKind: "usdc",
-        seasonId: "season-1",
-        source: "quest",
-        status: "pending",
-        userId: "user-1",
-        weekStart: "2026-04-14T00:00:00.000Z",
-      },
-    ]);
+    supabaseAdmin.getRewardLedgerEntries.mockResolvedValue([]);
+    supabaseAdmin.getSeasonXpTotals.mockResolvedValue({
+      questXp: 0,
+      referralBonusXp: 0,
+      totalXp: 0,
+      volumeXp: 0,
+    });
     supabaseAdmin.upsertUserPoints.mockResolvedValue(undefined);
     supabaseAdmin.upsertWeeklyReward.mockResolvedValue(undefined);
     supabaseAdmin.getSeasonLeaderboardRows.mockResolvedValue([]);
-    supabaseAdmin.getWeeklyVolumeRows.mockResolvedValue([]);
-    supabaseAdmin.getUsersByIds.mockResolvedValue([]);
-    supabaseAdmin.getRewardLedgerEntriesBySource.mockResolvedValue([]);
     supabaseAdmin.getUserPointsForSeason.mockResolvedValue({ xp: 0 });
-    payout.hasRewardsTreasury.mockReturnValue(true);
   });
 
-  it("logs and leaves pending USDC entries untouched when the user has no wallet", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    const { syncRewardsDashboard } = await import("./program");
+  it("advertises XP-only capabilities to the client", async () => {
+    const { getRewardsDashboard } = await import("./program");
 
-    const dashboard = await syncRewardsDashboard(
-      {
-        privyUserId: "privy-1",
-      },
-      {
-        firstTradeThresholdUsd: 50,
-        fundedDepositThresholdUsd: 50,
-        hyperliquidTestnet: false,
-        privyAppId: null,
-        rafflePrizeAmounts: [100],
-        rewardsAdminKey: "admin-secret",
-        supabaseServiceRoleKey: "service-role",
-        supabaseUrl: "https://example.supabase.co",
-        treasuryPrivateKey: "0x1234",
-        weeklyRewardPoolUsd: 100,
-        weeklyTopTraderCohortSize: 10,
-        weeklyWinnerCount: 1,
-        xpPerUsd: 1,
-      },
-    );
+    const dashboard = await getRewardsDashboard({ privyUserId: "privy-1" }, config());
 
-    expect(consoleError).toHaveBeenCalledWith(
-      "[rewards] Skipping pending USDC payout for user user-1: no wallet address",
-    );
-    expect(dashboard.rewardHistory).toHaveLength(1);
-    expect(dashboard.rewardHistory[0]).toMatchObject({
-      id: "ledger-1",
-      status: "pending",
-      rewardKind: "usdc",
+    expect(dashboard.programStatus).toEqual({
+      mode: "xp_only",
+      usdcPayoutsEnabled: false,
+      weeklyRaffleEnabled: false,
     });
-    expect(payout.sendRewardUsdc).not.toHaveBeenCalled();
+    expect(dashboard.weeklyRaffle).toEqual({ state: "paused" });
+  });
+
+  /**
+   * The negative payout test the safety release exists for.
+   *
+   * A configured treasury key must be inert: `RewardsConfig` no longer carries
+   * one and `program.ts` no longer has a path to `payout.ts`, so the money is
+   * unreachable rather than merely un-sent. `server-imports.test.ts` asserts
+   * the structural half; this asserts nothing calls it at runtime either.
+   */
+  it("sends no USDC even when a treasury key is configured", async () => {
+    const previous = process.env.REWARDS_TREASURY_PRIVATE_KEY;
+    process.env.REWARDS_TREASURY_PRIVATE_KEY = `0x${"1".repeat(64)}`;
+
+    try {
+      supabaseAdmin.getOrCreateRewardsUser.mockResolvedValue({
+        id: "user-1",
+        username: "user",
+        wallet_address: "0xabcabcabcabcabcabcabcabcabcabcabcabcabca",
+        referral_code: "CODE123",
+        referred_by: null,
+      });
+      supabaseAdmin.getRewardLedgerEntries.mockResolvedValue([
+        {
+          id: "ledger-1",
+          amount: 25,
+          asset: "USDC",
+          createdAt: "2026-04-14T00:00:00.000Z",
+          description: "Held payout",
+          metadata: null,
+          postedAt: null,
+          questId: null,
+          rewardKind: "usdc",
+          seasonId: "season-1",
+          source: "quest",
+          status: "held",
+          userId: "user-1",
+          weekStart: "2026-04-14T00:00:00.000Z",
+        },
+      ]);
+      const { getRewardsDashboard } = await import("./program");
+
+      await getRewardsDashboard({ privyUserId: "privy-1" }, config());
+
+      expect(payout.sendRewardUsdc).not.toHaveBeenCalled();
+      expect(payout.hasRewardsTreasury).not.toHaveBeenCalled();
+      // A held row is terminal. Nothing may promote it back towards payment.
+      expect(supabaseAdmin.updateRewardLedgerStatus).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) {
+        delete process.env.REWARDS_TREASURY_PRIVATE_KEY;
+      } else {
+        process.env.REWARDS_TREASURY_PRIVATE_KEY = previous;
+      }
+    }
+  });
+
+  it("keeps cash history out of the user-facing response", async () => {
+    supabaseAdmin.getRewardLedgerEntries.mockResolvedValue([
+      { id: "xp-1", rewardKind: "xp", amount: 500, source: "quest", status: "posted" },
+      { id: "cash-1", rewardKind: "usdc", amount: 5, source: "quest", status: "held" },
+      { id: "cash-2", rewardKind: "usdc", amount: 3, source: "quest", status: "posted" },
+      { id: "raffle-1", rewardKind: "raffle", amount: 50, source: "weekly_raffle", status: "held" },
+    ]);
+    const { getRewardsDashboard } = await import("./program");
+
+    const dashboard = await getRewardsDashboard({ privyUserId: "privy-1" }, config());
+
+    expect(dashboard.rewardHistory.map((entry) => entry.id)).toEqual(["xp-1"]);
+  });
+
+  /**
+   * The 150-row accounting horizon.
+   *
+   * Totals were summed from the reward history the dashboard had already
+   * fetched for display, which is capped at 150 rows ordered newest-first. Past
+   * that cap a user's XP was recomputed from a recent window and written back
+   * over the projection, so it fell as they earned more. The database now
+   * answers the question, and the history page is display-only.
+   */
+  it("totals XP from the database aggregate, not the history page", async () => {
+    supabaseAdmin.getSeasonXpTotals.mockResolvedValue({
+      questXp: 800,
+      referralBonusXp: 500,
+      totalXp: 9300,
+      volumeXp: 8000,
+    });
+    // A history page that is both truncated and unrepresentative: summing it
+    // would give 25, which is what the old implementation would have stored.
+    supabaseAdmin.getRewardLedgerEntries.mockResolvedValue([
+      { id: "recent", rewardKind: "xp", amount: 25, source: "volume_xp", status: "posted" },
+    ]);
+    const { getRewardsDashboard } = await import("./program");
+
+    const dashboard = await getRewardsDashboard({ privyUserId: "privy-1" }, config());
+
+    expect(dashboard.season.xpTotal).toBe(9300);
+    expect(dashboard.season.questXpTotal).toBe(800);
+    expect(dashboard.season.volumeXpTotal).toBe(8000);
+    expect(supabaseAdmin.getSeasonXpTotals).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      "season-1",
+    );
+  });
+
+  // user_points is a cache of an answer the ledger owns, so the dashboard
+  // reports the aggregate rather than reading back a row it wrote.
+  it("reports the ledger aggregate without touching the projection", async () => {
+    supabaseAdmin.getSeasonXpTotals.mockResolvedValue({
+      questXp: 500,
+      referralBonusXp: 0,
+      totalXp: 1400,
+      volumeXp: 900,
+    });
+    const { getRewardsDashboard } = await import("./program");
+
+    const dashboard = await getRewardsDashboard({ privyUserId: "privy-1" }, config());
+
+    expect(dashboard.season.xpTotal).toBe(1400);
+    expect(supabaseAdmin.getUserPointsForSeason).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The point of the ingestion release.
+   *
+   * Opening this screen used to be able to create a season, apply a referral,
+   * call Hyperliquid, insert ledger rows, rewrite two projections and attempt a
+   * USDC transfer. Whether a user could see their points was coupled to whether
+   * the exchange was reachable, and accounting completeness depended on who
+   * happened to visit.
+   */
+  it("writes no reward state and performs no exchange I/O", async () => {
+    const { getRewardsDashboard } = await import("./program");
+
+    await getRewardsDashboard({ privyUserId: "privy-1" }, config());
+
+    expect(supabaseAdmin.upsertRewardLedgerEntries).not.toHaveBeenCalled();
+    expect(supabaseAdmin.upsertUserPoints).not.toHaveBeenCalled();
+    expect(supabaseAdmin.upsertWeeklyReward).not.toHaveBeenCalled();
+    expect(supabaseAdmin.updateRewardLedgerStatus).not.toHaveBeenCalled();
+    // Creating a season because somebody opened a page is the race this removes.
+    expect(supabaseAdmin.getOrCreateActiveSeason).not.toHaveBeenCalled();
+    expect(supabaseAdmin.getActiveSeason).toHaveBeenCalled();
+  });
+
+  // A referral is applied by the explicit mutation, before this is read.
+  it("does not assign a referral", async () => {
+    const { getRewardsDashboard } = await import("./program");
+
+    await getRewardsDashboard({ privyUserId: "privy-1" }, config());
+
+    expect(supabaseAdmin.applyReferralCodeIfEligible).not.toHaveBeenCalled();
+    expect(supabaseAdmin.setUserReferrer).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The read path has no fills, so a quest the ledger already paid must still
+   * show as completed — otherwise a user who earned "first trade" would watch
+   * it revert the moment ingestion moved off the page.
+   */
+  it("takes trade-derived quest completion from the ledger", async () => {
+    supabaseAdmin.getGrantedQuestIds.mockResolvedValue(["first_trade"]);
+    const { getRewardsDashboard } = await import("./program");
+
+    const dashboard = await getRewardsDashboard({ privyUserId: "privy-1" }, config());
+
+    const firstTrade = dashboard.quests.find((quest) => quest.id === "first_trade");
+    expect(firstTrade?.status).toBe("completed");
+  });
+
+  it("reports syncing before ingestion has ever succeeded", async () => {
+    supabaseAdmin.getFillCheckpointStatus.mockResolvedValue(null);
+    const { getRewardsDashboard } = await import("./program");
+
+    const dashboard = await getRewardsDashboard({ privyUserId: "privy-1" }, config());
+
+    expect(dashboard.sync).toEqual({
+      lastSyncedAt: null,
+      retentionRisk: false,
+      state: "syncing",
+    });
+  });
+
+  it("reports stale when the last success is old", async () => {
+    supabaseAdmin.getFillCheckpointStatus.mockResolvedValue({
+      consecutiveFailures: 0,
+      cursorTime: "2026-04-01T00:00:00.000Z",
+      lastSuccessAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+      retentionRisk: false,
+    });
+    const { getRewardsDashboard } = await import("./program");
+
+    const dashboard = await getRewardsDashboard({ privyUserId: "privy-1" }, config());
+
+    expect(dashboard.sync.state).toBe("stale");
+  });
+
+  it("reports error after repeated failures, without leaking a reason", async () => {
+    supabaseAdmin.getFillCheckpointStatus.mockResolvedValue({
+      consecutiveFailures: 5,
+      cursorTime: "2026-04-01T00:00:00.000Z",
+      lastSuccessAt: new Date().toISOString(),
+      retentionRisk: true,
+    });
+    const { getRewardsDashboard } = await import("./program");
+
+    const dashboard = await getRewardsDashboard({ privyUserId: "privy-1" }, config());
+
+    expect(dashboard.sync.state).toBe("error");
+    expect(dashboard.sync.retentionRisk).toBe(true);
+    expect(Object.keys(dashboard.sync).sort()).toEqual([
+      "lastSyncedAt",
+      "retentionRisk",
+      "state",
+    ]);
+  });
+
+  // Before any season exists there is nothing earned and nothing to invent.
+  it("returns an empty dashboard rather than creating a season", async () => {
+    supabaseAdmin.getActiveSeason.mockResolvedValue(null);
+    const { getRewardsDashboard } = await import("./program");
+
+    const dashboard = await getRewardsDashboard({ privyUserId: "privy-1" }, config());
+
+    expect(dashboard.season.seasonId).toBeNull();
+    expect(dashboard.quests).toEqual([]);
+    expect(dashboard.sync.state).toBe("syncing");
+    expect(supabaseAdmin.getOrCreateActiveSeason).not.toHaveBeenCalled();
   });
 
   it("returns referral linkage state in the dashboard summary", async () => {
@@ -146,29 +363,9 @@ describe("syncRewardsDashboard", () => {
       referral_code: "CODE123",
       referred_by: "referrer-1",
     });
-    const { syncRewardsDashboard } = await import("./program");
+    const { getRewardsDashboard } = await import("./program");
 
-    const dashboard = await syncRewardsDashboard(
-      {
-        privyUserId: "privy-1",
-        referralStartParam: null,
-      },
-      {
-        firstTradeThresholdUsd: 50,
-        fundedDepositThresholdUsd: 50,
-        hyperliquidTestnet: false,
-        privyAppId: null,
-        rafflePrizeAmounts: [100],
-        rewardsAdminKey: "admin-secret",
-        supabaseServiceRoleKey: "service-role",
-        supabaseUrl: "https://example.supabase.co",
-        treasuryPrivateKey: null,
-        weeklyRewardPoolUsd: 100,
-        weeklyTopTraderCohortSize: 10,
-        weeklyWinnerCount: 1,
-        xpPerUsd: 1,
-      },
-    );
+    const dashboard = await getRewardsDashboard({ privyUserId: "privy-1" }, config());
 
     expect(dashboard.referral).toMatchObject({
       referralCode: "CODE123",
@@ -176,66 +373,5 @@ describe("syncRewardsDashboard", () => {
       fundedReferralCount: 0,
       referredCount: 0,
     });
-  });
-});
-
-describe("runWeeklyRaffle", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    supabaseAdmin.getOrCreateActiveSeason.mockResolvedValue({
-      id: "season-1",
-      starts_at: "2026-04-01T00:00:00.000Z",
-      ends_at: "2026-05-01T00:00:00.000Z",
-      name: "Season 1",
-    });
-  });
-
-  it("returns existing winners without creating duplicates", async () => {
-    const existingWinners = [
-      {
-        id: "ledger-1",
-        amount: 100,
-        asset: "USDC",
-        createdAt: "2026-04-14T00:00:00.000Z",
-        description: "Winner",
-        metadata: null,
-        postedAt: null,
-        questId: null,
-        rewardKind: "raffle",
-        seasonId: "season-1",
-        source: "weekly_raffle",
-        status: "pending",
-        userId: "user-1",
-        weekStart: "2026-04-14T00:00:00.000Z",
-      },
-    ];
-    supabaseAdmin.getRewardLedgerEntriesBySource.mockResolvedValue(existingWinners);
-    const { runWeeklyRaffle } = await import("./program");
-
-    const result = await runWeeklyRaffle(
-      { weekStart: "2026-04-14T00:00:00.000Z" },
-      {
-        firstTradeThresholdUsd: 50,
-        fundedDepositThresholdUsd: 50,
-        hyperliquidTestnet: false,
-        privyAppId: null,
-        rafflePrizeAmounts: [100],
-        rewardsAdminKey: "admin-secret",
-        supabaseServiceRoleKey: "service-role",
-        supabaseUrl: "https://example.supabase.co",
-        treasuryPrivateKey: null,
-        weeklyRewardPoolUsd: 100,
-        weeklyTopTraderCohortSize: 10,
-        weeklyWinnerCount: 1,
-        xpPerUsd: 1,
-      },
-    );
-
-    expect(result).toEqual({
-      seasonId: "season-1",
-      weekStart: "2026-04-14T00:00:00.000Z",
-      winners: existingWinners,
-    });
-    expect(supabaseAdmin.upsertRewardLedgerEntries).not.toHaveBeenCalled();
   });
 });

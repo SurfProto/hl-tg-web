@@ -1,11 +1,7 @@
 import { requirePrivySession } from "../onramp/_lib/auth";
-import { ensureMethod, json, parseJsonBody, withJsonRoute } from "../onramp/_lib/http";
+import { ensureMethod, json, withJsonRoute } from "../onramp/_lib/http";
 import { getRewardsConfig } from "./_lib/config";
-import { syncRewardsDashboard } from "./_lib/program";
-
-interface DashboardBody {
-  startParam?: string | null;
-}
+import { getRewardsDashboard } from "./_lib/program";
 
 export default async function handler(request: any, response: any) {
   await withJsonRoute(request, response, async () => {
@@ -13,12 +9,12 @@ export default async function handler(request: any, response: any) {
 
     const config = getRewardsConfig();
     const session = await requirePrivySession(request, config.privyAppId);
-    const body = parseJsonBody<DashboardBody>(request);
-    const dashboard = await syncRewardsDashboard(
-      {
-        privyUserId: session.privyUserId,
-        referralStartParam: body.startParam ?? null,
-      },
+    // startParam is deliberately not read. A referral is applied by the
+    // explicit mutation at /api/rewards/referral/apply, before this is called:
+    // linking an account as a side effect of a page load made the outcome
+    // depend on which request won, and made a GET-shaped call a mutation.
+    const dashboard = await getRewardsDashboard(
+      { privyUserId: session.privyUserId },
       config,
     );
 

@@ -132,6 +132,39 @@ export function PointsPage() {
           <h1 className="editorial-heading text-foreground">{t("nav.rewards")}</h1>
         </div>
 
+        {/*
+          Rendered from the server's descriptor rather than from a build-time
+          flag, so a cached bundle cannot keep promising a payout the API has
+          already stopped making. The condition is on the capability, not on
+          the mode name, so restoring payouts is a server change alone.
+        */}
+        {!dashboard.programStatus.usdcPayoutsEnabled && (
+          <div
+            role="status"
+            className="mt-4 rounded-2xl border border-separator bg-surface px-4 py-3 text-sm text-muted"
+          >
+            {t("points.xpOnlyNotice")}
+          </div>
+        )}
+
+        {/*
+          Trades are ingested on a schedule now rather than while this screen is
+          open, so the totals below can legitimately lag a trade the user just
+          made. Saying so is the honest alternative to showing a confident zero.
+          "error" deliberately reads the same as "stale": the user's move is to
+          wait either way, and the distinction belongs in the run log.
+        */}
+        {dashboard.sync.state !== "synced" && (
+          <div
+            role="status"
+            className="mt-3 rounded-2xl border border-separator bg-surface px-4 py-3 text-sm text-muted"
+          >
+            {dashboard.sync.state === "syncing"
+              ? t("points.syncing")
+              : t("points.syncStale")}
+          </div>
+        )}
+
         <div className="mt-5 rounded-[20px] bg-primary p-5 text-white">
           <div className="editorial-kicker text-white/55">
             {dashboard.season.name} · YOUR POINTS
@@ -180,10 +213,20 @@ export function PointsPage() {
               +{formatCompactNumber(dashboard.season.volumeXpTotal)}
             </div>
           </div>
+          {/*
+            This card showed "Days active", subtitled with the raffle rank
+            formatted as "N of 7", above a figure that was neither: the value
+            has always been season quest XP. There is no raffle rank to read
+            any more — weeklyRaffle carries no ranking while payouts are
+            paused — so the label now names what the number is.
+          */}
           <div className="editorial-card flex items-center justify-between px-4 py-4">
             <div>
-              <div className="editorial-section-title">{t("points.daysActive")}</div>
-              <div className="mt-1 text-sm text-muted">{dashboard.weeklyRaffle.userRank ? `${dashboard.weeklyRaffle.userRank} of 7` : "—"}</div>
+              <div className="editorial-section-title">{t("points.questXp")}</div>
+              <div className="mt-1 text-sm text-muted">
+                {dashboard.quests.filter((quest) => quest.status === "completed").length}/
+                {dashboard.quests.length}
+              </div>
             </div>
             <div className="editorial-mono text-lg font-semibold text-positive">
               +{formatCompactNumber(dashboard.season.questXpTotal)}

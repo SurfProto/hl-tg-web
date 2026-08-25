@@ -1,5 +1,6 @@
 import type {
   LeaderboardEntry,
+  QuestId,
   QuestProgress,
   QuestStatus,
   VolumeXpGrant,
@@ -32,6 +33,17 @@ interface BuildQuestSnapshotInput {
   currentTime: string;
   fundedDepositThresholdUsd?: number;
   firstTradeThresholdUsd?: number;
+  /**
+   * Quests the ledger has already paid, which are completed regardless of what
+   * the inputs here suggest.
+   *
+   * The read path has no fills — ingestion runs on a schedule now, and a
+   * dashboard read performs no exchange I/O — so it cannot recompute whether a
+   * trade happened. It passes what was granted instead. A paid quest must never
+   * appear incomplete just because the evidence was fetched by a different
+   * process.
+   */
+  grantedQuestIds?: QuestId[];
 }
 
 interface BuildVolumeXpGrantsInput {
@@ -80,11 +92,18 @@ function createQuest(args: {
   progressCurrent: number;
   progressTarget: number;
   rewards: QuestProgress["rewards"];
+  granted?: Set<QuestId>;
 }): QuestProgress {
-  return args;
+  const { granted, ...quest } = args;
+
+  // A granted quest is completed even where the recomputed status disagrees:
+  // the ledger row is the record of it having happened, and the inputs the read
+  // path has available are a weaker source than the payment itself.
+  return granted?.has(quest.id) ? { ...quest, status: "completed" } : quest;
 }
 
 export function buildQuestSnapshot(input: BuildQuestSnapshotInput) {
+  const granted = new Set(input.grantedQuestIds ?? []);
   const fundedThreshold =
     input.fundedDepositThresholdUsd ?? DEFAULT_FUNDED_DEPOSIT_THRESHOLD_USD;
   const tradeThreshold =
@@ -122,28 +141,28 @@ export function buildQuestSnapshot(input: BuildQuestSnapshotInput) {
 
   const quests: QuestProgress[] = [
     createQuest({
+      granted,
       completedAt: firstDeposit?.occurredAt ?? null,
       description: `Fund ${formatUsd(fundedThreshold)} or more for the first time.`,
       id: "first_deposit",
       progressCurrent: Math.min(qualifyingDeposits.length, 1),
       progressTarget: 1,
-      rewards: [
-        { amount: 5, kind: "usdc", label: "5 USDC" },
-        { amount: 500, kind: "xp", label: "500 XP" },
-      ],
+      // XP only, matching what buildQuestRewardEntries actually writes. The
+      // USDC line that used to sit here was both a promise the ledger no
+      // longer makes and, because the card renders rewards[0], the only
+      // reward most users ever saw.
+      rewards: [{ amount: 500, kind: "xp", label: "500 XP" }],
       status: firstDeposit ? "completed" : "in_progress",
       title: "First deposit",
     }),
     createQuest({
+      granted,
       completedAt: qualifyingTrade?.occurredAt ?? null,
       description: `Place your first app trade over ${formatUsd(tradeThreshold)} after funding.`,
       id: "first_trade",
       progressCurrent: qualifyingTrade ? 1 : 0,
       progressTarget: 1,
-      rewards: [
-        { amount: 3, kind: "usdc", label: "3 USDC" },
-        { amount: 300, kind: "xp", label: "300 XP" },
-      ],
+      rewards: [{ amount: 300, kind: "xp", label: "300 XP" }],
       status: qualifyingTrade
         ? "completed"
         : firstDeposit
@@ -152,19 +171,18 @@ export function buildQuestSnapshot(input: BuildQuestSnapshotInput) {
       title: "First trade",
     }),
     createQuest({
+      granted,
       completedAt: input.hasFundedReferral ? input.currentTime : null,
       description: `Invite one friend who funds at least ${formatUsd(fundedThreshold)}.`,
       id: "referral_funded_friend",
       progressCurrent: input.hasFundedReferral ? 1 : 0,
       progressTarget: 1,
-      rewards: [
-        { amount: 5, kind: "usdc", label: "5 USDC" },
-        { amount: 500, kind: "xp", label: "500 XP" },
-      ],
+      rewards: [{ amount: 500, kind: "xp", label: "500 XP" }],
       status: input.hasFundedReferral ? "completed" : "in_progress",
       title: "Funded referral",
     }),
     createQuest({
+      granted,
       completedAt: secondDepositWithinWindow?.occurredAt ?? null,
       description: `Deposit ${formatUsd(fundedThreshold)} again within 7 days.`,
       id: "second_deposit_7d",

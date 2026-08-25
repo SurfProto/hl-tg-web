@@ -1,52 +1,61 @@
 import type {
-  QuestId,
   ReferralSummary,
   RewardsDashboard,
-  RewardKind,
-  RewardLedgerEntry,
-  WeeklyRaffleSnapshot,
+  RewardsProgramStatus,
+  RewardsSyncStatus,
+  WeeklyRafflePaused,
 } from "../../../packages/types/src";
-import { fetchWithTimeout } from "../../_lib/fetch-with-timeout";
 import { HttpError } from "../../onramp/_lib/http";
-import {
-  buildQuestSnapshot,
-  buildTopTraderLeaderboard,
-  buildVolumeXpGrants,
-  isAppAttributedFill,
-} from "./engine";
+import { buildQuestSnapshot, buildTopTraderLeaderboard } from "./engine";
 import { getRewardsConfig, type RewardsConfig } from "./config";
 import {
-  applyReferralCodeIfEligible,
-  claimWeeklyRaffleRun,
-  completeWeeklyRaffleRun,
   ensureReferralCode,
-  getExistingVolumeXpFillKeys,
+  getActiveSeason,
+  getFillCheckpointStatus,
   getFundedReferralStats,
+  getGrantedQuestIds,
   getOrCreateActiveSeason,
   getOrCreateRewardsUser,
   getRewardLedgerEntries,
-  getRewardLedgerEntriesBySource,
   getSeasonLeaderboardRows,
+  getSeasonXpTotals,
   getSuccessfulOnrampDeposits,
-  getUserById,
   getUserByReferralCode,
-  getUserPointsForSeason,
-  getUsersByIds,
-  getWeeklyVolumeRows,
-  patchWeeklyReward,
   setUserReferrer,
-  upsertRewardLedgerEntries,
-  upsertUserPoints,
-  upsertWeeklyReward,
-  updateRewardLedgerStatus,
-  type RewardLedgerInsertInput,
+  type FillCheckpointStatus,
   type RewardsUserRow,
 } from "./supabase-admin";
 
-interface SyncRewardsDashboardInput {
+/**
+ * The capabilities this build is willing to offer, sent to the client verbatim.
+ *
+ * The client renders from this rather than inferring what is available from
+ * missing fields, so pausing a capability is one server-side edit and not a
+ * coordinated release.
+ */
+const XP_ONLY_PROGRAM_STATUS: RewardsProgramStatus = {
+  mode: "xp_only",
+  usdcPayoutsEnabled: false,
+  weeklyRaffleEnabled: false,
+};
+
+/**
+ * No eligibility, no ranks, no winners — not "computed but withheld".
+ *
+ * Calculating a cohort nobody can be paid from would create exactly the
+ * entitlement record this mode exists to stop producing.
+ */
+const WEEKLY_RAFFLE_PAUSED: WeeklyRafflePaused = { state: "paused" };
+
+interface GetRewardsDashboardInput {
   privyUserId: string;
-  referralStartParam?: string | null;
 }
+
+/** Older than this since the last successful ingestion and the numbers are stale. */
+const STALE_AFTER_MS = 30 * 60 * 1000;
+
+/** Consecutive failed attempts before the dashboard admits something is wrong. */
+const FAILURES_BEFORE_ERROR = 3;
 
 type FillSummary = {
   cloid: string | null;
@@ -65,20 +74,6 @@ type RawUserFill = {
   tid: number;
   time: number;
 };
-
-function getWeekStartIso(value: Date) {
-  const weekStart = new Date(value);
-  const dayOffset = (weekStart.getUTCDay() + 6) % 7;
-  weekStart.setUTCDate(weekStart.getUTCDate() - dayOffset);
-  weekStart.setUTCHours(0, 0, 0, 0);
-  return weekStart.toISOString();
-}
-
-function getWeekEndIso(weekStartIso: string) {
-  const weekEnd = new Date(weekStartIso);
-  weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
-  return weekEnd.toISOString();
-}
 
 function normalizeReferralStartParam(startParam: string | null | undefined) {
   if (!startParam) {
@@ -105,422 +100,63 @@ function buildReferralSummary(
   };
 }
 
-async function getFillSummaries(config: RewardsConfig, walletAddress: string, seasonStart: string) {
-  const response = await fetchWithTimeout(
-    config.hyperliquidTestnet
-      ? "https://api.hyperliquid-testnet.xyz/info"
-      : "https://api.hyperliquid.xyz/info",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        type: "userFills",
-        user: walletAddress,
-      }),
-    },
-  );
 
-  if (!response.ok) {
-    throw new Error(`Hyperliquid fills request failed with status ${response.status}`);
-  }
 
-  const fills = (await response.json()) as RawUserFill[];
-  return fills
-    .filter((fill) => new Date(fill.time).toISOString() >= seasonStart)
-    .map(
-      (fill): FillSummary => ({
-        cloid: fill.cloid ?? null,
-        fillKey: `${fill.tid}:${fill.hash}:${fill.oid}`,
-        occurredAt: new Date(fill.time).toISOString(),
-        price: Number(fill.px),
-        size: Number(fill.sz),
-      }),
-    );
-}
-
-async function loadPayoutModule() {
-  return import("./payout.js");
-}
-
-async function canSendRewards(config: RewardsConfig) {
-  return Boolean(config.treasuryPrivateKey);
-}
-
-async function sendPendingRewardUsdc(
-  config: RewardsConfig,
-  input: { amount: number; destination: string },
-) {
-  const { sendRewardUsdc } = await loadPayoutModule();
-  return sendRewardUsdc(config, input);
-}
-
-function sumAmounts(entries: RewardLedgerEntry[], predicate: (entry: RewardLedgerEntry) => boolean) {
-  return entries
-    .filter(predicate)
-    .reduce((sum, entry) => sum + Number(entry.amount ?? 0), 0);
-}
-
-function buildQuestRewardEntries(args: {
-  questIds: QuestId[];
-  seasonId: string;
-  userId: string;
-  weekStart: string;
-}): RewardLedgerInsertInput[] {
-  const definitions: Record<
-    QuestId,
-    { description: string; rewards: Array<{ amount: number; kind: RewardKind; asset: string | null }> }
-  > = {
-    first_deposit: {
-      description: "Completed your first qualifying deposit.",
-      rewards: [
-        { amount: 5, asset: "USDC", kind: "usdc" },
-        { amount: 500, asset: null, kind: "xp" },
-      ],
-    },
-    first_trade: {
-      description: "Completed your first qualifying trade.",
-      rewards: [
-        { amount: 3, asset: "USDC", kind: "usdc" },
-        { amount: 300, asset: null, kind: "xp" },
-      ],
-    },
-    referral_funded_friend: {
-      description: "A referred friend completed a funded deposit.",
-      rewards: [
-        { amount: 5, asset: "USDC", kind: "usdc" },
-        { amount: 500, asset: null, kind: "xp" },
-      ],
-    },
-    second_deposit_7d: {
-      description: "Completed a second qualifying deposit within 7 days.",
-      rewards: [{ amount: 250, asset: null, kind: "xp" }],
-    },
-  };
-
-  return args.questIds.flatMap((questId) =>
-    definitions[questId].rewards.map((reward) => ({
-      amount: reward.amount,
-      asset: reward.asset,
-      description: definitions[questId].description,
-      idempotencyKey: `quest:${args.seasonId}:${args.userId}:${questId}:${reward.kind}`,
-      metadata: null,
-      postedAt: reward.kind === "xp" ? new Date().toISOString() : null,
-      questId,
-      rewardKind: reward.kind,
-      seasonId: args.seasonId,
-      source: "quest",
-      status: reward.kind === "xp" ? "posted" : "pending",
-      userId: args.userId,
-      weekStart: args.weekStart,
-    })),
-  );
-}
-
-function buildReferralBonusEntries(args: {
-  seasonId: string;
-  userId: string;
-  weekStart: string;
-}): RewardLedgerInsertInput[] {
-  return [
-    {
-      amount: 5,
-      asset: "USDC",
-      description: "Referral welcome bonus for completing your first funded deposit.",
-      idempotencyKey: `referral_bonus:${args.seasonId}:${args.userId}:usdc`,
-      metadata: null,
-      postedAt: null,
-      questId: null,
-      rewardKind: "usdc" as const,
-      seasonId: args.seasonId,
-      source: "referral_bonus",
-      status: "pending" as const,
-      userId: args.userId,
-      weekStart: args.weekStart,
-    },
-    {
-      amount: 500,
-      asset: null,
-      description: "Referral welcome bonus XP.",
-      idempotencyKey: `referral_bonus:${args.seasonId}:${args.userId}:xp`,
-      metadata: null,
-      postedAt: new Date().toISOString(),
-      questId: null,
-      rewardKind: "xp" as const,
-      seasonId: args.seasonId,
-      source: "referral_bonus",
-      status: "posted" as const,
-      userId: args.userId,
-      weekStart: args.weekStart,
-    },
-  ];
-}
-
-async function settlePendingUsdcEntries(
-  config: RewardsConfig,
-  user: RewardsUserRow,
-  entries: RewardLedgerEntry[],
-) {
-  if (!user.wallet_address) {
-    console.error(`[rewards] Skipping pending USDC payout for user ${user.id}: no wallet address`);
-    return entries;
-  }
-
-  if (!(await canSendRewards(config))) {
-    return entries;
-  }
-
-  const nextEntries = [...entries];
-  for (let index = 0; index < nextEntries.length; index += 1) {
-    const entry = nextEntries[index];
-    if (entry.rewardKind !== "usdc" || entry.status !== "pending") {
-      continue;
-    }
-
-    try {
-      const transfer = await sendPendingRewardUsdc(config, {
-        amount: Number(entry.amount),
-        destination: user.wallet_address,
-      });
-      nextEntries[index] = await updateRewardLedgerStatus(config, entry.id, {
-        metadata: {
-          ...(entry.metadata ?? {}),
-          transfer,
-        },
-        postedAt: new Date().toISOString(),
-        status: "posted",
-      });
-    } catch (error) {
-      nextEntries[index] = await updateRewardLedgerStatus(config, entry.id, {
-        metadata: {
-          ...(entry.metadata ?? {}),
-          error: error instanceof Error ? error.message : "Reward payout failed",
-        },
-        status: "failed",
-      });
-    }
-  }
-
-  return nextEntries;
-}
-
-function buildWeeklyRaffleSnapshot(args: {
-  currentUserId: string;
-  leaderboard: ReturnType<typeof buildTopTraderLeaderboard>;
-  weekStart: string;
-  winnerCount: number;
-  winners: RewardLedgerEntry[];
-}) {
-  const weekStart = args.weekStart;
-  const weekEnd = getWeekEndIso(weekStart);
-  const winnerEntries = args.winners.map((entry) => ({
-    displayName:
-      String(entry.metadata?.displayName ?? entry.metadata?.username ?? "Trader"),
-    prizeUsdc: Number(entry.amount),
-    userId: String(entry.metadata?.winnerUserId ?? entry.userId),
-  }));
-  const currentUser = args.leaderboard.entries.find(
-    (entry) => entry.userId === args.currentUserId,
-  );
-
-  return {
-    cohortSize: args.leaderboard.entries.filter((entry) => entry.raffleEligible).length,
-    cutoffVolume: args.leaderboard.cutoffVolume,
-    userDistanceToCutoff: args.leaderboard.userDistanceToCutoff,
-    userEligibleVolume: currentUser?.eligibleVolume ?? 0,
-    userIsEligible: currentUser?.raffleEligible ?? false,
-    userRank: args.leaderboard.userRank,
-    weekEnd,
-    weekStart,
-    winnerCount: args.winnerCount,
-    winners: winnerEntries,
-  } satisfies WeeklyRaffleSnapshot;
-}
 
 /**
- * Uniform index in [0, limit).
+ * Read the rewards dashboard. Performs no exchange I/O and writes no reward state.
  *
- * `getRandomValues()[0] % limit` is biased towards low indices whenever limit
- * does not divide 2^32, which is not acceptable for a draw that pays out real
- * USDC. Rejection sampling discards the values in the final partial bucket. The
- * old Math.random() fallback is gone: on Node 20 globalThis.crypto is always
- * present, so it was unreachable, and a non-cryptographic prize draw should
- * fail rather than quietly happen.
+ * This endpoint used to be a command wearing a query's clothes: opening the
+ * Points screen could create a season, apply a referral, call Hyperliquid,
+ * insert ledger rows, rewrite projections and attempt a USDC transfer. That
+ * coupled whether a user could *see* their points to whether the exchange was
+ * reachable, and made accounting completeness a function of who happened to
+ * visit.
+ *
+ * All of that now happens in the scheduled worker. What remains here is
+ * identity provisioning — get-or-create the user row and their referral code,
+ * both idempotent and neither reward state — plus reads. A read may report that
+ * its numbers are stale; it never makes them fresher.
  */
-function randomIndex(limit: number) {
-  if (limit <= 1) {
-    return 0;
-  }
-
-  if (!globalThis.crypto?.getRandomValues) {
-    throw new Error("Secure randomness is unavailable; refusing to draw raffle winners");
-  }
-
-  const values = new Uint32Array(1);
-  const range = 2 ** 32;
-  const limitOfUnbiasedRange = range - (range % limit);
-
-  // Expected iterations < 2 for any limit.
-  for (let attempt = 0; attempt < 64; attempt += 1) {
-    globalThis.crypto.getRandomValues(values);
-    if (values[0] < limitOfUnbiasedRange) {
-      return values[0] % limit;
-    }
-  }
-
-  throw new Error("Failed to draw an unbiased random index");
-}
-
-function drawWinners<T>(entries: T[], count: number) {
-  const pool = [...entries];
-  const winners: T[] = [];
-
-  while (pool.length > 0 && winners.length < count) {
-    const index = randomIndex(pool.length);
-    winners.push(pool[index]);
-    pool.splice(index, 1);
-  }
-
-  return winners;
-}
-
-export async function syncRewardsDashboard(
-  input: SyncRewardsDashboardInput,
+export async function getRewardsDashboard(
+  input: GetRewardsDashboardInput,
   config = getRewardsConfig(),
 ): Promise<RewardsDashboard> {
   let user = await getOrCreateRewardsUser(config, {
     privyUserId: input.privyUserId,
   });
   user = await ensureReferralCode(config, user);
-  user = await applyReferralCodeIfEligible(config, {
-    referralCode: normalizeReferralStartParam(input.referralStartParam),
-    user,
-  });
 
-  const season = await getOrCreateActiveSeason(config);
+  // Never creates one. Before the first season exists there is nothing to
+  // report, and inventing one because somebody opened a page is exactly the
+  // race this release removes.
+  const season = await getActiveSeason(config);
+  if (!season) {
+    return buildEmptyDashboard(user);
+  }
+
   const now = new Date();
-  const weekStart = getWeekStartIso(now);
-  const deposits = await getSuccessfulOnrampDeposits(config, user.id, season.starts_at);
-  const fills =
-    user.wallet_address != null
-      ? await getFillSummaries(config, user.wallet_address, season.starts_at)
-      : [];
-  const referralStats = await getFundedReferralStats(
-    config,
-    user.id,
-    season.starts_at,
-    config.fundedDepositThresholdUsd,
-  );
+  const [deposits, referralStats, grantedQuestIds, xpTotals, rewardHistory, checkpoint] =
+    await Promise.all([
+      getSuccessfulOnrampDeposits(config, user.id, season.starts_at),
+      getFundedReferralStats(config, user.id, season.starts_at, config.fundedDepositThresholdUsd),
+      getGrantedQuestIds(config, user.id, season.id),
+      getSeasonXpTotals(config, user.id, season.id),
+      getRewardLedgerEntries(config, user.id, 150),
+      getFillCheckpointStatus(config, user.id, season.id),
+    ]);
 
   const questSnapshot = buildQuestSnapshot({
     currentTime: now.toISOString(),
     deposits,
-    fills,
+    // Deliberately empty. Trades are ingested on a schedule, so the read path
+    // has no fills to reason about and takes trade-derived quests from what the
+    // ledger already granted instead.
+    fills: [],
     firstTradeThresholdUsd: config.firstTradeThresholdUsd,
     fundedDepositThresholdUsd: config.fundedDepositThresholdUsd,
+    grantedQuestIds,
     hasFundedReferral: referralStats.fundedReferralCount > 0,
-  });
-
-  const existingVolumeXpFillKeys = await getExistingVolumeXpFillKeys(config, user.id, season.id);
-  const volumeXpGrants = buildVolumeXpGrants({
-    existingFillKeys: existingVolumeXpFillKeys,
-    fills,
-    seasonId: season.id,
-    userId: user.id,
-    weekStart,
-    xpPerUsd: config.xpPerUsd,
-  });
-
-  const ledgerEntriesToUpsert = [
-    ...buildQuestRewardEntries({
-      questIds: questSnapshot.completedQuestIds,
-      seasonId: season.id,
-      userId: user.id,
-      weekStart,
-    }),
-    ...volumeXpGrants.map((grant) => ({
-      amount: grant.xp,
-      asset: null,
-      description: `Trading volume XP for ${grant.volumeUsd.toFixed(2)} USD of app volume.`,
-      idempotencyKey: `volume_xp:${season.id}:${user.id}:${grant.fillKey}`,
-      metadata: {
-        fillKey: grant.fillKey,
-        volumeUsd: grant.volumeUsd,
-      },
-      postedAt: new Date().toISOString(),
-      questId: null,
-      rewardKind: "xp" as const,
-      seasonId: season.id,
-      source: "volume_xp",
-      status: "posted" as const,
-      userId: user.id,
-      weekStart,
-    })),
-  ];
-
-  const firstDepositCompleted = questSnapshot.completedQuestIds.includes("first_deposit");
-  if (firstDepositCompleted && user.referred_by) {
-    ledgerEntriesToUpsert.push(
-      ...buildReferralBonusEntries({
-        seasonId: season.id,
-        userId: user.id,
-        weekStart,
-      }),
-    );
-
-    const referrer = await getUserById(config, user.referred_by);
-    if (referrer) {
-      ledgerEntriesToUpsert.push(
-        ...buildQuestRewardEntries({
-          questIds: ["referral_funded_friend"],
-          seasonId: season.id,
-          userId: referrer.id,
-          weekStart,
-        }),
-      );
-    }
-  }
-
-  await upsertRewardLedgerEntries(config, ledgerEntriesToUpsert);
-
-  let rewardHistory = await getRewardLedgerEntries(config, user.id, 150);
-  rewardHistory = await settlePendingUsdcEntries(config, user, rewardHistory);
-
-  const appEligibleVolume = fills
-    .filter((fill) => isAppAttributedFill(fill))
-    .reduce((sum, fill) => sum + Math.abs(fill.price) * Math.abs(fill.size), 0);
-  const weeklyEligibleVolume = fills
-    .filter((fill) => fill.occurredAt >= weekStart)
-    .filter((fill) => isAppAttributedFill(fill))
-    .reduce((sum, fill) => sum + Math.abs(fill.price) * Math.abs(fill.size), 0);
-
-  const questXpTotal = sumAmounts(
-    rewardHistory,
-    (entry) => entry.rewardKind === "xp" && entry.source === "quest",
-  );
-  const volumeXpTotal = sumAmounts(
-    rewardHistory,
-    (entry) => entry.rewardKind === "xp" && entry.source === "volume_xp",
-  );
-  const referralBonusXpTotal = sumAmounts(
-    rewardHistory,
-    (entry) => entry.rewardKind === "xp" && entry.source === "referral_bonus",
-  );
-  const totalXp = questXpTotal + volumeXpTotal + referralBonusXpTotal;
-
-  await upsertUserPoints(config, {
-    referralVolume: referralStats.fundedReferralVolume,
-    seasonId: season.id,
-    totalVolume: appEligibleVolume,
-    userId: user.id,
-    xp: totalXp,
-  });
-  await upsertWeeklyReward(config, {
-    seasonId: season.id,
-    userId: user.id,
-    userVolume: weeklyEligibleVolume,
-    weekStart,
   });
 
   const seasonLeaderboardRows = await getSeasonLeaderboardRows(config, season.id);
@@ -530,53 +166,7 @@ export async function syncRewardsDashboard(
     rows: seasonLeaderboardRows,
   });
 
-  const weeklyRows = await getWeeklyVolumeRows(config, season.id, weekStart);
-  const weeklyUsers = await getUsersByIds(
-    config,
-    [...new Set(weeklyRows.map((row) => row.user_id))],
-  );
-  const weeklyUsersById = new Map(weeklyUsers.map((candidate) => [candidate.id, candidate]));
-  const xpByUserId = new Map(seasonLeaderboardRows.map((row) => [row.userId, row.xp]));
-  const weeklyLeaderboard = buildTopTraderLeaderboard({
-    currentUserId: user.id,
-    eligibleCohortSize: config.weeklyTopTraderCohortSize,
-    rows: weeklyRows.map((row) => ({
-      displayName:
-        weeklyUsersById.get(row.user_id)?.username ??
-        weeklyUsersById.get(row.user_id)?.wallet_address?.slice(0, 6) ??
-        "Trader",
-      eligibleVolume: Number(row.user_volume ?? 0),
-      userId: row.user_id,
-      xp: xpByUserId.get(row.user_id) ?? 0,
-    })),
-  });
-
-  const weeklyWinners = await getRewardLedgerEntriesBySource(config, {
-    seasonId: season.id,
-    source: "weekly_raffle",
-    weekStart,
-  });
-  const weeklySnapshot = buildWeeklyRaffleSnapshot({
-    currentUserId: user.id,
-    leaderboard: weeklyLeaderboard,
-    weekStart,
-    winnerCount: config.weeklyWinnerCount,
-    winners: weeklyWinners,
-  });
-
-  for (const entry of weeklyLeaderboard.entries) {
-    const weeklyRow = weeklyRows.find((row) => row.user_id === entry.userId);
-    if (!weeklyRow) {
-      continue;
-    }
-
-    await patchWeeklyReward(config, weeklyRow.id, {
-      raffle_eligible: entry.raffleEligible,
-      raffle_rank: entry.rank,
-    });
-  }
-
-  const currentPoints = await getUserPointsForSeason(config, user.id, season.id);
+  const points = seasonLeaderboardRows.find((row) => row.userId === user.id);
 
   return {
     leaderboard: {
@@ -584,23 +174,84 @@ export async function syncRewardsDashboard(
       userDistanceToCutoff: seasonLeaderboard.userDistanceToCutoff,
       userRank: seasonLeaderboard.userRank,
     },
+    programStatus: XP_ONLY_PROGRAM_STATUS,
     quests: questSnapshot.quests,
-    referral: {
-      ...buildReferralSummary(user, referralStats),
-    },
-    rewardHistory,
+    referral: buildReferralSummary(user, referralStats),
+    // Cash history — held or genuinely paid — is reconciliation data, not
+    // something to show a user next to a notice saying payouts are paused.
+    rewardHistory: rewardHistory.filter((entry) => entry.rewardKind === "xp"),
     season: {
-      eligibleVolume: appEligibleVolume,
+      eligibleVolume: points?.eligibleVolume ?? 0,
       endsAt: season.ends_at,
       leaderboardRank: seasonLeaderboard.userRank,
       name: season.name,
-      questXpTotal,
+      questXpTotal: xpTotals.questXp,
       seasonId: season.id,
       startsAt: season.starts_at,
-      volumeXpTotal,
-      xpTotal: Number(currentPoints?.xp ?? totalXp),
+      volumeXpTotal: xpTotals.volumeXp,
+      xpTotal: xpTotals.totalXp,
     },
-    weeklyRaffle: weeklySnapshot,
+    sync: buildSyncStatus(checkpoint, now),
+    weeklyRaffle: WEEKLY_RAFFLE_PAUSED,
+  };
+}
+
+/**
+ * How fresh the numbers are, from the ingestion checkpoint.
+ *
+ * Carries no message on purpose. The reason a sync failed belongs in the run
+ * log, where it can name an upstream status; putting it in a user-facing
+ * response is how a Postgres constraint string ended up on the Points screen
+ * once already.
+ */
+function buildSyncStatus(
+  checkpoint: FillCheckpointStatus | null,
+  now: Date,
+): RewardsSyncStatus {
+  if (!checkpoint || !checkpoint.lastSuccessAt) {
+    // No successful pass yet. The totals shown are real but incomplete, which
+    // a user who just traded needs told rather than shown a confident zero.
+    return { lastSyncedAt: null, retentionRisk: false, state: "syncing" };
+  }
+
+  const ageMs = now.getTime() - new Date(checkpoint.lastSuccessAt).getTime();
+
+  return {
+    lastSyncedAt: checkpoint.lastSuccessAt,
+    retentionRisk: checkpoint.retentionRisk,
+    state:
+      checkpoint.consecutiveFailures >= FAILURES_BEFORE_ERROR
+        ? "error"
+        : ageMs > STALE_AFTER_MS
+          ? "stale"
+          : "synced",
+  };
+}
+
+/** Before any season exists there is nothing earned and nothing to sync. */
+function buildEmptyDashboard(user: RewardsUserRow): RewardsDashboard {
+  return {
+    leaderboard: { entries: [], userDistanceToCutoff: 0, userRank: null },
+    programStatus: XP_ONLY_PROGRAM_STATUS,
+    quests: [],
+    referral: buildReferralSummary(user, {
+      fundedReferralCount: 0,
+      referredCount: 0,
+    }),
+    rewardHistory: [],
+    season: {
+      eligibleVolume: 0,
+      endsAt: new Date(0).toISOString(),
+      leaderboardRank: null,
+      name: "",
+      questXpTotal: 0,
+      seasonId: null,
+      startsAt: new Date(0).toISOString(),
+      volumeXpTotal: 0,
+      xpTotal: 0,
+    },
+    sync: { lastSyncedAt: null, retentionRisk: false, state: "syncing" },
+    weeklyRaffle: WEEKLY_RAFFLE_PAUSED,
   };
 }
 
@@ -646,172 +297,4 @@ export async function applyReferralCode(
   );
 
   return buildReferralSummary(user, referralStats);
-}
-
-export async function runWeeklyRaffle(
-  input?: { weekStart?: string | null },
-  config = getRewardsConfig(),
-) {
-  const season = await getOrCreateActiveSeason(config);
-  const weekStart = input?.weekStart ?? getWeekStartIso(new Date());
-  const existingWinners = await getRewardLedgerEntriesBySource(config, {
-    seasonId: season.id,
-    source: "weekly_raffle",
-    weekStart,
-  });
-  if (existingWinners.length > 0) {
-    return {
-      seasonId: season.id,
-      weekStart,
-      winners: existingWinners,
-    };
-  }
-
-  // Prizes are handed out by draw index, so a short prize list silently paid
-  // later winners nothing. Refuse before drawing rather than after.
-  if (config.rafflePrizeAmounts.length < config.weeklyWinnerCount) {
-    throw new HttpError(
-      500,
-      "RAFFLE_MISCONFIGURED",
-      `rafflePrizeAmounts has ${config.rafflePrizeAmounts.length} entries but weeklyWinnerCount is ${config.weeklyWinnerCount}`,
-    );
-  }
-
-  // Claim the week before drawing. The read above is not enough on its own:
-  // two concurrent runs both saw no winners and both drew, and the per-user
-  // ledger idempotency key merged the two draws instead of rejecting one.
-  const claimed = await claimWeeklyRaffleRun(config, season.id, weekStart);
-  if (!claimed) {
-    return {
-      alreadyRunning: true,
-      seasonId: season.id,
-      weekStart,
-      winners: [],
-    };
-  }
-
-  try {
-    return await drawWeeklyRaffle(config, season, weekStart);
-  } catch (error) {
-    await completeWeeklyRaffleRun(
-      config,
-      season.id,
-      weekStart,
-      0,
-      error instanceof Error ? error.message : "Weekly raffle failed",
-    );
-    throw error;
-  }
-}
-
-async function drawWeeklyRaffle(
-  config: RewardsConfig,
-  season: { id: string },
-  weekStart: string,
-) {
-  const weeklyRows = await getWeeklyVolumeRows(config, season.id, weekStart);
-  const users = await getUsersByIds(
-    config,
-    [...new Set(weeklyRows.map((row) => row.user_id))],
-  );
-  const usersById = new Map(users.map((user) => [user.id, user]));
-  const leaderboard = buildTopTraderLeaderboard({
-    currentUserId: weeklyRows[0]?.user_id ?? "",
-    eligibleCohortSize: config.weeklyTopTraderCohortSize,
-    rows: weeklyRows.map((row) => ({
-      displayName:
-        usersById.get(row.user_id)?.username ??
-        usersById.get(row.user_id)?.wallet_address?.slice(0, 6) ??
-        "Trader",
-      eligibleVolume: Number(row.user_volume ?? 0),
-      userId: row.user_id,
-      xp: 0,
-    })),
-  });
-  const eligibleEntries = leaderboard.entries.filter((entry) => entry.raffleEligible);
-  const drawnWinners = drawWinners(
-    eligibleEntries,
-    Math.min(config.weeklyWinnerCount, eligibleEntries.length),
-  );
-  const nowIso = new Date().toISOString();
-
-  const upserted = await upsertRewardLedgerEntries(
-    config,
-    drawnWinners.map((winner, index) => ({
-      amount: config.rafflePrizeAmounts[index] ?? 0,
-      asset: "USDC",
-      description: `Weekly raffle prize for rank cohort ending ${weekStart}.`,
-      idempotencyKey: `weekly_raffle:${season.id}:${weekStart}:${winner.userId}`,
-      metadata: {
-        displayName: winner.displayName,
-        rank: winner.rank,
-        winnerUserId: winner.userId,
-      },
-      postedAt: null,
-      questId: null,
-      rewardKind: "raffle",
-      seasonId: season.id,
-      source: "weekly_raffle",
-      status: "pending",
-      userId: winner.userId,
-      weekStart,
-    })),
-  );
-
-  for (const row of weeklyRows) {
-    const leaderboardEntry = leaderboard.entries.find((entry) => entry.userId === row.user_id);
-    const winnerEntry = upserted.find((entry) => entry.userId === row.user_id);
-    await patchWeeklyReward(config, row.id, {
-      drawn_at: nowIso,
-      raffle_eligible: leaderboardEntry?.raffleEligible ?? false,
-      raffle_prize: String(winnerEntry?.amount ?? 0),
-      raffle_rank: leaderboardEntry?.rank ?? null,
-    });
-  }
-
-  if (await canSendRewards(config)) {
-    for (const entry of upserted) {
-      const winner = usersById.get(entry.userId);
-      if (!winner?.wallet_address) {
-        continue;
-      }
-
-      try {
-        const transfer = await sendPendingRewardUsdc(config, {
-          amount: Number(entry.amount),
-          destination: winner.wallet_address,
-        });
-        await updateRewardLedgerStatus(config, entry.id, {
-          metadata: {
-            ...(entry.metadata ?? {}),
-            transfer,
-          },
-          postedAt: nowIso,
-          status: "posted",
-        });
-      } catch (error) {
-        await updateRewardLedgerStatus(config, entry.id, {
-          metadata: {
-            ...(entry.metadata ?? {}),
-            error: error instanceof Error ? error.message : "Weekly raffle payout failed",
-          },
-          status: "failed",
-        });
-      }
-    }
-  }
-
-  const winners = await getRewardLedgerEntriesBySource(config, {
-    seasonId: season.id,
-    source: "weekly_raffle",
-    weekStart,
-  });
-
-  await completeWeeklyRaffleRun(config, season.id, weekStart, winners.length);
-
-  return {
-    seasonId: season.id,
-    weekStart,
-    winners,
-  };
 }

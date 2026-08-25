@@ -1,12 +1,22 @@
 import { constantTimeEquals } from "../_lib/secret-compare";
-import { ensureMethod, HttpError, json, parseJsonBody, withJsonRoute } from "../onramp/_lib/http";
+import { ensureMethod, HttpError, withJsonRoute } from "../onramp/_lib/http";
 import { getRewardsConfig } from "./_lib/config";
-import { runWeeklyRaffle } from "./_lib/program";
 
-interface WeeklyRaffleBody {
-  weekStart?: string | null;
-}
-
+/**
+ * Disabled while the rewards program is XP-only.
+ *
+ * Authorization is still checked first, and checked exactly as it was: an
+ * unauthenticated caller must not be able to discover whether the route is
+ * disabled, and an operator who does hold the admin key deserves the specific
+ * REWARDS_XP_ONLY answer rather than a 401 that sends them looking for a
+ * credential problem.
+ *
+ * The refusal happens here, before any work. This module deliberately does not
+ * import `_lib/raffle`, so no run can be claimed, no cohort ranked, no winner
+ * drawn, no ledger row written and no USDC sent — not as a matter of an early
+ * return that could be moved, but because the code that would do it is not in
+ * this module graph. The route also remains absent from vercel.json's crons.
+ */
 export default async function handler(request: any, response: any) {
   await withJsonRoute(request, response, async () => {
     const config = getRewardsConfig();
@@ -25,17 +35,10 @@ export default async function handler(request: any, response: any) {
       }
     }
 
-    const body = request.method === "POST" ? parseJsonBody<WeeklyRaffleBody>(request) : {};
-    const result = await runWeeklyRaffle(
-      {
-        weekStart: body.weekStart ?? null,
-      },
-      config,
+    throw new HttpError(
+      409,
+      "REWARDS_XP_ONLY",
+      "The weekly raffle is paused while the rewards program is XP-only.",
     );
-
-    json(response, 200, {
-      success: true,
-      data: result,
-    });
   });
 }

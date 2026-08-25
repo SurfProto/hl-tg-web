@@ -1,11 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const runWeeklyRaffle = vi.fn();
-
-vi.mock("./_lib/program", () => ({
-  runWeeklyRaffle,
-}));
-
 vi.mock("./_lib/config", () => ({
   getRewardsConfig: vi.fn(() => ({
     rewardsAdminKey: "admin-secret",
@@ -52,56 +46,71 @@ describe("/api/rewards/weekly-raffle", () => {
       success: false,
       code: "UNAUTHORIZED",
     });
-    expect(runWeeklyRaffle).not.toHaveBeenCalled();
   });
 
-  it("accepts authenticated cron GET requests", async () => {
-    runWeeklyRaffle.mockResolvedValue({ winners: [] });
+  // Authorization is still checked first and checked unchanged. An anonymous
+  // caller learns nothing about which capabilities are switched off, and an
+  // operator holding a valid key gets the specific reason rather than a 401
+  // that would send them hunting for a credential problem.
+  it("refuses an authenticated cron GET with REWARDS_XP_ONLY", async () => {
     const { default: handler } = await import("./weekly-raffle");
     const response = makeResponse();
 
     await handler(
-      {
-        method: "GET",
-        headers: {
-          authorization: "Bearer cron-secret",
-        },
-      },
+      { method: "GET", headers: { authorization: "Bearer cron-secret" } },
       response,
     );
 
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(409);
     expect(response.body).toMatchObject({
-      success: true,
-      data: { winners: [] },
+      success: false,
+      code: "REWARDS_XP_ONLY",
     });
-    expect(runWeeklyRaffle).toHaveBeenCalledTimes(1);
   });
 
-  it("accepts manual POST requests with the admin key", async () => {
-    runWeeklyRaffle.mockResolvedValue({ winners: ["winner-1"] });
+  it("refuses an authenticated admin POST with REWARDS_XP_ONLY", async () => {
     const { default: handler } = await import("./weekly-raffle");
     const response = makeResponse();
 
     await handler(
       {
         method: "POST",
-        headers: {
-          "x-rewards-admin-key": "admin-secret",
-        },
+        headers: { "x-rewards-admin-key": "admin-secret" },
         body: { weekStart: "2026-04-14T00:00:00.000Z" },
       },
       response,
     );
 
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(409);
     expect(response.body).toMatchObject({
-      success: true,
-      data: { winners: ["winner-1"] },
+      success: false,
+      code: "REWARDS_XP_ONLY",
     });
-    expect(runWeeklyRaffle).toHaveBeenCalledWith(
-      { weekStart: "2026-04-14T00:00:00.000Z" },
-      expect.any(Object),
+  });
+
+  /**
+   * The refusal must not be an early return sitting on top of a live draw.
+   *
+   * `server-imports.test.ts` proves the route's module graph excludes
+   * `_lib/raffle`; this asserts the observable half of the same claim, so that
+   * re-importing the draw would have to break a test that reads like the
+   * requirement it came from.
+   */
+  it("performs no database work while refusing", async () => {
+    const supabaseAdmin = await import("./_lib/supabase-admin");
+    const claim = vi.spyOn(supabaseAdmin, "claimWeeklyRaffleRun");
+    const season = vi.spyOn(supabaseAdmin, "getOrCreateActiveSeason");
+    const upsert = vi.spyOn(supabaseAdmin, "upsertRewardLedgerEntries");
+
+    const { default: handler } = await import("./weekly-raffle");
+
+    await handler(
+      { method: "GET", headers: { authorization: "Bearer cron-secret" } },
+      makeResponse(),
     );
+
+    expect(season).not.toHaveBeenCalled();
+    expect(claim).not.toHaveBeenCalled();
+    expect(upsert).not.toHaveBeenCalled();
   });
 });

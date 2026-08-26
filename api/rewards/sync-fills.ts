@@ -26,6 +26,26 @@ import {
 
 const DEFAULT_BATCH_LIMIT = 25;
 
+/**
+ * How long before a claimed account is offered to another run.
+ *
+ * This exists to release a batch abandoned by a worker that died mid-run. It is
+ * not a rate limiter, and it must stay comfortably below the cron interval or
+ * it silently becomes one: at 900s against a ten-minute schedule, an account
+ * attempted at 08:01 was not yet due at 08:10, so every other tick claimed
+ * nothing and the real sync cadence was twenty minutes rather than ten.
+ *
+ * Comfortably below, not merely below. Cron ticks land on fixed wall-clock
+ * minutes while `last_attempt_at` drifts to whenever the run actually happened,
+ * so a threshold equal to the interval still misses on the boundary — a run at
+ * 08:10:00 is exactly 600s old at 08:20:00, and the comparison is strict.
+ *
+ * Re-claiming an account that is still in flight is safe if it ever happens:
+ * the ledger write is keyed by fill and the cursor only moves forward, so the
+ * cost is duplicated work rather than duplicated XP.
+ */
+export const CLAIM_STALE_AFTER_SECONDS = 300;
+
 function hyperliquidInfoUrl(config: RewardsConfig) {
   return config.hyperliquidTestnet
     ? "https://api.hyperliquid-testnet.xyz/info"
@@ -89,7 +109,10 @@ export default async function handler(request: any, response: any) {
       startAt: season.starts_at,
     });
 
-    const claims = await claimFillSyncBatch(config, { limit: DEFAULT_BATCH_LIMIT });
+    const claims = await claimFillSyncBatch(config, {
+      limit: DEFAULT_BATCH_LIMIT,
+      staleAfterSeconds: CLAIM_STALE_AFTER_SECONDS,
+    });
 
     let accountsSynced = 0;
     let accountsFailed = 0;

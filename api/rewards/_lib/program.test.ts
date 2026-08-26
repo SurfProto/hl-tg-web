@@ -10,14 +10,16 @@ const supabaseAdmin = vi.hoisted(() => ({
   getOrCreateRewardsUser: vi.fn(),
   getRewardLedgerEntries: vi.fn(),
   getRewardLedgerEntriesBySource: vi.fn(),
-  getSeasonLeaderboardRows: vi.fn(),
+  getSeasonLeaderboard: vi.fn(),
+  getSeasonUserRank: vi.fn(),
   getSeasonXpTotals: vi.fn(),
   getActiveSeason: vi.fn(),
   getGrantedQuestIds: vi.fn(),
   getFillCheckpointStatus: vi.fn(),
-  setUserReferrer: vi.fn(),
+  claimReferrer: vi.fn(),
   getSuccessfulOnrampDeposits: vi.fn(),
   getUserById: vi.fn(),
+  getUserByReferralCode: vi.fn(),
   getUserPointsForSeason: vi.fn(),
   getUsersByIds: vi.fn(),
   getWeeklyVolumeRows: vi.fn(),
@@ -60,6 +62,82 @@ function writtenEntries() {
     (call) => call[1] as Array<Record<string, unknown>>,
   );
 }
+
+describe("applyReferralCode", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    supabaseAdmin.getOrCreateRewardsUser.mockResolvedValue({
+      id: "user-1",
+      referral_code: "MINE1234",
+      referred_by: null,
+      username: "user",
+      wallet_address: null,
+    });
+    supabaseAdmin.ensureReferralCode.mockImplementation(async (_c, user) => user);
+    supabaseAdmin.getUserByReferralCode.mockResolvedValue({ id: "referrer-1" });
+    supabaseAdmin.getOrCreateActiveSeason.mockResolvedValue({
+      id: "season-1",
+      name: "Season 1",
+      starts_at: "2026-08-01T00:00:00.000Z",
+      ends_at: "2026-09-01T00:00:00.000Z",
+    });
+    supabaseAdmin.getFundedReferralStats.mockResolvedValue({
+      fundedReferralCount: 0,
+      fundedReferralVolume: 0,
+      referredCount: 0,
+    });
+    supabaseAdmin.claimReferrer.mockResolvedValue("ok");
+  });
+
+  /**
+   * The link used to be a read of `referred_by`, a decision, and then a patch.
+   * Two codes applied at once could both see null and the second would
+   * overwrite the first. The conditions now live in the UPDATE.
+   */
+  it("links the referrer through the atomic claim", async () => {
+    const { applyReferralCode } = await import("./program");
+
+    const summary = await applyReferralCode("privy-1", "FRIEND12", config());
+
+    expect(supabaseAdmin.claimReferrer).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      "referrer-1",
+    );
+    expect(summary.hasReferrer).toBe(true);
+  });
+
+  it("reports a lost race as already linked rather than overwriting", async () => {
+    supabaseAdmin.claimReferrer.mockResolvedValue("already_set");
+    const { applyReferralCode } = await import("./program");
+
+    await expect(applyReferralCode("privy-1", "FRIEND12", config())).rejects.toMatchObject({
+      code: "REFERRAL_ALREADY_SET",
+      statusCode: 409,
+    });
+  });
+
+  // The database rejects self-referral too, not just the pre-check on the code.
+  it("refuses a self-referral the database catches", async () => {
+    supabaseAdmin.claimReferrer.mockResolvedValue("self_referral");
+    const { applyReferralCode } = await import("./program");
+
+    await expect(applyReferralCode("privy-1", "FRIEND12", config())).rejects.toMatchObject({
+      code: "SELF_REFERRAL_NOT_ALLOWED",
+      statusCode: 409,
+    });
+  });
+
+  it("rejects an unknown code before attempting a claim", async () => {
+    supabaseAdmin.getUserByReferralCode.mockResolvedValue(null);
+    const { applyReferralCode } = await import("./program");
+
+    await expect(applyReferralCode("privy-1", "NOPE1234", config())).rejects.toMatchObject({
+      code: "REFERRAL_CODE_NOT_FOUND",
+    });
+    expect(supabaseAdmin.claimReferrer).not.toHaveBeenCalled();
+  });
+});
 
 describe("getRewardsDashboard", () => {
   beforeEach(() => {
@@ -109,7 +187,8 @@ describe("getRewardsDashboard", () => {
     });
     supabaseAdmin.upsertUserPoints.mockResolvedValue(undefined);
     supabaseAdmin.upsertWeeklyReward.mockResolvedValue(undefined);
-    supabaseAdmin.getSeasonLeaderboardRows.mockResolvedValue([]);
+    supabaseAdmin.getSeasonLeaderboard.mockResolvedValue([]);
+    supabaseAdmin.getSeasonUserRank.mockResolvedValue(null);
     supabaseAdmin.getUserPointsForSeason.mockResolvedValue({ xp: 0 });
   });
 
@@ -277,7 +356,7 @@ describe("getRewardsDashboard", () => {
     await getRewardsDashboard({ privyUserId: "privy-1" }, config());
 
     expect(supabaseAdmin.applyReferralCodeIfEligible).not.toHaveBeenCalled();
-    expect(supabaseAdmin.setUserReferrer).not.toHaveBeenCalled();
+    expect(supabaseAdmin.claimReferrer).not.toHaveBeenCalled();
   });
 
   /**
@@ -353,6 +432,73 @@ describe("getRewardsDashboard", () => {
     expect(dashboard.quests).toEqual([]);
     expect(dashboard.sync.state).toBe("syncing");
     expect(supabaseAdmin.getOrCreateActiveSeason).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The leaderboard used to send every viewer the other traders' Telegram
+   * usernames, falling back to a six-character wallet prefix. Neither is
+   * something a trader published by placing a trade.
+   */
+  it("identifies other traders only by an opaque alias", async () => {
+    supabaseAdmin.getSeasonLeaderboard.mockResolvedValue([
+      { alias: "Trader-1C27BA90", eligibleVolume: 5000, isCurrentUser: false, rank: 1, xp: 900 },
+      { alias: "Trader-38C6CBD2", eligibleVolume: 1000, isCurrentUser: true, rank: 2, xp: 500 },
+    ]);
+    supabaseAdmin.getSeasonUserRank.mockResolvedValue(2);
+    const { getRewardsDashboard } = await import("./program");
+
+    const dashboard = await getRewardsDashboard({ privyUserId: "privy-1" }, config());
+
+    const serialized = JSON.stringify(dashboard.leaderboard);
+    expect(serialized).not.toContain("username");
+    expect(serialized).not.toContain("0x");
+    expect(dashboard.leaderboard.entries.every((e) => e.alias.startsWith("Trader-"))).toBe(true);
+    // No internal ids either: the client only used them as a list key.
+    expect(serialized).not.toContain("user-1");
+    expect(dashboard.leaderboard.userRank).toBe(2);
+  });
+
+  /**
+   * Ranking used to load every user_points row for the season, and every users
+   * row behind it, to return ten — unbounded work on a request path.
+   */
+  it("asks the database for a bounded, ranked page", async () => {
+    const { getRewardsDashboard } = await import("./program");
+
+    await getRewardsDashboard({ privyUserId: "privy-1" }, config());
+
+    expect(supabaseAdmin.getSeasonLeaderboard).toHaveBeenCalledWith(
+      expect.anything(),
+      "season-1",
+      "user-1",
+      10,
+    );
+  });
+
+  it("reports the caller's own eligible volume from their leaderboard row", async () => {
+    supabaseAdmin.getSeasonLeaderboard.mockResolvedValue([
+      { alias: "Trader-AAAA1111", eligibleVolume: 9000, isCurrentUser: false, rank: 1, xp: 10 },
+      { alias: "Trader-BBBB2222", eligibleVolume: 4200, isCurrentUser: true, rank: 2, xp: 20 },
+    ]);
+    const { getRewardsDashboard } = await import("./program");
+
+    const dashboard = await getRewardsDashboard({ privyUserId: "privy-1" }, config());
+
+    expect(dashboard.season.eligibleVolume).toBe(4200);
+  });
+
+  it("reports referral XP from the ledger aggregate", async () => {
+    supabaseAdmin.getSeasonXpTotals.mockResolvedValue({
+      questXp: 300,
+      referralBonusXp: 1500,
+      totalXp: 2000,
+      volumeXp: 200,
+    });
+    const { getRewardsDashboard } = await import("./program");
+
+    const dashboard = await getRewardsDashboard({ privyUserId: "privy-1" }, config());
+
+    expect(dashboard.season.referralXpTotal).toBe(1500);
   });
 
   it("returns referral linkage state in the dashboard summary", async () => {

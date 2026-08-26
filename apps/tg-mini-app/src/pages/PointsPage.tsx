@@ -123,8 +123,6 @@ export function PointsPage() {
     );
   }
 
-  const progressToNext = Math.max(0, 5000 - (dashboard.season.xpTotal % 5000));
-
   return (
     <div className="editorial-page">
       <div className="editorial-shell">
@@ -172,21 +170,16 @@ export function PointsPage() {
           <div className="editorial-display mt-3">
             {formatCompactNumber(dashboard.season.xpTotal)}
           </div>
+          {/*
+            volumeXpTotal is the season total, and was labelled "this week".
+            The tier bar that used to sit below was arithmetic on that same
+            number — xpTotal / 5000, named "WAVE RIDER" — with no backend tier
+            model behind it, so it invented both a rank and a next threshold.
+            Both are gone until something real defines them.
+          */}
           <div className="mt-2 text-sm text-white/70">
-            +{formatCompactNumber(dashboard.season.volumeXpTotal)} this week · rank #{dashboard.season.leaderboardRank ?? "—"}
-          </div>
-
-          <div className="mt-5">
-            <div className="mb-2 flex items-center justify-between text-[11px] text-white/55">
-              <span>TIER {Math.floor(dashboard.season.xpTotal / 5000)} · WAVE RIDER</span>
-              <span>{progressToNext} TO NEXT</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-white/15">
-              <div
-                className="h-full rounded-full bg-signal transition-all"
-                style={{ width: `${(dashboard.season.xpTotal % 5000) / 50}%` }}
-              />
-            </div>
+            +{formatCompactNumber(dashboard.season.volumeXpTotal)} {t("points.fromTrading")} · {t("points.rank")} #
+            {dashboard.season.leaderboardRank ?? "—"}
           </div>
         </div>
 
@@ -237,8 +230,13 @@ export function PointsPage() {
               <div className="editorial-section-title">{t("points.friendsJoined")}</div>
               <div className="mt-1 text-sm text-muted">{dashboard.referral.fundedReferralCount}</div>
             </div>
+            {/*
+              This multiplied the funded-referral count by 100 — a number that
+              matched no rule the ledger applies. Referral XP is a real total
+              the server reports; show that instead of a guess.
+            */}
             <div className="editorial-mono text-lg font-semibold text-positive">
-              +{formatCompactNumber(dashboard.referral.fundedReferralCount * 100)}
+              +{formatCompactNumber(dashboard.season.referralXpTotal)}
             </div>
           </div>
         </div>
@@ -294,13 +292,22 @@ export function PointsPage() {
             </div>
             <div className="editorial-card divide-y divide-separator overflow-hidden">
               {dashboard.leaderboard.entries.slice(0, 5).map((entry) => (
-                <div key={entry.userId} className="flex items-center justify-between px-4 py-3">
+                <div
+                  key={entry.rank}
+                  className={`flex items-center justify-between px-4 py-3${
+                    entry.isCurrentUser ? " bg-[var(--color-primary-soft)]" : ""
+                  }`}
+                >
                   <div className="flex items-center gap-3">
                     <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-sm font-bold text-foreground">
                       #{entry.rank}
                     </div>
                     <div>
-                      <div className="text-sm font-semibold text-foreground">{entry.displayName}</div>
+                      {/* An opaque alias. This showed other traders' Telegram
+                          usernames, or a six-character wallet prefix. */}
+                      <div className="text-sm font-semibold text-foreground">
+                        {entry.isCurrentUser ? t("points.you") : entry.alias}
+                      </div>
                       <div className="editorial-mono text-xs text-muted">{formatCompactNumber(entry.xp)} XP</div>
                     </div>
                   </div>

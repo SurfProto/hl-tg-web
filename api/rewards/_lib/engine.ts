@@ -1,10 +1,27 @@
 import type {
-  LeaderboardEntry,
   QuestId,
   QuestProgress,
   QuestStatus,
   VolumeXpGrant,
 } from "../../../packages/types/src";
+
+/**
+ * One entry in the weekly raffle cohort.
+ *
+ * Server-internal and dormant: only `_lib/raffle.ts` consumes this, and nothing
+ * reachable from a request path does. Deliberately not the API's
+ * `LeaderboardEntry` — that one carries no identity by design, and paying a
+ * winner needs one. Keeping them separate is what stops a future change to the
+ * raffle from quietly reintroducing usernames into a public response.
+ */
+export interface RaffleCohortEntry {
+  userId: string;
+  displayName: string;
+  rank: number;
+  eligibleVolume: number;
+  xp: number;
+  raffleEligible: boolean;
+}
 
 // Keep the server runtime independent from the ESM-only shared types package.
 export const APP_TRADE_CLOID_PREFIX = "0x1a17";
@@ -236,8 +253,15 @@ export function buildVolumeXpGrants(
     .filter((grant) => grant.xp > 0);
 }
 
+/**
+ * Rank a weekly raffle cohort in memory.
+ *
+ * Dormant with the raffle. The public leaderboard is ranked by the database —
+ * see rewards_season_leaderboard — because doing it here meant loading every
+ * row in the season to return ten.
+ */
 export function buildTopTraderLeaderboard(input: BuildLeaderboardInput) {
-  const entries: LeaderboardEntry[] = [...input.rows]
+  const entries: RaffleCohortEntry[] = [...input.rows]
     .sort((left, right) => {
       if (right.eligibleVolume !== left.eligibleVolume) {
         return right.eligibleVolume - left.eligibleVolume;

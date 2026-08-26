@@ -6,7 +6,7 @@ import type {
   WeeklyRafflePaused,
 } from "../../../packages/types/src";
 import { HttpError } from "../../onramp/_lib/http";
-import { buildQuestSnapshot, buildTopTraderLeaderboard } from "./engine";
+import { buildQuestSnapshot } from "./engine";
 import { getRewardsConfig, type RewardsConfig } from "./config";
 import {
   ensureReferralCode,
@@ -17,11 +17,12 @@ import {
   getOrCreateActiveSeason,
   getOrCreateRewardsUser,
   getRewardLedgerEntries,
-  getSeasonLeaderboardRows,
+  getSeasonLeaderboard,
+  getSeasonUserRank,
   getSeasonXpTotals,
   getSuccessfulOnrampDeposits,
   getUserByReferralCode,
-  setUserReferrer,
+  claimReferrer,
   type FillCheckpointStatus,
   type RewardsUserRow,
 } from "./supabase-admin";
@@ -56,6 +57,9 @@ const STALE_AFTER_MS = 30 * 60 * 1000;
 
 /** Consecutive failed attempts before the dashboard admits something is wrong. */
 const FAILURES_BEFORE_ERROR = 3;
+
+/** Rows of leaderboard returned to the client. */
+const LEADERBOARD_SIZE = 10;
 
 type FillSummary = {
   cloid: string | null;
@@ -159,20 +163,17 @@ export async function getRewardsDashboard(
     hasFundedReferral: referralStats.fundedReferralCount > 0,
   });
 
-  const seasonLeaderboardRows = await getSeasonLeaderboardRows(config, season.id);
-  const seasonLeaderboard = buildTopTraderLeaderboard({
-    currentUserId: user.id,
-    eligibleCohortSize: config.weeklyTopTraderCohortSize,
-    rows: seasonLeaderboardRows,
-  });
-
-  const points = seasonLeaderboardRows.find((row) => row.userId === user.id);
+  // Ranked, truncated and anonymised by the database. Two bounded queries
+  // rather than loading the whole season to return ten rows.
+  const [leaderboardEntries, userRank] = await Promise.all([
+    getSeasonLeaderboard(config, season.id, user.id, LEADERBOARD_SIZE),
+    getSeasonUserRank(config, season.id, user.id),
+  ]);
 
   return {
     leaderboard: {
-      entries: seasonLeaderboard.entries.slice(0, 10),
-      userDistanceToCutoff: seasonLeaderboard.userDistanceToCutoff,
-      userRank: seasonLeaderboard.userRank,
+      entries: leaderboardEntries,
+      userRank,
     },
     programStatus: XP_ONLY_PROGRAM_STATUS,
     quests: questSnapshot.quests,
@@ -181,11 +182,13 @@ export async function getRewardsDashboard(
     // something to show a user next to a notice saying payouts are paused.
     rewardHistory: rewardHistory.filter((entry) => entry.rewardKind === "xp"),
     season: {
-      eligibleVolume: points?.eligibleVolume ?? 0,
+      eligibleVolume:
+        leaderboardEntries.find((entry) => entry.isCurrentUser)?.eligibleVolume ?? 0,
       endsAt: season.ends_at,
-      leaderboardRank: seasonLeaderboard.userRank,
+      leaderboardRank: userRank,
       name: season.name,
       questXpTotal: xpTotals.questXp,
+      referralXpTotal: xpTotals.referralBonusXp,
       seasonId: season.id,
       startsAt: season.starts_at,
       volumeXpTotal: xpTotals.volumeXp,
@@ -231,7 +234,7 @@ function buildSyncStatus(
 /** Before any season exists there is nothing earned and nothing to sync. */
 function buildEmptyDashboard(user: RewardsUserRow): RewardsDashboard {
   return {
-    leaderboard: { entries: [], userDistanceToCutoff: 0, userRank: null },
+    leaderboard: { entries: [], userRank: null },
     programStatus: XP_ONLY_PROGRAM_STATUS,
     quests: [],
     referral: buildReferralSummary(user, {
@@ -245,6 +248,7 @@ function buildEmptyDashboard(user: RewardsUserRow): RewardsDashboard {
       leaderboardRank: null,
       name: "",
       questXpTotal: 0,
+      referralXpTotal: 0,
       seasonId: null,
       startsAt: new Date(0).toISOString(),
       volumeXpTotal: 0,
@@ -270,10 +274,6 @@ export async function applyReferralCode(
   });
   user = await ensureReferralCode(config, user);
 
-  if (user.referred_by) {
-    throw new HttpError(409, "REFERRAL_ALREADY_SET", "Referral code already applied");
-  }
-
   if (user.referral_code === referralCode) {
     throw new HttpError(409, "SELF_REFERRAL_NOT_ALLOWED", "You cannot apply your own referral code");
   }
@@ -283,11 +283,21 @@ export async function applyReferralCode(
     throw new HttpError(404, "REFERRAL_CODE_NOT_FOUND", "Referral code not found");
   }
 
-  if (referrer.id === user.id) {
+  // The database decides. This used to read `referred_by`, find it null, and
+  // then patch — so two codes applied at once could both pass the check and the
+  // second would silently overwrite the first. The conditions are in the UPDATE
+  // now, and the loser is told it lost rather than winning by arriving later.
+  const outcome = await claimReferrer(config, user.id, referrer.id);
+
+  if (outcome === "self_referral") {
     throw new HttpError(409, "SELF_REFERRAL_NOT_ALLOWED", "You cannot apply your own referral code");
   }
 
-  user = await setUserReferrer(config, user.id, referrer.id);
+  if (outcome === "already_set") {
+    throw new HttpError(409, "REFERRAL_ALREADY_SET", "Referral code already applied");
+  }
+
+  user = { ...user, referred_by: referrer.id };
   const season = await getOrCreateActiveSeason(config);
   const referralStats = await getFundedReferralStats(
     config,

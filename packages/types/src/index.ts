@@ -480,13 +480,25 @@ export interface VolumeXpGrant {
   rewardKind: "xp";
 }
 
+/**
+ * One row of the public leaderboard.
+ *
+ * Deliberately carries no identity. It used to send every viewer the other
+ * traders' Telegram usernames, falling back to a six-character wallet prefix —
+ * a real-world identity and a durable on-chain handle respectively, neither of
+ * which anyone published by placing a trade. An opaque alias renders the table
+ * just as well.
+ *
+ * There is no `userId` either: the client only ever used it as a list key, and
+ * `isCurrentUser` answers the one question it actually needed internal ids for.
+ * `raffleEligible` is gone with the raffle.
+ */
 export interface LeaderboardEntry {
-  userId: string;
-  displayName: string;
   rank: number;
+  alias: string;
   eligibleVolume: number;
   xp: number;
-  raffleEligible: boolean;
+  isCurrentUser: boolean;
 }
 
 /**
@@ -571,6 +583,8 @@ export interface SeasonSnapshot {
   xpTotal: number;
   questXpTotal: number;
   volumeXpTotal: number;
+  /** XP granted for referrals, as the ledger recorded it. */
+  referralXpTotal: number;
   eligibleVolume: number;
   leaderboardRank: number | null;
 }
@@ -588,8 +602,8 @@ export interface RewardsDashboard {
   referral: ReferralSummary;
   leaderboard: {
     entries: LeaderboardEntry[];
+    /** The caller's own rank, which is usually outside the page above. */
     userRank: number | null;
-    userDistanceToCutoff: number;
   };
   weeklyRaffle: WeeklyRafflePaused;
   /** XP entries only. Held and paid cash history lives in the admin surface. */

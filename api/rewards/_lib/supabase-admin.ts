@@ -96,32 +96,68 @@ interface SupabaseRewardLedgerRow {
   week_start: string | null;
 }
 
-function monthStart(date: Date) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
-}
 
-function nextMonthStart(date: Date) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
-}
 
 function formatInList(values: string[]) {
   return `(${values.map((value) => `"${value}"`).join(",")})`;
 }
 
-function toLeaderboardEntries(
-  pointsRows: UserPointsRow[],
-  usersById: Map<string, RewardsUserRow>,
-): Array<Omit<LeaderboardEntry, "rank" | "raffleEligible">> {
-  return pointsRows.map((row) => ({
-    displayName:
-      usersById.get(row.user_id)?.username ??
-      truncateAddress(usersById.get(row.user_id)?.wallet_address) ??
-      "Trader",
-    eligibleVolume: Number(row.total_volume ?? 0),
-    userId: row.user_id,
+/**
+ * The season leaderboard, ranked and truncated by the database.
+ *
+ * This replaced a query that loaded every `user_points` row for the season and
+ * every `users` row behind them into the function, sorted them in JS, and
+ * returned ten — unbounded work and unbounded memory on a request path, growing
+ * with the size of the program rather than the size of the answer.
+ */
+export async function getSeasonLeaderboard(
+  config: RewardsConfig,
+  seasonId: string,
+  userId: string,
+  limit = 10,
+): Promise<LeaderboardEntry[]> {
+  const rows = await supabaseRequest<
+    Array<{
+      alias: string;
+      eligible_volume: string | number;
+      is_current_user: boolean;
+      rank: string | number;
+      xp: string | number;
+    }>
+  >(config, "rpc/rewards_season_leaderboard", {
+    body: JSON.stringify({ p_limit: limit, p_season_id: seasonId, p_user_id: userId }),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
+
+  return rows.map((row) => ({
+    alias: row.alias,
+    eligibleVolume: Number(row.eligible_volume ?? 0),
+    isCurrentUser: Boolean(row.is_current_user),
+    rank: Number(row.rank ?? 0),
     xp: Number(row.xp ?? 0),
   }));
 }
+
+/** The caller's own rank, or null when they have no points row this season. */
+export async function getSeasonUserRank(
+  config: RewardsConfig,
+  seasonId: string,
+  userId: string,
+): Promise<number | null> {
+  const rank = await supabaseRequest<number | null>(
+    config,
+    "rpc/rewards_season_user_rank",
+    {
+      body: JSON.stringify({ p_season_id: seasonId, p_user_id: userId }),
+      headers: buildHeaders(config),
+      method: "POST",
+    },
+  );
+
+  return rank == null ? null : Number(rank);
+}
+
 
 function truncateAddress(value: string | null | undefined) {
   if (!value) {
@@ -263,22 +299,6 @@ export async function applyReferralCodeIfEligible(
   return rows[0];
 }
 
-export async function setUserReferrer(
-  config: RewardsConfig,
-  userId: string,
-  referrerId: string,
-) {
-  const rows = await supabaseRequest<RewardsUserRow[]>(
-    config,
-    `users?id=eq.${userId}&select=*`,
-    {
-      body: JSON.stringify({ referred_by: referrerId }),
-      headers: buildHeaders(config, { Prefer: "return=representation" }),
-      method: "PATCH",
-    },
-  );
-  return rows[0];
-}
 
 /**
  * The active season, or null. Never creates one.
@@ -309,30 +329,53 @@ export async function getActiveSeason(
  * Reserved for write paths — the ingestion worker and the referral mutation.
  * A read must use getActiveSeason instead.
  */
+/**
+ * The season covering `now`, creating it only if none does.
+ *
+ * Delegates to an RPC so the check and the insert are one operation. Read then
+ * insert from here meant two first-visitors in the same instant could create
+ * two overlapping seasons, splitting the program's accounting with no way to
+ * say which was canonical. An exclusion constraint on the date range now
+ * decides the winner; see migration 012.
+ */
 export async function getOrCreateActiveSeason(config: RewardsConfig, now = new Date()) {
-  const activeSeason = await getActiveSeason(config, now);
-  if (activeSeason) {
-    return activeSeason;
-  }
-
-  const start = monthStart(now);
-  const end = nextMonthStart(now);
-  const rows = await supabaseRequest<RewardsSeasonRow[]>(
+  const season = await supabaseRequest<RewardsSeasonRow | RewardsSeasonRow[]>(
     config,
-    "seasons?select=*",
+    "rpc/rewards_get_or_create_active_season",
     {
       body: JSON.stringify({
-        ends_at: end.toISOString(),
-        is_active: true,
-        name: start.toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" }),
-        reward_pool_weekly: config.weeklyRewardPoolUsd,
-        starts_at: start.toISOString(),
+        p_now: now.toISOString(),
+        p_weekly_pool: config.weeklyRewardPoolUsd,
       }),
-      headers: buildHeaders(config, { Prefer: "return=representation" }),
+      headers: buildHeaders(config),
       method: "POST",
     },
   );
-  return rows[0];
+
+  return (Array.isArray(season) ? season[0] : season) as RewardsSeasonRow;
+}
+
+export type ReferrerClaimOutcome = "ok" | "already_set" | "self_referral";
+
+/**
+ * Link a referrer, if none is set and it is not the user themselves.
+ *
+ * The condition lives in the UPDATE rather than in a preceding read, so two
+ * codes applied at once cannot both pass the check and have the second
+ * overwrite the first.
+ */
+export async function claimReferrer(
+  config: RewardsConfig,
+  userId: string,
+  referrerId: string,
+): Promise<ReferrerClaimOutcome> {
+  const outcome = await supabaseRequest<string>(config, "rpc/rewards_claim_referrer", {
+    body: JSON.stringify({ p_referrer_id: referrerId, p_user_id: userId }),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
+
+  return outcome as ReferrerClaimOutcome;
 }
 
 export async function getSuccessfulOnrampDeposits(
@@ -717,19 +760,6 @@ export async function getUserPointsForSeason(
   return rows[0] ?? null;
 }
 
-export async function getSeasonLeaderboardRows(config: RewardsConfig, seasonId: string) {
-  const pointsRows = await supabaseRequest<UserPointsRow[]>(
-    config,
-    `user_points?season_id=eq.${seasonId}&select=*`,
-    { headers: buildHeaders(config) },
-  );
-  const users = await getUsersByIds(
-    config,
-    [...new Set(pointsRows.map((row) => row.user_id))],
-  );
-  const usersById = new Map(users.map((user) => [user.id, user]));
-  return toLeaderboardEntries(pointsRows, usersById);
-}
 
 export async function upsertWeeklyReward(config: RewardsConfig, input: {
   seasonId: string;

@@ -226,6 +226,7 @@ function getLocalAgentApprovalState(
       approvedAt: null,
       remoteConfirmed: false,
       lastVerifiedAt: null,
+      duplicateNamedAgents: 0,
     };
   }
 
@@ -247,6 +248,7 @@ function getLocalAgentApprovalState(
     approvedAt: getStoredAgentApprovedAt(walletAddress),
     remoteConfirmed: false,
     lastVerifiedAt: null,
+    duplicateNamedAgents: 0,
   };
 }
 
@@ -1585,6 +1587,7 @@ export function useApproveAgentTrading() {
         approvedAt: Date.now(),
         remoteConfirmed: false,
         lastVerifiedAt: Date.now(),
+        duplicateNamedAgents: 0,
       } satisfies AgentApprovalState);
       queryClient.invalidateQueries({ queryKey: ["agentApproval"] });
       queryClient.invalidateQueries({ queryKey: ["userState"] });
@@ -1927,6 +1930,7 @@ export function useSetupTrading(_target?: { isHip3?: boolean } | null) {
           approvedAt: Date.now(),
           remoteConfirmed: false,
           lastVerifiedAt: Date.now(),
+          duplicateNamedAgents: 0,
         } satisfies AgentApprovalState);
       } else if (privateKey && !client.hasAgentKey()) {
         client.setAgentKey(privateKey);

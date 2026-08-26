@@ -220,6 +220,15 @@ export function ApprovalsPage() {
   const unifiedUnavailable =
     unifiedApproval.isError || unifiedApproval.failureCount > 0;
 
+  // Surfaced rather than acted on. Extra agents under our name do not stop
+  // this one working, but they consume slots against the exchange's small
+  // per-account limit, and seeing them here is how we find out whether
+  // same-name replacement is collapsing the way it is supposed to.
+  const duplicateNotice =
+    agent && agent.duplicateNamedAgents > 0
+      ? t("approvals.duplicateAgents", { count: agent.duplicateNamedAgents })
+      : null;
+
   const agentActions: ApprovalCardAction[] = [
     {
       label: agent?.hasLocalKey
@@ -293,7 +302,7 @@ export function ApprovalsPage() {
               ? "warning"
               : "muted",
       actions: agentActions,
-      notice: revokeNotice,
+      notice: revokeNotice ?? duplicateNotice,
       error:
         (approveAgent.isError && approveAgent.error instanceof Error
           ? approveAgent.error.message

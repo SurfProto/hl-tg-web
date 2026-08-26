@@ -1021,3 +1021,67 @@ export async function getFillCheckpointStatus(
     retentionRisk: Boolean(row.retention_risk),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Reconciliation
+// ---------------------------------------------------------------------------
+
+export interface ReconciliationReport {
+  accountsTotal: number;
+  accountsNeverSynced: number;
+  accountsStale: number;
+  accountsFailing: number;
+  accountsRetentionRisk: number;
+  maxIngestionLagSeconds: number;
+  oldestCursorTime: string | null;
+  fillsIngested: number;
+  walletsWithoutCheckpoint: number;
+  driftAccounts: number;
+  driftTotalXp: number;
+  heldCashRows: number;
+  heldCashAmount: number;
+}
+
+/**
+ * Program health for one season, as a single row.
+ *
+ * Every fact here was already available, but only as six unrelated queries
+ * somebody had to know to run and how to read. Nobody runs that, so drift got
+ * found by a user noticing their XP was wrong.
+ */
+export async function getReconciliationReport(
+  config: RewardsConfig,
+  seasonId: string,
+  options: { failingAfterAttempts?: number; staleAfterSeconds?: number } = {},
+): Promise<ReconciliationReport> {
+  const rows = await supabaseRequest<
+    Array<Record<string, string | number | null>>
+  >(config, "rpc/rewards_reconciliation_report", {
+    body: JSON.stringify({
+      p_failing_after_attempts: options.failingAfterAttempts ?? 3,
+      p_season_id: seasonId,
+      p_stale_after_seconds: options.staleAfterSeconds ?? 1800,
+    }),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
+
+  const row = rows[0] ?? {};
+  const num = (key: string) => Number(row[key] ?? 0);
+
+  return {
+    accountsFailing: num("accounts_failing"),
+    accountsNeverSynced: num("accounts_never_synced"),
+    accountsRetentionRisk: num("accounts_retention_risk"),
+    accountsStale: num("accounts_stale"),
+    accountsTotal: num("accounts_total"),
+    driftAccounts: num("drift_accounts"),
+    driftTotalXp: num("drift_total_xp"),
+    fillsIngested: num("fills_ingested"),
+    heldCashAmount: num("held_cash_amount"),
+    heldCashRows: num("held_cash_rows"),
+    maxIngestionLagSeconds: num("max_ingestion_lag_seconds"),
+    oldestCursorTime: (row.oldest_cursor_time as string | null) ?? null,
+    walletsWithoutCheckpoint: num("wallets_without_checkpoint"),
+  };
+}

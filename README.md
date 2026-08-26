@@ -109,8 +109,27 @@ For the VPS deployment of the external notifications worker, see [apps/notificat
 - ✅ Market and limit orders
 - ✅ Positions and portfolio tracking
 - ✅ Builder code enforcement (automatic)
+- ✅ Recoverable and user-revocable Hyperliquid agent authorization
 - ✅ Testnet toggle
 - ✅ Desktop webapp (PWA-ready)
+
+### Rewards safety status
+
+Points is a server-enforced XP-only program. The server emits XP and nothing
+else: quests, referrals and trading volume all grant XP, cash payouts and the
+weekly raffle are disabled, and `/api/rewards/weekly-raffle` refuses with
+`REWARDS_XP_ONLY` before it can claim a run, draw a winner or send USDC.
+
+Setting `REWARDS_TREASURY_PRIVATE_KEY` has no effect — it is not read by the
+config every request handler holds, and no deployed route can reach the payout
+module. That is enforced by a test walking the real import graph rather than by
+a runtime flag. Leave it unset regardless.
+
+Cash entitlements that existed when the program switched are held, not
+cancelled, and are excluded from the user-facing dashboard. Any cash or raffle
+relaunch requires a separate approved design. See the
+[Points XP-only hardening design](docs/superpowers/specs/2026-08-24-points-xp-only-hardening-design.md)
+for the required safety and correctness work.
 
 ## License
 

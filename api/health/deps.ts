@@ -55,7 +55,10 @@ const CHECKS: DependencyCheck[] = [
     load: () => import("../rewards/_lib/hyperliquid-client"),
   },
   {
-    // api/rewards/_lib/program.ts pays USDC through this.
+    // Dormant while the rewards program is XP-only: nothing in a request path
+    // loads this any more, and server-imports.test.ts fails if that changes.
+    // Still checked here so the module a relaunch depends on cannot rot
+    // unnoticed the way the four failures above did.
     id: "rewards/payout",
     load: () => import("../rewards/_lib/payout"),
   },

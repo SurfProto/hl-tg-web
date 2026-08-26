@@ -221,7 +221,13 @@
     "referEarn": "Refer & earn",
     "thisWeek": "THIS WEEK",
     "tradingVolume": "Trading volume",
-    "daysActive": "Days active",
+    "questXp": "Quest XP",
+    "fromTrading": "from trading",
+    "rank": "rank",
+    "you": "You",
+    "syncing": "Still adding up your recent trades. Totals may be incomplete.",
+    "syncStale": "Trade totals may be behind. We're catching up.",
+    "xpOnlyNotice": "Points are currently XP-only. Cash rewards and the weekly raffle are paused while we harden the rewards system.",
     "friendsJoined": "Friends joined",
     "quests": "QUESTS",
     "topTraders": "TOP TRADERS",
@@ -376,7 +382,9 @@
     "confirm": "Confirm",
     "cancel": "Cancel",
     "revokeUnconfirmed": "Trading is disabled on this device, but Hyperliquid did not confirm the revocation. Check this page again in a moment.",
-    "revokeCancelled": "Nothing changed — the signature was not approved."
+    "revokeCancelled": "Nothing changed — the signature was not approved.",
+    "duplicateAgents_one": "Hyperliquid also lists {{count}} other trading authorization under this app's name. It does not affect trading here.",
+    "duplicateAgents_other": "Hyperliquid also lists {{count}} other trading authorizations under this app's name. They do not affect trading here."
   },
   "deposit": {
     "title": "Deposit funds",

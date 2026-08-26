@@ -1,7 +1,59 @@
 # Handoff — hl-tg-web
 
-Written 2026-08-13 at the end of a long session. `main` is at `362f6c8`, everything
-pushed, working tree clean, one worktree, one local branch.
+Originally written 2026-08-13. The latest production update below supersedes
+older status statements where they conflict.
+
+**Update 2026-08-24 — agent-wallet recovery is live.**
+[PR #9](https://github.com/SurfProto/hl-tg-web/pull/9) was merged to
+`main` as `8df03e4` and deployed successfully as
+`dpl_GGMJSc4Xn7rbniZiATZJ3WgDhKi7`. Production is serving the deployment on
+`p34k.exchange` and `www.p34k.exchange`.
+
+The agent-wallet change classifies an exchange-rejected agent across all eleven
+trading actions, records account-scoped authorization incidents, and opens a
+recovery sheet that says the failed action did not execute and will not be
+replayed. A user can reauthorize with a fresh key or revoke access at any time
+from Approvals, including when only a remote agent exists. Verification is
+bounded to the exchange's propagation window and duplicate or ambiguous agent
+records fail closed. Telemetry redacts wallet/key material, and the experience
+is translated in English and Russian. No Supabase migration was required.
+
+The release was verified before deployment with 325 Hyperliquid SDK tests, 150
+mini-app tests, 218 API tests, typecheck, and a production build. The remaining
+manual check is named-agent replacement against a live Hyperliquid account; the
+user reported that the flow works after production testing.
+
+**Update 2026-08-25 — Points is server-enforced XP-only.** Three of the six
+releases in
+[`docs/superpowers/specs/2026-08-24-points-xp-only-hardening-design.md`](docs/superpowers/specs/2026-08-24-points-xp-only-hardening-design.md)
+are implemented on `codex/points-xp-only-hardening` as `cf9aff4`.
+
+*Safety.* The server emits XP only. `RewardsConfig` no longer carries a treasury
+key, the raffle draw moved to a dormant `_lib/raffle.ts` that no handler
+imports, and the raffle route refuses with `REWARDS_XP_ONLY` after
+authenticating. Outstanding cash entitlements are `held`; `posted` history was
+never rewritten.
+
+*Accounting.* Ledger writes are insert-on-conflict-do-nothing, so a sync can no
+longer return an already-posted cash entry to `pending`. XP totals come from a
+database aggregate rather than the 150-row display page, which had silently
+become the accounting horizon.
+
+*Ingestion.* A scheduled worker at `/api/rewards/sync-fills` walks checkpointed
+time windows, subdividing any window that returns a full page. The dashboard is
+a read: no exchange I/O, no season creation, no referral assignment, no reward
+writes.
+
+Migrations `000`, `007`, `008` and `009` are **already applied** to the hosted
+project; the code is **not yet deployed**. Until it is, production runs the old
+path, so `REWARDS_TREASURY_PRIVATE_KEY` must stay unset and
+`/api/rewards/weekly-raffle` must not be invoked. `CRON_SECRET` must be set
+before deploying or fill ingestion 401s on every run.
+
+Releases 4 to 6 remain: atomic seasons and referrals, SQL ranking, a
+pseudonymous leaderboard, removal of the remaining UI placeholders, RLS on
+`seasons` and `bridge_sponsorship_events`, shadow reconciliation, and a
+separately approved proposal for any raffle or cash relaunch.
 
 **Update 2026-08-14.** Open work items 1, 2 and 3 are done, including the
 clearinghouse-state extraction item 3 left behind. Both branches —
@@ -196,7 +248,7 @@ minute of 006 landing.
 004_platform_orchestration         (parked layer — do not apply)
 005_platform_hardening             ┐ two files share prefix 005
 005_profile_data_boundary_hardening┘
-006_weekly_raffle_runs             ← the only one worth applying
+006_weekly_raffle_runs             ← applied 2026-08-19; raffle now paused
 ```
 
 **Duplicate prefixes are unresolved.** `005_platform_hardening.sql` was added
@@ -204,10 +256,9 @@ this session without noticing it collides with `005_profile_data_boundary_harden
 Ordering between same-prefix files depends on the tool, so confirm what is
 already applied before running anything.
 
-**`006_weekly_raffle_runs.sql` should be applied.** It is independent — it needs
-only the existing `seasons` table — and without it `/api/rewards/weekly-raffle`
-returns 500 on a missing `claim_weekly_raffle_run` RPC every Monday at 00:05 UTC.
-It is already failing for that reason, so this is fix-forward, not a regression.
+**`006_weekly_raffle_runs.sql` was applied 2026-08-19.** Its two RPCs are
+service-role-only after revoking the default `PUBLIC` grant. The route is now
+intentionally unscheduled and will be server-disabled while Points is XP-only.
 
 **004 and 005 belong to the parked layer.** 005 `alter`s tables that 004
 creates, so 005 cannot run without 004. Leave both unapplied until merchant
@@ -244,8 +295,8 @@ that fails to load answers `500 FUNCTION_INVOCATION_FAILED`; a module that
 loads answers `401 UNAUTHORIZED` with a JSON body. That is how the fix was
 verified against production, before and after.
 
-**2. The production database is behind its migrations — still open.**
-`/api/rewards/dashboard` 500s for a new user:
+**2. The production database was behind its migrations — resolved
+2026-08-19.** `/api/rewards/dashboard` returned 500 for a new user:
 
 ```
 null value in column "telegram_id" of relation "users" violates not-null constraint
@@ -255,16 +306,16 @@ null value in column "telegram_id" of relation "users" violates not-null constra
 `getOrCreateRewardsUser` inserts a row with only `privy_user_id`, which is
 correct against the intended schema: both `schema.sql` ("nullable: NULL for
 wallet-only users") and migration `001` (`alter column telegram_id drop not
-null`) make the column nullable. Production still enforces `NOT NULL`, so
-**migration 001 was never applied there**. Fixing it needs
+null`) make the column nullable. Production still enforced `NOT NULL`, because
+the relevant statement from migration 001 had never landed. The fix was
 
 ```sql
 alter table users alter column telegram_id drop not null;
 ```
 
-and, given the prefix collisions, a check of what else from 001–006 is missing.
-Until then a new user's rewards dashboard fails, though onboarding itself now
-completes.
+The statement was applied and verified against the live schema on 2026-08-19.
+Authenticated dashboard requests now return 200; the remaining Points work is
+the XP-only safety and correctness program documented above.
 
 The client-side `a is not a function` was never reproduced directly — the app's
 logger only writes to console, so no stack survives, and the production build of
@@ -315,18 +366,19 @@ crash, because a render loop fires the same error thousands of times.
 If reports ever need to outlive Vercel's retention, `api/client-errors.ts` is
 the single place that changes.
 
-## Production configuration that is missing
+## Production schedules and intentionally disabled rewards
 
-Found by the smoke check, not by anything failing loudly.
+The older configuration note is obsolete. The current `vercel.json` schedules
+`/api/notifications/worker` and `/api/market/stats` every minute. It does **not**
+schedule `/api/rewards/weekly-raffle`, which is now the desired state while the
+program is XP-only.
 
-- **`CRON_SECRET` is unset.** `/api/notifications/worker` says so directly
-  (`500 CRON_SECRET_MISSING`). Vercel only sends `Authorization: Bearer
-  $CRON_SECRET` when that variable exists, so the Monday raffle cron has been
-  getting 401 on every run — the raffle is broken for this reason *as well as*
-  the unapplied migration 006. Setting it turns the last smoke check green.
-- **Nothing schedules the notifications worker.** `vercel.json` has one cron
-  entry, for `/api/rewards/weekly-raffle`. The worker route exists, is now
-  loadable, and is never called, so notifications do not send at all.
+Do not infer live secret values from this document. The important safety rule is
+that neither `REWARDS_TREASURY_PRIVATE_KEY` nor `REWARDS_ADMIN_KEY` should be
+used to activate cash rewards during hardening. Once `cf9aff4` is deployed,
+treasury configuration is insufficient to activate a payout — the key is not
+read by the config handlers receive, and no request path can reach the payout
+module. Until then the old behaviour is live and the rule is load-bearing.
 
 ## Why no authenticated account read had ever worked (2026-08-19)
 
@@ -394,6 +446,40 @@ itself rather than in loading the code. Check `get_runtime_logs` after any
 authenticated session.
 
 ## Backlog
+
+### Points safety and correctness — current priority
+
+The dashboard route is live and authenticated requests return 200, but opening
+the Points page currently performs ingestion, ledger writes, leaderboard
+recalculation and potentially a real USDC transfer. The approved hardening work
+must address all of the following before cash rewards or the raffle return:
+
+- stop creating USDC/raffle entitlements and remove payout execution from normal
+  requests;
+- quarantine existing pending/failed cash entries without changing posted
+  history;
+- make the reward ledger append-only and prevent terminal states from being
+  overwritten by idempotent syncs;
+- replace the 150-row history-derived XP total with authoritative database
+  aggregates;
+- paginate/checkpoint Hyperliquid fill ingestion and remove its dependency on a
+  user opening Points;
+- fix existing-fill key extraction, atomic season creation, and atomic referral
+  assignment;
+- make the dashboard read-only, move synchronization to a retryable worker, and
+  reconcile incomplete runs;
+- keep the raffle disabled until failed draws are retryable and payout attempts
+  have durable, externally reconcilable state;
+- fix misleading weekly/season labels, hard-coded tiers and “days active”, the
+  referral XP mismatch, hidden multi-reward quests, and onramp-only deposit
+  wording;
+- replace Telegram handles/wallet fragments on leaderboards with deterministic
+  pseudonyms and move ranking/aggregation out of full-table in-memory scans;
+- remove or explicitly defer unused `awards`, `referral_earnings`, multiplier,
+  pool-share, claim and ticket concepts.
+
+The implementation order and acceptance gates are documented in the approved
+design linked at the top of this file.
 
 ### Trader anonymity — the leaderboard shows real Telegram handles
 

@@ -30,10 +30,12 @@ Server-side (Functions):
 | `TELEGRAM_BOT_TOKEN` or `MARKET_TELEGRAM_BOT_TOKEN` | Verifies Mini App init data. |
 | `PRIVY_APP_SECRET`, `PROFILE_PRIVY_APP_ID` | Server-only; `PROFILE_PRIVY_APP_ID` falls back to `VITE_PRIVY_APP_ID`. |
 | `PRIVY_JWKS_URL` or `PRIVY_VERIFICATION_KEY` | Access-token verification. One is required. |
-| `CRON_SECRET` | Authorises the weekly raffle cron. |
+| `CRON_SECRET` | Authorises every scheduled route: `/api/notifications/worker`, `/api/market/stats` and `/api/rewards/sync-fills`. You choose the value; Vercel sends it as `Authorization: Bearer <value>` on cron invocations. Without it, fill ingestion 401s on every run and nobody earns trading XP. |
 | `PLATFORM_ADMIN_KEY`, `PLATFORM_WEBHOOK_SECRET`, `PLATFORM_QUOTE_SECRET` | Platform routes. `PLATFORM_QUOTE_SECRET` falls back to the webhook secret; use a separate key. |
 | `PLATFORM_HIGH_RISK_COUNTRIES`, `PLATFORM_PROHIBITED_COUNTRIES` | Comma-separated ISO codes. Optional. |
-| `REWARDS_ADMIN_KEY`, `REWARDS_TREASURY_PRIVATE_KEY`, `REWARDS_RAFFLE_PRIZES_USDC` | Rewards. `REWARDS_RAFFLE_PRIZES_USDC` must list at least as many prizes as the winner count or the raffle refuses to draw. |
+| `REWARDS_ADMIN_KEY` | Rewards admin routes. |
+| `REWARDS_TREASURY_PRIVATE_KEY` | **Do not set.** The program is XP-only: this is no longer read by `RewardsConfig`, and no deployed handler can reach the payout module, so setting it has no effect. Leave it unset anyway — there is no reason to hold a treasury key for a program that cannot spend it. |
+| `REWARDS_RAFFLE_PRIZES_USDC` | Unused while the raffle is disabled. Kept for a future relaunch, which needs its own approved design. |
 | `ONRAMP_*` | See the on-ramp section below. |
 | `MARKET_POLICY_JSON`, `MARKET_PREVIEW_BYPASS_SECRET` | Optional. The preview bypass only takes effect locally — Vercel sets `NODE_ENV=production` on Preview deployments too. |
 
@@ -52,9 +54,24 @@ Apply these to Supabase **before** switching the Production Branch to `main`:
 1. `supabase/migrations/005_platform_hardening.sql`
 2. `supabase/migrations/006_weekly_raffle_runs.sql`
 
-006 is not optional. `runWeeklyRaffle` calls `rpc/claim_weekly_raffle_run`; if
-that function is absent the cron returns 500 every Monday at 00:05 UTC. That is
-an existing feature regressing, not a new one failing.
+The rewards migrations — `000_baseline_schema.sql`, `007_rewards_xp_only.sql`,
+`008_rewards_xp_accounting.sql` and `009_rewards_fill_checkpoints.sql` — were
+applied to the hosted project on 2026-08-25, ahead of the code that uses them.
+That ordering is deliberate and safe: each is additive or widening, so the
+previously deployed code kept running against them unchanged. Reapplying them is
+a no-op.
+
+`000` is the baseline for the seven tables that were created directly against
+the hosted project and never written down (`users`, `seasons`, `user_points`,
+`weekly_rewards`, `awards`, `referral_earnings`,
+`bridge_sponsorship_events`). Every numbered migration from 001 assumes them, so
+without it this directory cannot be applied to an empty database at all. It is
+guarded throughout and does nothing to an existing project.
+
+006 remains required, though no longer for the reason once given here: the
+raffle route now refuses with `REWARDS_XP_ONLY` before reaching
+`rpc/claim_weekly_raffle_run`, and the raffle is not scheduled. Keep the
+function so a future relaunch does not start from a missing dependency.
 
 Then seed:
 

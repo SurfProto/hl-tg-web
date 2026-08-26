@@ -24,7 +24,10 @@ vi.mock("./supabase-admin", async (importOriginal) => ({
   ...mocks,
 }));
 
-import { runWeeklyRaffle } from "./program";
+// The draw moved to ./raffle when the program went XP-only: keeping it out of
+// program.ts is what lets the dashboard's module graph be payout-free. The
+// serialisation this file covers is unchanged, so the test moved with it.
+import { runWeeklyRaffle } from "./raffle";
 
 function config(overrides: Record<string, unknown> = {}) {
   return {

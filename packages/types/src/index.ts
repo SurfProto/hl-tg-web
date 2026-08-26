@@ -424,7 +424,15 @@ export type QuestStatus = "locked" | "in_progress" | "completed";
 
 export type RewardKind = "usdc" | "xp" | "tickets" | "raffle";
 
-export type RewardLedgerStatus = "pending" | "posted" | "failed";
+/**
+ * `held` is the XP-only mode's terminal parking state for cash entitlements.
+ *
+ * Every `usdc`/`raffle` row that was still `pending` or `failed` when the
+ * program went XP-only was moved to `held`: it is neither owed nor paid, it is
+ * frozen pending reconciliation, and no ingestion path may move it out again.
+ * `posted` history is never rewritten, so a genuinely paid row stays paid.
+ */
+export type RewardLedgerStatus = "pending" | "posted" | "failed" | "held";
 
 export interface QuestReward {
   kind: RewardKind;
@@ -472,15 +480,82 @@ export interface VolumeXpGrant {
   rewardKind: "xp";
 }
 
+/**
+ * One row of the public leaderboard.
+ *
+ * Deliberately carries no identity. It used to send every viewer the other
+ * traders' Telegram usernames, falling back to a six-character wallet prefix —
+ * a real-world identity and a durable on-chain handle respectively, neither of
+ * which anyone published by placing a trade. An opaque alias renders the table
+ * just as well.
+ *
+ * There is no `userId` either: the client only ever used it as a list key, and
+ * `isCurrentUser` answers the one question it actually needed internal ids for.
+ * `raffleEligible` is gone with the raffle.
+ */
 export interface LeaderboardEntry {
-  userId: string;
-  displayName: string;
   rank: number;
+  alias: string;
   eligibleVolume: number;
   xp: number;
-  raffleEligible: boolean;
+  isCurrentUser: boolean;
 }
 
+/**
+ * The shape the weekly raffle exposes while payouts are disabled.
+ *
+ * The server does not compute eligibility, ranks or winners in this mode, so
+ * there is deliberately nothing here to render. `weeklyRaffle` is typed as
+ * this alone rather than as a union with WeeklyRaffleSnapshot: a union would
+ * let the client keep its eligibility UI behind a branch that never runs, and
+ * the point is for the compiler to prove that UI is gone.
+ */
+export interface WeeklyRafflePaused {
+  state: "paused";
+}
+
+/**
+ * How fresh the numbers on the dashboard are.
+ *
+ * `syncing` means ingestion has not completed a first pass for this account —
+ * the totals are real but incomplete, and a user who just traded should be told
+ * that rather than shown a confident zero. `stale` means it succeeded once but
+ * not recently; `error` means recent attempts are failing. Deliberately
+ * carries no message: the reason belongs in logs, not on a user's screen.
+ */
+export type RewardsSyncState = "synced" | "syncing" | "stale" | "error";
+
+export interface RewardsSyncStatus {
+  state: RewardsSyncState;
+  /** Last time fills were ingested successfully, or null before a first pass. */
+  lastSyncedAt: string | null;
+  /**
+   * The exchange can no longer prove this account's history is complete —
+   * denser than its per-response cap, or longer than its retention ceiling.
+   */
+  retentionRisk: boolean;
+}
+
+/**
+ * What the client is allowed to offer, as told by the server.
+ *
+ * The client renders capabilities from this descriptor instead of inferring
+ * them from missing data or from its own build-time environment, so a stale
+ * bundle cannot advertise a payout the server will refuse.
+ */
+export interface RewardsProgramStatus {
+  mode: "xp_only";
+  usdcPayoutsEnabled: false;
+  weeklyRaffleEnabled: false;
+}
+
+/**
+ * Dormant until a separately reviewed raffle relaunch.
+ *
+ * Kept — like `api/rewards/_lib/payout.ts` and `_lib/raffle.ts` — so the
+ * historical shape stays readable for reconciliation. Nothing in the live
+ * dashboard response references it.
+ */
 export interface WeeklyRaffleWinner {
   userId: string;
   displayName: string;
@@ -508,6 +583,8 @@ export interface SeasonSnapshot {
   xpTotal: number;
   questXpTotal: number;
   volumeXpTotal: number;
+  /** XP granted for referrals, as the ledger recorded it. */
+  referralXpTotal: number;
   eligibleVolume: number;
   leaderboardRank: number | null;
 }
@@ -525,9 +602,12 @@ export interface RewardsDashboard {
   referral: ReferralSummary;
   leaderboard: {
     entries: LeaderboardEntry[];
+    /** The caller's own rank, which is usually outside the page above. */
     userRank: number | null;
-    userDistanceToCutoff: number;
   };
-  weeklyRaffle: WeeklyRaffleSnapshot;
+  weeklyRaffle: WeeklyRafflePaused;
+  /** XP entries only. Held and paid cash history lives in the admin surface. */
   rewardHistory: RewardLedgerEntry[];
+  programStatus: RewardsProgramStatus;
+  sync: RewardsSyncStatus;
 }

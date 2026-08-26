@@ -88,6 +88,19 @@ function placeholders(value: string): string[] {
   return [...value.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]!).sort();
 }
 
+/**
+ * A key with its i18next plural suffix removed.
+ *
+ * Plural categories are a property of the language, not of the message:
+ * English needs `_one`/`_other` where Russian also needs `_few`/`_many`.
+ * Comparing raw keys across locales would therefore report a correct Russian
+ * translation as a mismatch, so the comparison is made on the base key and the
+ * suffixes are deliberately not required to line up.
+ */
+function pluralBaseKey(key: string): string {
+  return key.replace(/_(zero|one|two|few|many|other)$/, "");
+}
+
 describe("locale files", () => {
   it.each(LOCALE_FILES)("declares every key once in %s", (file) => {
     expect(findDuplicateKeys(readLocale(file))).toEqual([]);
@@ -96,7 +109,11 @@ describe("locale files", () => {
   it("translates the same set of keys in every locale", () => {
     const [reference, ...rest] = LOCALE_FILES.map((file) => ({
       file,
-      keys: [...flatten(JSON.parse(readLocale(file))).keys()].sort(),
+      keys: [
+        ...new Set(
+          [...flatten(JSON.parse(readLocale(file))).keys()].map(pluralBaseKey),
+        ),
+      ].sort(),
     }));
 
     for (const locale of rest) {

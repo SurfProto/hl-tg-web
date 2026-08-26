@@ -1,4 +1,9 @@
-import type { LeaderboardEntry, RewardKind, RewardLedgerEntry } from "../../../packages/types/src";
+import type {
+  LeaderboardEntry,
+  QuestId,
+  RewardKind,
+  RewardLedgerEntry,
+} from "../../../packages/types/src";
 import { buildHeaders, supabaseRequest } from "../../_lib/supabase";
 import type { RewardsConfig } from "./config";
 
@@ -91,32 +96,68 @@ interface SupabaseRewardLedgerRow {
   week_start: string | null;
 }
 
-function monthStart(date: Date) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
-}
 
-function nextMonthStart(date: Date) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
-}
 
 function formatInList(values: string[]) {
   return `(${values.map((value) => `"${value}"`).join(",")})`;
 }
 
-function toLeaderboardEntries(
-  pointsRows: UserPointsRow[],
-  usersById: Map<string, RewardsUserRow>,
-): Array<Omit<LeaderboardEntry, "rank" | "raffleEligible">> {
-  return pointsRows.map((row) => ({
-    displayName:
-      usersById.get(row.user_id)?.username ??
-      truncateAddress(usersById.get(row.user_id)?.wallet_address) ??
-      "Trader",
-    eligibleVolume: Number(row.total_volume ?? 0),
-    userId: row.user_id,
+/**
+ * The season leaderboard, ranked and truncated by the database.
+ *
+ * This replaced a query that loaded every `user_points` row for the season and
+ * every `users` row behind them into the function, sorted them in JS, and
+ * returned ten — unbounded work and unbounded memory on a request path, growing
+ * with the size of the program rather than the size of the answer.
+ */
+export async function getSeasonLeaderboard(
+  config: RewardsConfig,
+  seasonId: string,
+  userId: string,
+  limit = 10,
+): Promise<LeaderboardEntry[]> {
+  const rows = await supabaseRequest<
+    Array<{
+      alias: string;
+      eligible_volume: string | number;
+      is_current_user: boolean;
+      rank: string | number;
+      xp: string | number;
+    }>
+  >(config, "rpc/rewards_season_leaderboard", {
+    body: JSON.stringify({ p_limit: limit, p_season_id: seasonId, p_user_id: userId }),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
+
+  return rows.map((row) => ({
+    alias: row.alias,
+    eligibleVolume: Number(row.eligible_volume ?? 0),
+    isCurrentUser: Boolean(row.is_current_user),
+    rank: Number(row.rank ?? 0),
     xp: Number(row.xp ?? 0),
   }));
 }
+
+/** The caller's own rank, or null when they have no points row this season. */
+export async function getSeasonUserRank(
+  config: RewardsConfig,
+  seasonId: string,
+  userId: string,
+): Promise<number | null> {
+  const rank = await supabaseRequest<number | null>(
+    config,
+    "rpc/rewards_season_user_rank",
+    {
+      body: JSON.stringify({ p_season_id: seasonId, p_user_id: userId }),
+      headers: buildHeaders(config),
+      method: "POST",
+    },
+  );
+
+  return rank == null ? null : Number(rank);
+}
+
 
 function truncateAddress(value: string | null | undefined) {
   if (!value) {
@@ -258,24 +299,18 @@ export async function applyReferralCodeIfEligible(
   return rows[0];
 }
 
-export async function setUserReferrer(
-  config: RewardsConfig,
-  userId: string,
-  referrerId: string,
-) {
-  const rows = await supabaseRequest<RewardsUserRow[]>(
-    config,
-    `users?id=eq.${userId}&select=*`,
-    {
-      body: JSON.stringify({ referred_by: referrerId }),
-      headers: buildHeaders(config, { Prefer: "return=representation" }),
-      method: "PATCH",
-    },
-  );
-  return rows[0];
-}
 
-export async function getOrCreateActiveSeason(config: RewardsConfig, now = new Date()) {
+/**
+ * The active season, or null. Never creates one.
+ *
+ * The read path uses this. Creating a season as a side effect of somebody
+ * opening a page is how two first visitors in the same instant could each
+ * create one, and nothing in the schema stops a second active season existing.
+ */
+export async function getActiveSeason(
+  config: RewardsConfig,
+  now = new Date(),
+): Promise<RewardsSeasonRow | null> {
   const isoNow = now.toISOString();
   const seasons = await supabaseRequest<RewardsSeasonRow[]>(
     config,
@@ -284,29 +319,63 @@ export async function getOrCreateActiveSeason(config: RewardsConfig, now = new D
     )}&select=*&order=starts_at.asc&limit=1`,
     { headers: buildHeaders(config) },
   );
-  const activeSeason = seasons[0];
-  if (activeSeason) {
-    return activeSeason;
-  }
 
-  const start = monthStart(now);
-  const end = nextMonthStart(now);
-  const rows = await supabaseRequest<RewardsSeasonRow[]>(
+  return seasons[0] ?? null;
+}
+
+/**
+ * The active season, creating one if none exists.
+ *
+ * Reserved for write paths — the ingestion worker and the referral mutation.
+ * A read must use getActiveSeason instead.
+ */
+/**
+ * The season covering `now`, creating it only if none does.
+ *
+ * Delegates to an RPC so the check and the insert are one operation. Read then
+ * insert from here meant two first-visitors in the same instant could create
+ * two overlapping seasons, splitting the program's accounting with no way to
+ * say which was canonical. An exclusion constraint on the date range now
+ * decides the winner; see migration 012.
+ */
+export async function getOrCreateActiveSeason(config: RewardsConfig, now = new Date()) {
+  const season = await supabaseRequest<RewardsSeasonRow | RewardsSeasonRow[]>(
     config,
-    "seasons?select=*",
+    "rpc/rewards_get_or_create_active_season",
     {
       body: JSON.stringify({
-        ends_at: end.toISOString(),
-        is_active: true,
-        name: start.toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" }),
-        reward_pool_weekly: config.weeklyRewardPoolUsd,
-        starts_at: start.toISOString(),
+        p_now: now.toISOString(),
+        p_weekly_pool: config.weeklyRewardPoolUsd,
       }),
-      headers: buildHeaders(config, { Prefer: "return=representation" }),
+      headers: buildHeaders(config),
       method: "POST",
     },
   );
-  return rows[0];
+
+  return (Array.isArray(season) ? season[0] : season) as RewardsSeasonRow;
+}
+
+export type ReferrerClaimOutcome = "ok" | "already_set" | "self_referral";
+
+/**
+ * Link a referrer, if none is set and it is not the user themselves.
+ *
+ * The condition lives in the UPDATE rather than in a preceding read, so two
+ * codes applied at once cannot both pass the check and have the second
+ * overwrite the first.
+ */
+export async function claimReferrer(
+  config: RewardsConfig,
+  userId: string,
+  referrerId: string,
+): Promise<ReferrerClaimOutcome> {
+  const outcome = await supabaseRequest<string>(config, "rpc/rewards_claim_referrer", {
+    body: JSON.stringify({ p_referrer_id: referrerId, p_user_id: userId }),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
+
+  return outcome as ReferrerClaimOutcome;
 }
 
 export async function getSuccessfulOnrampDeposits(
@@ -413,7 +482,16 @@ export async function upsertRewardLedgerEntries(
         })),
       ),
       headers: buildHeaders(config, {
-        Prefer: "resolution=merge-duplicates,return=representation",
+        // Append-only. merge-duplicates made every sync a blind UPDATE of any
+        // row sharing an idempotency key, so re-running a sync over a cash
+        // entry that had already been paid reset it to 'pending' and offered
+        // it for payment again. Ingestion may create a ledger row; it may
+        // never restate one that already exists.
+        //
+        // This changes what comes back: PostgREST returns only the rows it
+        // actually inserted, so an all-duplicate write returns []. Callers
+        // needing the full set must re-read.
+        Prefer: "resolution=ignore-duplicates,return=representation",
       }),
       method: "POST",
     },
@@ -448,18 +526,117 @@ export async function updateRewardLedgerStatus(
   return mapRewardLedgerRow(rows[0]);
 }
 
+/**
+ * A page of a user's reward history, for display.
+ *
+ * This is a display query and nothing more. It used to double as the input to
+ * the XP total, which meant the cap below silently became the accounting
+ * horizon — see getSeasonXpTotals, which asks the database instead.
+ */
 export async function getRewardLedgerEntries(
   config: RewardsConfig,
   userId: string,
   limit = 100,
+  offset = 0,
 ) {
   const rows = await supabaseRequest<SupabaseRewardLedgerRow[]>(
     config,
-    `reward_ledger?user_id=eq.${userId}&select=*&order=created_at.desc&limit=${Math.max(1, Math.min(limit, 200))}`,
+    `reward_ledger?user_id=eq.${userId}&select=*&order=created_at.desc&limit=${Math.max(1, Math.min(limit, 200))}&offset=${Math.max(0, offset)}`,
     { headers: buildHeaders(config) },
   );
 
   return rows.map(mapRewardLedgerRow);
+}
+
+export interface SeasonXpTotals {
+  questXp: number;
+  referralBonusXp: number;
+  totalXp: number;
+  volumeXp: number;
+}
+
+/**
+ * Season XP totals, aggregated by the database over every applicable row.
+ *
+ * The previous implementation summed the reward history the dashboard had
+ * already fetched for display — capped at 150 rows, newest first. Past 150
+ * entries a user's XP was recomputed from a recent window and written back
+ * over the projection, so the total fell as they earned more. Volume XP writes
+ * one row per fill, so that ceiling is not far away.
+ *
+ * Sources outside the three named below are counted in totalXp but have no
+ * breakdown field; the total is the sum of the rows, not of the fields.
+ */
+export async function getSeasonXpTotals(
+  config: RewardsConfig,
+  userId: string,
+  seasonId: string,
+): Promise<SeasonXpTotals> {
+  const rows = await supabaseRequest<Array<{ source: string; xp: string | number }>>(
+    config,
+    "rpc/rewards_season_xp_totals",
+    {
+      body: JSON.stringify({ p_season_id: seasonId, p_user_id: userId }),
+      headers: buildHeaders(config),
+      method: "POST",
+    },
+  );
+
+  const bySource = new Map(rows.map((row) => [row.source, Number(row.xp ?? 0)]));
+
+  return {
+    questXp: bySource.get("quest") ?? 0,
+    referralBonusXp: bySource.get("referral_bonus") ?? 0,
+    totalXp: rows.reduce((sum, row) => sum + Number(row.xp ?? 0), 0),
+    volumeXp: bySource.get("volume_xp") ?? 0,
+  };
+}
+
+export interface XpProjectionDriftRow {
+  driftXp: number;
+  ledgerXp: number;
+  projectedXp: number;
+  userId: string;
+}
+
+/**
+ * Users whose stored XP disagrees with the ledger. Reports; never writes.
+ *
+ * A reconciliation tool that mutates by default cannot answer "is anything
+ * wrong?", because running it destroys the evidence of what was wrong.
+ */
+export async function getXpProjectionDrift(
+  config: RewardsConfig,
+  seasonId: string,
+): Promise<XpProjectionDriftRow[]> {
+  const rows = await supabaseRequest<
+    Array<{ drift: string | number; ledger_xp: string | number; projected_xp: string | number; user_id: string }>
+  >(config, "rpc/rewards_xp_projection_drift", {
+    body: JSON.stringify({ p_season_id: seasonId }),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
+
+  return rows.map((row) => ({
+    driftXp: Number(row.drift ?? 0),
+    ledgerXp: Number(row.ledger_xp ?? 0),
+    projectedXp: Number(row.projected_xp ?? 0),
+    userId: row.user_id,
+  }));
+}
+
+/** Rebuild the XP projection for a season from the ledger. Returns rows changed. */
+export async function rebuildXpProjection(
+  config: RewardsConfig,
+  seasonId: string,
+): Promise<number> {
+  const updated = await supabaseRequest<number>(config, "rpc/rewards_rebuild_xp_projection", {
+    body: JSON.stringify({ p_season_id: seasonId }),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
+
+  return Number(updated ?? 0);
 }
 
 export async function getRewardLedgerEntriesBySource(
@@ -491,19 +668,45 @@ export async function getRewardLedgerEntriesBySource(
   return rows.map(mapRewardLedgerRow);
 }
 
+/**
+ * Fill keys that already earned volume XP, for deduplicating a fresh fill list.
+ *
+ * A fill key is `tid:hash:oid` and the idempotency key embedding it is
+ * `volume_xp:season:user:tid:hash:oid`. Splitting on ":" and taking the last
+ * segment therefore yielded the order id alone, which matches no fill key the
+ * grant builder compares against — so the returned set suppressed nothing and
+ * every sync re-derived grants across the user's whole history. The unique
+ * index on idempotency_key was the only thing stopping that duplicating XP.
+ *
+ * Prefer the key recorded in metadata; otherwise strip exactly the known
+ * prefix, so the remainder is the whole fill key however many colons it holds.
+ */
 export async function getExistingVolumeXpFillKeys(
   config: RewardsConfig,
   userId: string,
   seasonId: string,
 ) {
-  const rows = await supabaseRequest<Array<{ idempotency_key: string }>>(
+  const rows = await supabaseRequest<
+    Array<{ idempotency_key: string; metadata: Record<string, unknown> | null }>
+  >(
     config,
-    `reward_ledger?user_id=eq.${userId}&season_id=eq.${seasonId}&source=eq.volume_xp&select=idempotency_key`,
+    `reward_ledger?user_id=eq.${userId}&season_id=eq.${seasonId}&source=eq.volume_xp&select=idempotency_key,metadata`,
     { headers: buildHeaders(config) },
   );
 
+  const prefix = `volume_xp:${seasonId}:${userId}:`;
+
   return new Set(
-    rows.map((row) => row.idempotency_key.split(":").slice(-1)[0] ?? row.idempotency_key),
+    rows.map((row) => {
+      const stored = row.metadata?.fillKey;
+      if (typeof stored === "string" && stored.length > 0) {
+        return stored;
+      }
+
+      return row.idempotency_key.startsWith(prefix)
+        ? row.idempotency_key.slice(prefix.length)
+        : row.idempotency_key;
+    }),
   );
 }
 
@@ -532,6 +735,9 @@ export async function upsertUserPoints(
         xp: input.xp,
       }),
       headers: buildHeaders(config, {
+        // Still a merge, unlike the append-only ledger write, and
+        // deliberately so: this table caches an answer the ledger owns, so
+        // overwriting it with a freshly computed value is the entire point.
         Prefer: "resolution=merge-duplicates,return=representation",
       }),
       method: "POST",
@@ -554,19 +760,6 @@ export async function getUserPointsForSeason(
   return rows[0] ?? null;
 }
 
-export async function getSeasonLeaderboardRows(config: RewardsConfig, seasonId: string) {
-  const pointsRows = await supabaseRequest<UserPointsRow[]>(
-    config,
-    `user_points?season_id=eq.${seasonId}&select=*`,
-    { headers: buildHeaders(config) },
-  );
-  const users = await getUsersByIds(
-    config,
-    [...new Set(pointsRows.map((row) => row.user_id))],
-  );
-  const usersById = new Map(users.map((user) => [user.id, user]));
-  return toLeaderboardEntries(pointsRows, usersById);
-}
 
 export async function upsertWeeklyReward(config: RewardsConfig, input: {
   seasonId: string;
@@ -585,6 +778,9 @@ export async function upsertWeeklyReward(config: RewardsConfig, input: {
         week_start: input.weekStart,
       }),
       headers: buildHeaders(config, {
+        // Still a merge, unlike the append-only ledger write, and
+        // deliberately so: this table caches an answer the ledger owns, so
+        // overwriting it with a freshly computed value is the entire point.
         Prefer: "resolution=merge-duplicates,return=representation",
       }),
       method: "POST",
@@ -659,4 +855,169 @@ export async function patchWeeklyReward(
     },
   );
   return rows[0];
+}
+
+/**
+ * Quests this user has already been paid for, this season.
+ *
+ * The read path takes trade-derived quest completion from here rather than
+ * recomputing it: it has no fills, because ingestion is scheduled and a
+ * dashboard read performs no exchange I/O.
+ */
+export async function getGrantedQuestIds(
+  config: RewardsConfig,
+  userId: string,
+  seasonId: string,
+): Promise<QuestId[]> {
+  const rows = await supabaseRequest<Array<{ quest_id: string | null }>>(
+    config,
+    `reward_ledger?user_id=eq.${userId}&season_id=eq.${seasonId}&source=eq.quest&quest_id=not.is.null&select=quest_id`,
+    { headers: buildHeaders(config) },
+  );
+
+  return [...new Set(rows.map((row) => row.quest_id).filter((id): id is string => Boolean(id)))] as QuestId[];
+}
+
+// ---------------------------------------------------------------------------
+// Fill ingestion checkpoints
+// ---------------------------------------------------------------------------
+
+export interface FillSyncClaim {
+  checkpointId: string;
+  cursorTime: string;
+  fillsIngested: number;
+  seasonId: string;
+  userId: string;
+  walletAddress: string;
+}
+
+export interface FillCheckpointStatus {
+  cursorTime: string;
+  lastSuccessAt: string | null;
+  consecutiveFailures: number;
+  retentionRisk: boolean;
+}
+
+/**
+ * Claim a bounded batch of accounts to sync.
+ *
+ * The claim is what stops two overlapping worker runs from fetching the same
+ * account and racing each other's cursor advance; see migration 009.
+ */
+export async function claimFillSyncBatch(
+  config: RewardsConfig,
+  input: { limit?: number; staleAfterSeconds?: number } = {},
+): Promise<FillSyncClaim[]> {
+  const rows = await supabaseRequest<
+    Array<{
+      checkpoint_id: string;
+      cursor_time: string;
+      fills_ingested: string | number;
+      season_id: string;
+      user_id: string;
+      wallet_address: string;
+    }>
+  >(config, "rpc/rewards_claim_fill_sync_batch", {
+    body: JSON.stringify({
+      p_limit: input.limit ?? 25,
+      p_stale_after_seconds: input.staleAfterSeconds ?? 900,
+    }),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
+
+  return rows.map((row) => ({
+    checkpointId: row.checkpoint_id,
+    cursorTime: row.cursor_time,
+    fillsIngested: Number(row.fills_ingested ?? 0),
+    seasonId: row.season_id,
+    userId: row.user_id,
+    walletAddress: row.wallet_address,
+  }));
+}
+
+/**
+ * Record one account's outcome. Advances the cursor only when one is supplied,
+ * so a failure reports itself without disturbing proven progress.
+ */
+export async function completeFillSync(
+  config: RewardsConfig,
+  input: {
+    checkpointId: string;
+    cursorTime?: string;
+    errorCode?: string | null;
+    fillsIngested?: number;
+    retentionRisk?: boolean;
+  },
+): Promise<void> {
+  await supabaseRequest<null>(config, "rpc/rewards_complete_fill_sync", {
+    body: JSON.stringify({
+      p_checkpoint_id: input.checkpointId,
+      p_cursor_time: input.cursorTime ?? null,
+      p_error_code: input.errorCode ?? null,
+      p_fills_ingested: input.fillsIngested ?? 0,
+      p_retention_risk: input.retentionRisk ?? null,
+    }),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
+}
+
+/** Create checkpoints for wallet-holding users in a season that lack one. */
+export async function backfillFillCheckpoints(
+  config: RewardsConfig,
+  input: { limit?: number; seasonId: string; startAt: string },
+): Promise<number> {
+  const created = await supabaseRequest<number>(
+    config,
+    "rpc/rewards_backfill_fill_checkpoints",
+    {
+      body: JSON.stringify({
+        p_limit: input.limit ?? 500,
+        p_season_id: input.seasonId,
+        p_start_at: input.startAt,
+      }),
+      headers: buildHeaders(config),
+      method: "POST",
+    },
+  );
+
+  return Number(created ?? 0);
+}
+
+/**
+ * The ingestion state behind one user's dashboard, or null before a first run.
+ *
+ * Read-only: the dashboard reports how fresh its numbers are, it does not make
+ * them fresher.
+ */
+export async function getFillCheckpointStatus(
+  config: RewardsConfig,
+  userId: string,
+  seasonId: string,
+): Promise<FillCheckpointStatus | null> {
+  const rows = await supabaseRequest<
+    Array<{
+      consecutive_failures: number;
+      cursor_time: string;
+      last_success_at: string | null;
+      retention_risk: boolean;
+    }>
+  >(
+    config,
+    `rewards_fill_checkpoints?user_id=eq.${userId}&season_id=eq.${seasonId}&select=cursor_time,last_success_at,consecutive_failures,retention_risk&order=last_success_at.desc.nullslast&limit=1`,
+    { headers: buildHeaders(config) },
+  );
+
+  const row = rows[0];
+  if (!row) {
+    return null;
+  }
+
+  return {
+    consecutiveFailures: Number(row.consecutive_failures ?? 0),
+    cursorTime: row.cursor_time,
+    lastSuccessAt: row.last_success_at,
+    retentionRisk: Boolean(row.retention_risk),
+  };
 }

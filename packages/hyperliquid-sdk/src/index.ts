@@ -99,7 +99,6 @@ export {
   getStoredAgentKey,
   isTsunamiAgentName,
   storeAgentKey,
-  clearAgentKey,
   clearStoredAgentKey,
 } from "./agent";
 

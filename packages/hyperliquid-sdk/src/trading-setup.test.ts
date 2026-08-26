@@ -298,28 +298,75 @@ describe("reduceAgentApproval", () => {
     });
   });
 
-  it("fails closed on duplicate Tsunami agents after propagation grace", () => {
+  it("keeps trading on a listed, unexpired agent even beside a duplicate", () => {
+    // A duplicate says nothing about whether our own agent works. It is listed
+    // and unexpired, so the exchange will accept what it signs; refusing to
+    // trade would take away something demonstrably working.
     const { next } = reduceAgentApproval({
       localState: {
         ...localApproved,
         approvedAt: NOW - AGENT_PROPAGATION_GRACE_MS - 1,
       },
       extraAgents: [
-        { address: "0xAgent", name: "tsnm-trade-agent" },
-        { address: "0xOtherAgent", name: "tsnm-trade-agent" },
+        { address: "0xAgent", name: "tsnm-trade-agent", validUntil: NOW + 60_000 },
+        { address: "0xOtherAgent", name: "tsnm-trade-agent", validUntil: NOW + 60_000 },
       ],
-      previousState: {
-        ...localApproved,
-        reason: "awaiting-propagation",
-      },
+      previousState: localApproved,
       now: NOW,
     });
 
     expect(next).toMatchObject({
-      approved: false,
-      state: "missing",
-      reason: "revoked-or-replaced",
+      approved: true,
+      state: "approved",
+      reason: "active",
+      duplicateNamedAgents: 1,
     });
+  });
+
+  it("does not brick an account whose agent names carry the expiry suffix", () => {
+    // If the exchange stores the whole `valid_until` string rather than the
+    // bare name, every reauthorization leaves its predecessor registered and
+    // duplicates are guaranteed. Treating that as a failure would put such an
+    // account into a reauthorize loop with no way out: each new approval adds
+    // another name and trips the same rule again.
+    const { next } = reduceAgentApproval({
+      localState: {
+        ...localApproved,
+        address: "0xNewAgent",
+        approvedAt: NOW - AGENT_PROPAGATION_GRACE_MS - 1,
+      },
+      extraAgents: [
+        {
+          address: "0xLegacyAgent",
+          name: "tsnm-trade-agent valid_until 1750000000000",
+          validUntil: NOW + 999_000,
+        },
+        {
+          address: "0xNewAgent",
+          name: "tsnm-trade-agent valid_until 1780000000000",
+          validUntil: NOW + 999_000,
+        },
+      ],
+      previousState: { ...localApproved, address: "0xNewAgent" },
+      now: NOW,
+    });
+
+    expect(next).toMatchObject({
+      approved: true,
+      reason: "active",
+      duplicateNamedAgents: 1,
+    });
+  });
+
+  it("reports no duplicates when the exchange could not be reached", () => {
+    // Zero here means "nothing observed", not "confirmed none".
+    const { next } = reduceAgentApproval({
+      localState: localApproved,
+      extraAgents: null,
+      now: NOW,
+    });
+
+    expect(next.duplicateNamedAgents).toBe(0);
   });
 
   it("recognises our name whether or not the expiry suffix is echoed back", () => {

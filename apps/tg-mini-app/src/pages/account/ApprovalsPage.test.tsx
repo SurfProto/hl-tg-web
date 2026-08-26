@@ -78,6 +78,7 @@ const ACTIVE_AGENT = {
     approvedAt: 1_759_000_000_000,
     remoteConfirmed: true,
     lastVerifiedAt: 1_759_900_000_000,
+    duplicateNamedAgents: 0,
   },
 };
 
@@ -114,6 +115,29 @@ describe("ApprovalsPage, trading authorization card", () => {
       screen.getByText("tr:approvals.verificationConfirmed"),
     ).toBeInTheDocument();
     expect(screen.getByText("tr:approvals.lastCheckLabel")).toBeInTheDocument();
+  });
+
+  it("mentions extra authorizations without treating them as a failure", () => {
+    // A duplicate consumes one of the exchange's few named-agent slots, which
+    // is worth saying. It does not stop this agent working, so the card must
+    // not read as an error and the buttons must stay as they were.
+    agentApproval = {
+      ...ACTIVE_AGENT,
+      data: { ...ACTIVE_AGENT.data, duplicateNamedAgents: 2 },
+    };
+    render(<ApprovalsPage />);
+
+    expect(screen.getByText("tr:approvals.duplicateAgents")).toBeInTheDocument();
+    expect(screen.getAllByText("tr:account.approved").length).toBeGreaterThan(0);
+    expect(screen.getByText("tr:approvals.reauthorize")).toBeEnabled();
+  });
+
+  it("stays silent when there are no extra authorizations", () => {
+    render(<ApprovalsPage />);
+
+    expect(
+      screen.queryByText("tr:approvals.duplicateAgents"),
+    ).not.toBeInTheDocument();
   });
 
   it("says an approval is waiting to register rather than calling it verified", () => {

@@ -40,9 +40,6 @@ export function clearStoredAgentKey(userAddress: string): void {
   );
 }
 
-/** Backward-compatible name for callers that only know about stored keys. */
-export const clearAgentKey = clearStoredAgentKey;
-
 /**
  * When this key was approved.
  *

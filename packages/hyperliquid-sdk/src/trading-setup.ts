@@ -41,6 +41,18 @@ export type AgentApprovalState = {
   name: string | null;
   /** When the local key was approved, which bounds the propagation grace. */
   approvedAt: number | null;
+  /**
+   * How many *other* agents the exchange lists under our name.
+   *
+   * Only ever a housekeeping signal, never a reason to stop trading. If our
+   * own agent is listed and unexpired the exchange will accept its
+   * signatures, so refusing to trade would protect the user from nothing
+   * while taking away something that works. What duplicates actually cost is
+   * slots against the small per-account limit on named agents, which is worth
+   * surfacing and worth reporting — and is the thing to watch to find out
+   * whether same-name replacement is really collapsing the way it should.
+   */
+  duplicateNamedAgents: number;
 };
 
 export type RemoteAgent = {
@@ -91,7 +103,30 @@ export function getUnifiedApprovalRequirementState(
  * `extraAgents` is null when that call failed. `validUntilToPersist` is
  * returned rather than written so this stays pure; the caller stores it.
  */
-export function reduceAgentApproval({
+export function reduceAgentApproval(args: {
+  localState: AgentApprovalState;
+  extraAgents: RemoteAgent[] | null;
+  previousState?: AgentApprovalState;
+  now: number;
+}): { next: AgentApprovalState; validUntilToPersist: number | null } {
+  const result = reduceAgentApprovalCore(args);
+
+  // Counted once, here, rather than in each of the branches below: whichever
+  // way the reconciliation went, a duplicate is the same observation about the
+  // account and it must not change the decision that was already made.
+  const duplicateNamedAgents = (args.extraAgents ?? []).filter(
+    (agent) =>
+      isTsunamiAgentName(agent.name) &&
+      agent.address?.toLowerCase() !== result.next.address?.toLowerCase(),
+  ).length;
+
+  return {
+    ...result,
+    next: { ...result.next, duplicateNamedAgents },
+  };
+}
+
+function reduceAgentApprovalCore({
   localState,
   extraAgents,
   previousState,
@@ -184,43 +219,15 @@ export function reduceAgentApproval({
     now - localState.approvedAt <= AGENT_PROPAGATION_GRACE_MS;
   const explicitlyAwaitingPropagation =
     previousState?.reason === "awaiting-propagation" && withinGrace;
-  const otherNamedAgents = extraAgents.filter(
-    (agent) =>
-      isTsunamiAgentName(agent.name) &&
-      agent.address?.toLowerCase() !== localState.address?.toLowerCase(),
-  );
-
-  // During replacement, the exchange can briefly return the predecessor, or
-  // both predecessor and successor. That is exactly the stale-read window the
-  // grace exists for. After the grace, a duplicate is an invariant failure and
-  // trading is stopped rather than silently accumulating authorizations.
-  if (approvedAgent && otherNamedAgents.length > 0) {
-    if (explicitlyAwaitingPropagation) {
-      return {
-        next: {
-          ...localState,
-          state: "stale",
-          approved: true,
-          reason: "awaiting-propagation",
-          remoteConfirmed: false,
-          lastVerifiedAt: previousState?.lastVerifiedAt ?? null,
-        },
-        validUntilToPersist: null,
-      };
-    }
-
-    return {
-      next: {
-        ...localState,
-        approved: false,
-        state: "missing",
-        reason: "revoked-or-replaced",
-        remoteConfirmed: false,
-        lastVerifiedAt: now,
-      },
-      validUntilToPersist: null,
-    };
-  }
+  // A duplicate under our name is not a reason to refuse to trade. If our own
+  // agent is listed and unexpired the exchange will accept what it signs, so
+  // stopping here would disable something that demonstrably works. It is also
+  // not necessarily an anomaly: whether Hyperliquid stores the bare name or
+  // the whole `valid_until` string is unconfirmed, and if it stores the whole
+  // string then every reauthorization leaves its predecessor registered and
+  // every account has duplicates by construction. Failing closed on that would
+  // put such an account into a reauthorize loop it could never leave. So the
+  // count is carried out to the UI and to diagnostics instead.
 
   if (!approvedAgent) {
     // Our name held by an address that is not ours is not ambiguous: another

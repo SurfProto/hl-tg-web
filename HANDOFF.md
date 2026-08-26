@@ -23,14 +23,37 @@ mini-app tests, 218 API tests, typecheck, and a production build. The remaining
 manual check is named-agent replacement against a live Hyperliquid account; the
 user reported that the flow works after production testing.
 
-**Update 2026-08-24 — Points is moving to server-enforced XP-only mode.** The
-approved design is in
-[`docs/superpowers/specs/2026-08-24-points-xp-only-hardening-design.md`](docs/superpowers/specs/2026-08-24-points-xp-only-hardening-design.md).
-Until that implementation is deployed, keep `REWARDS_TREASURY_PRIVATE_KEY`
-unset and do not invoke `/api/rewards/weekly-raffle`: the current dashboard can
-attempt USDC settlement during a read, and its merge-upsert can return an
-already-posted cash entry to `pending`. The raffle is not scheduled in the
-current `vercel.json`.
+**Update 2026-08-25 — Points is server-enforced XP-only.** Three of the six
+releases in
+[`docs/superpowers/specs/2026-08-24-points-xp-only-hardening-design.md`](docs/superpowers/specs/2026-08-24-points-xp-only-hardening-design.md)
+are implemented on `codex/points-xp-only-hardening` as `cf9aff4`.
+
+*Safety.* The server emits XP only. `RewardsConfig` no longer carries a treasury
+key, the raffle draw moved to a dormant `_lib/raffle.ts` that no handler
+imports, and the raffle route refuses with `REWARDS_XP_ONLY` after
+authenticating. Outstanding cash entitlements are `held`; `posted` history was
+never rewritten.
+
+*Accounting.* Ledger writes are insert-on-conflict-do-nothing, so a sync can no
+longer return an already-posted cash entry to `pending`. XP totals come from a
+database aggregate rather than the 150-row display page, which had silently
+become the accounting horizon.
+
+*Ingestion.* A scheduled worker at `/api/rewards/sync-fills` walks checkpointed
+time windows, subdividing any window that returns a full page. The dashboard is
+a read: no exchange I/O, no season creation, no referral assignment, no reward
+writes.
+
+Migrations `000`, `007`, `008` and `009` are **already applied** to the hosted
+project; the code is **not yet deployed**. Until it is, production runs the old
+path, so `REWARDS_TREASURY_PRIVATE_KEY` must stay unset and
+`/api/rewards/weekly-raffle` must not be invoked. `CRON_SECRET` must be set
+before deploying or fill ingestion 401s on every run.
+
+Releases 4 to 6 remain: atomic seasons and referrals, SQL ranking, a
+pseudonymous leaderboard, removal of the remaining UI placeholders, RLS on
+`seasons` and `bridge_sponsorship_events`, shadow reconciliation, and a
+separately approved proposal for any raffle or cash relaunch.
 
 **Update 2026-08-14.** Open work items 1, 2 and 3 are done, including the
 clearinghouse-state extraction item 3 left behind. Both branches —
@@ -352,8 +375,10 @@ program is XP-only.
 
 Do not infer live secret values from this document. The important safety rule is
 that neither `REWARDS_TREASURY_PRIVATE_KEY` nor `REWARDS_ADMIN_KEY` should be
-used to activate cash rewards during hardening. The server-enforced XP-only
-change will make treasury configuration insufficient to activate a payout.
+used to activate cash rewards during hardening. Once `cf9aff4` is deployed,
+treasury configuration is insufficient to activate a payout — the key is not
+read by the config handlers receive, and no request path can reach the payout
+module. Until then the old behaviour is live and the rule is load-bearing.
 
 ## Why no authenticated account read had ever worked (2026-08-19)
 

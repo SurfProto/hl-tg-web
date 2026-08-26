@@ -102,6 +102,15 @@ describe("rewards server runtime import boundaries", () => {
     expect(graph).not.toContain(RAFFLE);
   });
 
+  // Reconciliation reads and repairs a projection. It has no business being
+  // able to reach code that moves money, however it is invoked.
+  it("cannot reach the payout module from the reconciliation route", () => {
+    const graph = reachableFrom("rewards/reconcile.ts");
+
+    expect(graph).not.toContain(PAYOUT);
+    expect(graph).not.toContain(RAFFLE);
+  });
+
   it("keeps payout.ts on disk for audited history and isolated tests", () => {
     const payoutSource = readSource("payout.ts");
 

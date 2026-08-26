@@ -14,19 +14,34 @@ trading actions, records account-scoped authorization incidents, and opens a
 recovery sheet that says the failed action did not execute and will not be
 replayed. A user can reauthorize with a fresh key or revoke access at any time
 from Approvals, including when only a remote agent exists. Verification is
-bounded to the exchange's propagation window and duplicate or ambiguous agent
-records fail closed. Telemetry redacts wallet/key material, and the experience
-is translated in English and Russian. No Supabase migration was required.
+bounded to the exchange's propagation window and ambiguous agent records — our
+name held by an address that is not ours — fail closed. Telemetry redacts
+wallet/key material, and the experience is translated in English and Russian.
+No Supabase migration was required.
+
+This release also failed closed on *duplicate* agent records, which
+[PR #13](https://github.com/SurfProto/hl-tg-web/pull/13) reversed on 2026-08-26
+as `40e4a49`. A duplicate under our own name is not a reason to refuse to
+trade: if our agent is listed and unexpired the exchange accepts what it signs.
+It may not even be an anomaly — whether Hyperliquid keys a named agent by the
+bare name or by the whole `valid_until` string is unconfirmed, and under the
+second reading every reauthorization leaves its predecessor registered, so
+failing closed would trap every account that had ever reauthorized in a loop it
+could not leave. The count is surfaced as `duplicateNamedAgents` instead. Watch
+it: duplicates appearing on accounts that have reauthorized would confirm the
+expiry-suffix reading, and would mean same-name replacement never collapses and
+each reauthorization consumes one of the account's limited agent slots.
 
 The release was verified before deployment with 325 Hyperliquid SDK tests, 150
 mini-app tests, 218 API tests, typecheck, and a production build. The remaining
 manual check is named-agent replacement against a live Hyperliquid account; the
 user reported that the flow works after production testing.
 
-**Update 2026-08-25 — Points is server-enforced XP-only.** Three of the six
-releases in
+**Update 2026-08-26 — Points is server-enforced XP-only, deployed.** Five of the
+six releases in
 [`docs/superpowers/specs/2026-08-24-points-xp-only-hardening-design.md`](docs/superpowers/specs/2026-08-24-points-xp-only-hardening-design.md)
-are implemented on `codex/points-xp-only-hardening` as `cf9aff4`.
+are on `main` and in production: `66c2250` (#10), `3f70e61` (#11), `b57c8d5`
+(#12).
 
 *Safety.* The server emits XP only. `RewardsConfig` no longer carries a treasury
 key, the raffle draw moved to a dormant `_lib/raffle.ts` that no handler
@@ -42,18 +57,42 @@ become the accounting horizon.
 *Ingestion.* A scheduled worker at `/api/rewards/sync-fills` walks checkpointed
 time windows, subdividing any window that returns a full page. The dashboard is
 a read: no exchange I/O, no season creation, no referral assignment, no reward
-writes.
+writes. `CRON_SECRET` authorises the worker; without it every run 401s and
+nobody earns trading XP.
 
-Migrations `000`, `007`, `008` and `009` are **already applied** to the hosted
-project; the code is **not yet deployed**. Until it is, production runs the old
-path, so `REWARDS_TREASURY_PRIVATE_KEY` must stay unset and
-`/api/rewards/weekly-raffle` must not be invoked. `CRON_SECRET` must be set
-before deploying or fill ingestion 401s on every run.
+*Integrity and privacy.* An exclusion constraint forbids two seasons covering
+the same instant — production already had two flagged active, because
+`is_active` was set and never cleared and only the date-window filter on each
+read hid it. Referral linking moved into the UPDATE. The leaderboard carries an
+opaque `Trader-XXXXXXXX` alias and no internal id, ranked by bounded RPCs. RLS
+is enabled on every table.
 
-Releases 4 to 6 remain: atomic seasons and referrals, SQL ranking, a
-pseudonymous leaderboard, removal of the remaining UI placeholders, RLS on
-`seasons` and `bridge_sponsorship_events`, shadow reconciliation, and a
-separately approved proposal for any raffle or cash relaunch.
+*Reconciliation.* `GET /api/rewards/reconcile` reports program health in one
+row — ingestion lag measured from the cursor, accounts never synced, stale,
+failing or at retention risk, wallets with no checkpoint, projection drift, and
+held cash. `POST` with a named action repairs. Reporting is reachable only
+through a verb that cannot write, because a tool that mutates by default cannot
+be used to ask whether anything is wrong.
+
+Its first production run found real drift: one account projected 1104 XP
+against a ledger total of 1001, the difference being exactly that user's April
+total. The old dashboard summed `getRewardLedgerEntries(user, 150)`, which
+filters by user and **not by season**, and wrote the result into the current
+season's row. Repaired on 2026-08-26 via `rewards_rebuild_xp_projection`; drift
+is now zero. If a projection is ever found stale again that RPC is the remedy,
+and it touches `xp` only — never `total_volume`, which comes from fills and
+would be zeroed by a rebuild that assumed the ledger knew everything.
+
+Migrations `000` and `007` through `013` are applied.
+`REWARDS_TREASURY_PRIVATE_KEY` is now inert — it is off `RewardsConfig` and no
+deployed handler can reach `payout.ts` — but there is no reason to keep it
+configured and it should be removed from the environment.
+
+Release 6 remains, and is not implementation work: any raffle or cash relaunch
+needs its own reviewed design first, against the gates in the spec — durable
+per-attempt payout state, an exchange transfer reference, manual review for
+"sent but the write failed", treasury and per-transfer limits, an emergency
+stop, and a capped canary. `payout.ts` and `_lib/raffle.ts` stay dormant.
 
 **Update 2026-08-14.** Open work items 1, 2 and 3 are done, including the
 clearinghouse-state extraction item 3 left behind. Both branches —
@@ -369,16 +408,30 @@ the single place that changes.
 ## Production schedules and intentionally disabled rewards
 
 The older configuration note is obsolete. The current `vercel.json` schedules
-`/api/notifications/worker` and `/api/market/stats` every minute. It does **not**
-schedule `/api/rewards/weekly-raffle`, which is now the desired state while the
-program is XP-only.
+`/api/notifications/worker` and `/api/market/stats` every minute, and
+`/api/rewards/sync-fills` every ten. It does **not** schedule
+`/api/rewards/weekly-raffle`, which is the desired state while the program is
+XP-only — the route also refuses with `REWARDS_XP_ONLY` before it can claim a
+run, draw a winner or send USDC.
 
-Do not infer live secret values from this document. The important safety rule is
-that neither `REWARDS_TREASURY_PRIVATE_KEY` nor `REWARDS_ADMIN_KEY` should be
-used to activate cash rewards during hardening. Once `cf9aff4` is deployed,
-treasury configuration is insufficient to activate a payout — the key is not
-read by the config handlers receive, and no request path can reach the payout
-module. Until then the old behaviour is live and the rule is load-bearing.
+The ingestion cron's interval and `CLAIM_STALE_AFTER_SECONDS` in
+`api/rewards/sync-fills.ts` are coupled. The claim threshold exists to release a
+batch abandoned by a crashed worker; set too close to the interval it silently
+becomes a rate limiter instead, which is how the first deploy ran at half its
+intended cadence. A test reads the schedule out of `vercel.json` and fails if
+the two drift apart.
+
+Do not infer live secret values from this document. Neither
+`REWARDS_TREASURY_PRIVATE_KEY` nor `REWARDS_ADMIN_KEY` should be used to
+activate cash rewards during hardening.
+
+Since `66c2250` deployed, treasury configuration is insufficient to activate a
+payout: the key is not read by the config handlers receive, and no request path
+can reach the payout module. That is enforced structurally by
+`api/rewards/_lib/server-imports.test.ts`, which walks the real module graph
+from every rewards route. An earlier version of that test matched source text
+and passed happily while the dashboard still settled USDC through a lazy
+import, so if it is ever rewritten, keep it asserting on the graph.
 
 ## Why no authenticated account read had ever worked (2026-08-19)
 

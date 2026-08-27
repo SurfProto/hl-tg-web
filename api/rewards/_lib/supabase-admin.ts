@@ -1198,3 +1198,78 @@ export async function getLifetimeXp(
 
   return Number(total ?? 0);
 }
+
+// ---------------------------------------------------------------------------
+// Referral funnel
+// ---------------------------------------------------------------------------
+
+export type ReferralMilestone = "funded" | "traded" | "retained";
+
+export interface ReferralMilestoneRow {
+  milestone: ReferralMilestone;
+  qualifiedAt: string | null;
+  refereeId: string;
+  referrerId: string;
+}
+
+/**
+ * Every referral rung currently earned, as (referrer, referee, milestone).
+ *
+ * Returns all qualifying rungs rather than only new ones. The caller writes
+ * them to an append-only ledger keyed by referee and milestone, so there is no
+ * cursor to keep and a missed run cannot lose a milestone.
+ */
+export async function getReferralMilestones(
+  config: RewardsConfig,
+): Promise<ReferralMilestoneRow[]> {
+  const rows = await supabaseRequest<
+    Array<{
+      milestone: string;
+      qualified_at: string | null;
+      referee_id: string;
+      referrer_id: string;
+    }>
+  >(config, "rpc/rewards_referral_milestones", {
+    body: JSON.stringify({}),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
+
+  return rows.map((row) => ({
+    milestone: row.milestone as ReferralMilestone,
+    qualifiedAt: row.qualified_at,
+    refereeId: row.referee_id,
+    referrerId: row.referrer_id,
+  }));
+}
+
+export interface ReferralFunnel {
+  dry: number;
+  funded: number;
+  retained: number;
+  traded: number;
+}
+
+/**
+ * Funnel counts for reconciliation.
+ *
+ * `dry` earns nothing, but the ratio between it and the paying rungs is the
+ * clearest signal that somebody is manufacturing accounts.
+ */
+export async function getReferralFunnel(config: RewardsConfig): Promise<ReferralFunnel> {
+  const rows = await supabaseRequest<
+    Array<{ dry: string | number; funded: string | number; retained: string | number; traded: string | number }>
+  >(config, "rpc/rewards_referral_funnel", {
+    body: JSON.stringify({}),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
+
+  const row = rows[0];
+  return {
+    dry: Number(row?.dry ?? 0),
+    funded: Number(row?.funded ?? 0),
+    retained: Number(row?.retained ?? 0),
+    traded: Number(row?.traded ?? 0),
+  };
+}

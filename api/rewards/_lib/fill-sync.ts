@@ -322,30 +322,17 @@ export async function buildQuestAndReferralEntries(
     hasFundedReferral: referralStats.fundedReferralCount > 0,
   });
 
-  const entries = buildQuestRewardEntries({
-    questIds: snapshot.completedQuestIds,
+  // referral_funded_friend is excluded deliberately. Its grant key was
+  // quest:{season}:{referrer}:referral_funded_friend:xp — one row per referrer
+  // per season — so a referrer who brought ten funded friends was paid for one.
+  // Referral XP now comes solely from the milestone ladder, which keys on the
+  // referee. The quest stays in the snapshot as a display of progress.
+  return buildQuestRewardEntries({
+    questIds: snapshot.completedQuestIds.filter(
+      (questId) => questId !== "referral_funded_friend",
+    ),
     seasonId: claim.seasonId,
     userId: claim.userId,
     weekStart,
   });
-
-  // A referred user's welcome bonus, and the referrer's own quest, both land
-  // once the referred user's first deposit qualifies.
-  if (snapshot.completedQuestIds.includes("first_deposit") && user?.referred_by) {
-    entries.push(
-      ...buildReferralBonusEntries({
-        seasonId: claim.seasonId,
-        userId: claim.userId,
-        weekStart,
-      }),
-      ...buildQuestRewardEntries({
-        questIds: ["referral_funded_friend"],
-        seasonId: claim.seasonId,
-        userId: user.referred_by,
-        weekStart,
-      }),
-    );
-  }
-
-  return entries;
 }

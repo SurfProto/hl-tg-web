@@ -1085,3 +1085,30 @@ export async function getReconciliationReport(
     walletsWithoutCheckpoint: num("wallets_without_checkpoint"),
   };
 }
+
+/**
+ * Rebuild the season's leaderboard projections from the ledger.
+ *
+ * Called once per ingestion run rather than written incrementally, so the
+ * projection reconciles itself continuously instead of depending on every
+ * writer being correct. That property is why `total_volume` was able to sit
+ * frozen and undetected once the dashboard stopped writing it.
+ */
+export async function rebuildProjections(
+  config: RewardsConfig,
+  seasonId: string,
+): Promise<{ pointsRows: number; weeklyRows: number }> {
+  const rows = await supabaseRequest<
+    Array<{ points_rows: string | number; weekly_rows: string | number }>
+  >(config, "rpc/rewards_rebuild_projections", {
+    body: JSON.stringify({ p_season_id: seasonId }),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
+
+  const row = rows[0];
+  return {
+    pointsRows: Number(row?.points_rows ?? 0),
+    weeklyRows: Number(row?.weekly_rows ?? 0),
+  };
+}

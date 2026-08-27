@@ -14,6 +14,8 @@ const POSTGRES_LEAK =
   'null value in column "telegram_id" of relation "users" violates not-null constraint';
 
 const fetchRewardsDashboard = vi.fn();
+const applyReferralCode = vi.fn();
+let startParam: string | null = null;
 const warn = vi.fn();
 let currentUser: { id: string; wallet: { address: string } } | null = null;
 
@@ -50,6 +52,12 @@ vi.mock("@privy-io/react-auth", () => ({
 
 vi.mock("../lib/rewards", () => ({
   fetchRewardsDashboard: (...args: unknown[]) => fetchRewardsDashboard(...args),
+  applyReferralCode: (...args: unknown[]) => applyReferralCode(...args),
+  RewardsApiError: class extends Error {},
+}));
+
+vi.mock("../lib/referrals", () => ({
+  getTelegramStartParam: () => startParam,
 }));
 
 vi.mock("../components/ReferralCard", () => ({
@@ -133,6 +141,9 @@ describe("PointsPage", () => {
   beforeEach(() => {
     currentUser = { id: "did:privy:abc", wallet: { address: "0xabc" } };
     fetchRewardsDashboard.mockReset();
+    applyReferralCode.mockReset();
+    applyReferralCode.mockResolvedValue({});
+    startParam = null;
     warn.mockReset();
   });
 
@@ -375,6 +386,79 @@ describe("PointsPage", () => {
     // 7 * 100 = 700 would have been the old invented figure.
     expect(screen.getByText("+250")).toBeInTheDocument();
     expect(screen.queryByText("+700")).not.toBeInTheDocument();
+  });
+
+  /**
+   * Telegram invite links were silently dead.
+   *
+   * The code was captured from the start parameter, handed to the dashboard
+   * endpoint, and discarded there — the endpoint stopped accepting it when it
+   * became read-only, and nothing took over the linking. The referral graph is
+   * the whole distribution advantage, so this is the guard that matters most.
+   */
+  it("applies a referral code arriving on an invite link", async () => {
+    startParam = "FRIEND12";
+    fetchRewardsDashboard.mockResolvedValue(xpOnlyDashboard());
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(applyReferralCode).toHaveBeenCalledWith("access-token", {
+        referralCode: "FRIEND12",
+      });
+    });
+  });
+
+  it("does not re-link a user who already has a referrer", async () => {
+    startParam = "FRIEND12";
+    fetchRewardsDashboard.mockResolvedValue(
+      xpOnlyDashboard({
+        referral: {
+          referralCode: "CODE123",
+          referredCount: 0,
+          fundedReferralCount: 0,
+          hasReferrer: true,
+        },
+      }),
+    );
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText(en.points.questXp)).toBeInTheDocument();
+    });
+
+    expect(applyReferralCode).not.toHaveBeenCalled();
+  });
+
+  it("applies nothing when there is no invite link", async () => {
+    fetchRewardsDashboard.mockResolvedValue(xpOnlyDashboard());
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText(en.points.questXp)).toBeInTheDocument();
+    });
+
+    expect(applyReferralCode).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A stale, self-referring or already-used link is an ordinary outcome of
+   * sharing links. None of it is worth an error card in front of someone who
+   * has just arrived.
+   */
+  it("stays silent when an invite link is rejected", async () => {
+    startParam = "STALE123";
+    applyReferralCode.mockRejectedValue(new Error("REFERRAL_ALREADY_SET"));
+    fetchRewardsDashboard.mockResolvedValue(xpOnlyDashboard());
+
+    renderPage();
+
+    await waitFor(() => expect(applyReferralCode).toHaveBeenCalled());
+
+    expect(screen.queryByText(en.errors.somethingWentWrong)).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("REFERRAL_ALREADY_SET");
   });
 
   // The card labelled "Days active" was subtitled with the weekly raffle rank

@@ -8,6 +8,7 @@ import {
   backfillFillCheckpoints,
   claimFillSyncBatch,
   getOrCreateActiveSeason,
+  rebuildProjections,
 } from "./_lib/supabase-admin";
 
 /**
@@ -152,11 +153,18 @@ export default async function handler(request: any, response: any) {
       );
     }
 
+    // After the batch, not per account: the projection is a whole-season
+    // aggregate, and rebuilding it once per run keeps it self-healing. Nothing
+    // wrote these between the dashboard becoming read-only and this line, which
+    // is how the leaderboard came to rank on a frozen volume figure.
+    const projections = await rebuildProjections(config, season.id);
+
     const durationMs = Date.now() - startedAt;
     console.info(
       `[rewards-sync] run complete season=${season.id} checkpointsCreated=${created} claimed=${claims.length} ` +
         `synced=${accountsSynced} failed=${accountsFailed} fills=${fillsIngested} grants=${grantsWritten} ` +
-        `requests=${requestCount} retentionRisk=${retentionRiskAccounts} durationMs=${durationMs}`,
+        `requests=${requestCount} retentionRisk=${retentionRiskAccounts} ` +
+        `projectionRows=${projections.pointsRows}/${projections.weeklyRows} durationMs=${durationMs}`,
     );
 
     json(response, 200, {
@@ -169,6 +177,8 @@ export default async function handler(request: any, response: any) {
         durationMs,
         fillsIngested,
         grantsWritten,
+        projectionPointsRows: projections.pointsRows,
+        projectionWeeklyRows: projections.weeklyRows,
         requestCount,
         retentionRiskAccounts,
         seasonId: season.id,

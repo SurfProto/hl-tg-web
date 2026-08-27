@@ -1,11 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePrivy, useToken } from "@privy-io/react-auth";
 import type { ReferralSummary, RewardsDashboard } from "@repo/types";
 import { useTranslation } from "react-i18next";
 import { ReferralCard } from "../components/ReferralCard";
 import { getTelegramStartParam } from "../lib/referrals";
-import { fetchRewardsDashboard } from "../lib/rewards";
+import { applyReferralCode, fetchRewardsDashboard } from "../lib/rewards";
 import { log } from "../lib/logger";
 
 function formatCompactNumber(value: number) {
@@ -46,22 +46,55 @@ export function PointsPage() {
   });
 
   const dashboardQuery = useQuery({
-    queryKey: ["rewardsDashboard", walletAddress, startParam],
+    queryKey: ["rewardsDashboard", walletAddress],
     queryFn: async () => {
       const accessToken = await getAccessToken();
       if (!accessToken) {
         throw new Error("Missing access token");
       }
 
-      return fetchRewardsDashboard(accessToken, {
-        startParam,
-      });
+      return fetchRewardsDashboard(accessToken);
     },
     enabled: Boolean(user?.id),
     staleTime: 30_000,
   });
 
   const dashboard = dashboardQuery.data;
+
+  /**
+   * Apply a referral arriving on a Telegram invite link.
+   *
+   * The link's code used to be handed to the dashboard, which linked the
+   * referrer while serving the read. Making that endpoint read-only removed the
+   * behaviour without replacing it, so invite links silently stopped working —
+   * the code was captured, sent, and discarded. It now goes to the explicit
+   * mutation, which is where a write belongs.
+   *
+   * Fires once, only when the server confirms there is no referrer yet. Every
+   * failure is swallowed: a stale, self-referring or already-used link is an
+   * ordinary outcome of sharing links, and none of it is worth an error card in
+   * front of someone who just arrived.
+   */
+  const referralAttempted = useRef(false);
+
+  useEffect(() => {
+    if (!startParam || referralAttempted.current) return;
+    if (!dashboard || dashboard.referral.hasReferrer) return;
+
+    referralAttempted.current = true;
+
+    void (async () => {
+      try {
+        const accessToken = await getAccessToken();
+        if (!accessToken) return;
+
+        await applyReferralCode(accessToken, { referralCode: startParam });
+        await queryClient.invalidateQueries({ queryKey: ["rewardsDashboard"] });
+      } catch (error) {
+        log.info("[points] Referral link not applied", { error });
+      }
+    })();
+  }, [startParam, dashboard, getAccessToken, queryClient]);
 
   // The copy rendered below is deliberately generic. This endpoint puts the
   // API envelope's `error` string straight onto RewardsApiError.message, and
@@ -78,7 +111,7 @@ export function PointsPage() {
 
   const handleReferralApplied = async (referral: ReferralSummary) => {
     queryClient.setQueryData<RewardsDashboard | undefined>(
-      ["rewardsDashboard", walletAddress, startParam],
+      ["rewardsDashboard", walletAddress],
       (current) => (current ? { ...current, referral } : current),
     );
     await dashboardQuery.refetch();

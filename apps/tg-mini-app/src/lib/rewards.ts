@@ -64,12 +64,16 @@ async function requestJson<T>(path: string, accessToken: string, init: RequestIn
   return payload.data;
 }
 
-export async function fetchRewardsDashboard(
-  accessToken: string,
-  input: { startParam?: string | null },
-) {
+/**
+ * Read the dashboard. Sends no referral parameter.
+ *
+ * It used to carry `startParam`, and the server used to link a referrer as a
+ * side effect of the read. The server now ignores it, so passing it made the
+ * link look wired when it was not — see useApplyReferralFromLink.
+ */
+export async function fetchRewardsDashboard(accessToken: string) {
   return requestJson<RewardsDashboard>("/api/rewards/dashboard", accessToken, {
-    body: JSON.stringify(input),
+    body: JSON.stringify({}),
     method: "POST",
   });
 }

@@ -139,23 +139,38 @@ export async function getSeasonLeaderboard(
   }));
 }
 
-/** The caller's own rank, or null when they have no points row this season. */
-export async function getSeasonUserRank(
+export interface SeasonUserStanding {
+  eligibleVolume: number;
+  rank: number | null;
+  xp: number;
+}
+
+/**
+ * The caller's own rank, volume and XP for the season.
+ *
+ * Ranked across the whole season, so it is correct at any position. The
+ * dashboard used to read its own volume out of the leaderboard page — which is
+ * the top ten — so anyone below that saw their own trading volume as zero.
+ */
+export async function getSeasonUserStanding(
   config: RewardsConfig,
   seasonId: string,
   userId: string,
-): Promise<number | null> {
-  const rank = await supabaseRequest<number | null>(
-    config,
-    "rpc/rewards_season_user_rank",
-    {
-      body: JSON.stringify({ p_season_id: seasonId, p_user_id: userId }),
-      headers: buildHeaders(config),
-      method: "POST",
-    },
-  );
+): Promise<SeasonUserStanding> {
+  const rows = await supabaseRequest<
+    Array<{ eligible_volume: string | number; rank: string | number; xp: string | number }>
+  >(config, "rpc/rewards_season_user_standing", {
+    body: JSON.stringify({ p_season_id: seasonId, p_user_id: userId }),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
 
-  return rank == null ? null : Number(rank);
+  const row = rows[0];
+  return {
+    eligibleVolume: Number(row?.eligible_volume ?? 0),
+    rank: row?.rank == null ? null : Number(row.rank),
+    xp: Number(row?.xp ?? 0),
+  };
 }
 
 
@@ -549,8 +564,12 @@ export async function getRewardLedgerEntries(
 }
 
 export interface SeasonXpTotals {
+  /** XP for showing up, as opposed to trading. */
+  checkInXp: number;
   questXp: number;
   referralBonusXp: number;
+  /** Rank multiplier, carried as its own source rather than folded into the rest. */
+  tierBonusXp: number;
   totalXp: number;
   volumeXp: number;
 }
@@ -585,8 +604,10 @@ export async function getSeasonXpTotals(
   const bySource = new Map(rows.map((row) => [row.source, Number(row.xp ?? 0)]));
 
   return {
+    checkInXp: bySource.get("daily_check_in") ?? 0,
     questXp: bySource.get("quest") ?? 0,
     referralBonusXp: bySource.get("referral_bonus") ?? 0,
+    tierBonusXp: bySource.get("tier_bonus") ?? 0,
     totalXp: rows.reduce((sum, row) => sum + Number(row.xp ?? 0), 0),
     volumeXp: bySource.get("volume_xp") ?? 0,
   };
@@ -1111,4 +1132,69 @@ export async function rebuildProjections(
     pointsRows: Number(row?.points_rows ?? 0),
     weeklyRows: Number(row?.weekly_rows ?? 0),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Streaks and lifetime XP
+// ---------------------------------------------------------------------------
+
+export interface CheckInStreak {
+  availableToday: boolean;
+  currentDays: number;
+  lastCheckInAt: string | null;
+  longestDays: number;
+}
+
+/**
+ * Check-in streak, derived from dated ledger rows rather than a counter.
+ *
+ * A counter would need its own correctness argument about timezones and
+ * double-increments, and could drift from the grants it describes with no way
+ * to rebuild it. The grants are already dated, so this cannot disagree with
+ * what was actually paid.
+ */
+export async function getCheckInStreak(
+  config: RewardsConfig,
+  userId: string,
+  seasonId: string,
+  now = new Date(),
+): Promise<CheckInStreak> {
+  const rows = await supabaseRequest<
+    Array<{
+      available_today: boolean;
+      current_days: number;
+      last_check_in_at: string | null;
+      longest_days: number;
+    }>
+  >(config, "rpc/rewards_check_in_streak", {
+    body: JSON.stringify({
+      p_now: now.toISOString(),
+      p_season_id: seasonId,
+      p_user_id: userId,
+    }),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
+
+  const row = rows[0];
+  return {
+    availableToday: row?.available_today ?? true,
+    currentDays: Number(row?.current_days ?? 0),
+    lastCheckInAt: row?.last_check_in_at ?? null,
+    longestDays: Number(row?.longest_days ?? 0),
+  };
+}
+
+/** XP across every season. Never resets; season XP is a separate number. */
+export async function getLifetimeXp(
+  config: RewardsConfig,
+  userId: string,
+): Promise<number> {
+  const total = await supabaseRequest<number>(config, "rpc/rewards_lifetime_xp", {
+    body: JSON.stringify({ p_user_id: userId }),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
+
+  return Number(total ?? 0);
 }

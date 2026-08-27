@@ -7,10 +7,13 @@ import type {
 } from "../../../packages/types/src";
 import { HttpError } from "../../onramp/_lib/http";
 import { buildQuestSnapshot } from "./engine";
+import { buildTier } from "./tiers";
+import { checkInRewardFor } from "../check-in";
 import { getRewardsConfig, type RewardsConfig } from "./config";
 import {
   ensureReferralCode,
   getActiveSeason,
+  getCheckInStreak,
   getFillCheckpointStatus,
   getFundedReferralStats,
   getGrantedQuestIds,
@@ -18,7 +21,8 @@ import {
   getOrCreateRewardsUser,
   getRewardLedgerEntries,
   getSeasonLeaderboard,
-  getSeasonUserRank,
+  getSeasonUserStanding,
+  getLifetimeXp,
   getSeasonXpTotals,
   getSuccessfulOnrampDeposits,
   getUserByReferralCode,
@@ -140,15 +144,25 @@ export async function getRewardsDashboard(
   }
 
   const now = new Date();
-  const [deposits, referralStats, grantedQuestIds, xpTotals, rewardHistory, checkpoint] =
-    await Promise.all([
-      getSuccessfulOnrampDeposits(config, user.id, season.starts_at),
-      getFundedReferralStats(config, user.id, season.starts_at, config.fundedDepositThresholdUsd),
-      getGrantedQuestIds(config, user.id, season.id),
-      getSeasonXpTotals(config, user.id, season.id),
-      getRewardLedgerEntries(config, user.id, 150),
-      getFillCheckpointStatus(config, user.id, season.id),
-    ]);
+  const [
+    deposits,
+    referralStats,
+    grantedQuestIds,
+    xpTotals,
+    rewardHistory,
+    checkpoint,
+    checkInStreak,
+    lifetimeXp,
+  ] = await Promise.all([
+    getSuccessfulOnrampDeposits(config, user.id, season.starts_at),
+    getFundedReferralStats(config, user.id, season.starts_at, config.fundedDepositThresholdUsd),
+    getGrantedQuestIds(config, user.id, season.id),
+    getSeasonXpTotals(config, user.id, season.id),
+    getRewardLedgerEntries(config, user.id, 150),
+    getFillCheckpointStatus(config, user.id, season.id),
+    getCheckInStreak(config, user.id, season.id, now),
+    getLifetimeXp(config, user.id),
+  ]);
 
   const questSnapshot = buildQuestSnapshot({
     currentTime: now.toISOString(),
@@ -165,36 +179,47 @@ export async function getRewardsDashboard(
 
   // Ranked, truncated and anonymised by the database. Two bounded queries
   // rather than loading the whole season to return ten rows.
-  const [leaderboardEntries, userRank] = await Promise.all([
+  const [leaderboardEntries, standing] = await Promise.all([
     getSeasonLeaderboard(config, season.id, user.id, LEADERBOARD_SIZE),
-    getSeasonUserRank(config, season.id, user.id),
+    getSeasonUserStanding(config, season.id, user.id),
   ]);
 
   return {
     leaderboard: {
       entries: leaderboardEntries,
-      userRank,
+      userRank: standing.rank,
     },
     programStatus: XP_ONLY_PROGRAM_STATUS,
     quests: questSnapshot.quests,
     referral: buildReferralSummary(user, referralStats),
+    lifetimeXp,
     // Cash history — held or genuinely paid — is reconciliation data, not
     // something to show a user next to a notice saying payouts are paused.
     rewardHistory: rewardHistory.filter((entry) => entry.rewardKind === "xp"),
     season: {
-      eligibleVolume:
-        leaderboardEntries.find((entry) => entry.isCurrentUser)?.eligibleVolume ?? 0,
+      // From the caller's own standing, not from the leaderboard page — that
+      // page is the top ten, so anyone below it read their own volume as zero.
+      eligibleVolume: standing.eligibleVolume,
       endsAt: season.ends_at,
-      leaderboardRank: userRank,
+      leaderboardRank: standing.rank,
       name: season.name,
       questXpTotal: xpTotals.questXp,
+      checkInXpTotal: xpTotals.checkInXp,
       referralXpTotal: xpTotals.referralBonusXp,
       seasonId: season.id,
       startsAt: season.starts_at,
       volumeXpTotal: xpTotals.volumeXp,
       xpTotal: xpTotals.totalXp,
     },
+    streak: {
+      availableToday: checkInStreak.availableToday,
+      currentDays: checkInStreak.currentDays,
+      lastCheckInAt: checkInStreak.lastCheckInAt,
+      longestDays: checkInStreak.longestDays,
+      nextRewardXp: checkInRewardFor(checkInStreak.currentDays),
+    },
     sync: buildSyncStatus(checkpoint, now),
+    tier: buildTier(xpTotals.totalXp),
     weeklyRaffle: WEEKLY_RAFFLE_PAUSED,
   };
 }
@@ -235,6 +260,7 @@ function buildSyncStatus(
 function buildEmptyDashboard(user: RewardsUserRow): RewardsDashboard {
   return {
     leaderboard: { entries: [], userRank: null },
+    lifetimeXp: 0,
     programStatus: XP_ONLY_PROGRAM_STATUS,
     quests: [],
     referral: buildReferralSummary(user, {
@@ -247,6 +273,7 @@ function buildEmptyDashboard(user: RewardsUserRow): RewardsDashboard {
       endsAt: new Date(0).toISOString(),
       leaderboardRank: null,
       name: "",
+      checkInXpTotal: 0,
       questXpTotal: 0,
       referralXpTotal: 0,
       seasonId: null,
@@ -254,7 +281,15 @@ function buildEmptyDashboard(user: RewardsUserRow): RewardsDashboard {
       volumeXpTotal: 0,
       xpTotal: 0,
     },
+    streak: {
+      availableToday: true,
+      currentDays: 0,
+      lastCheckInAt: null,
+      longestDays: 0,
+      nextRewardXp: checkInRewardFor(0),
+    },
     sync: { lastSyncedAt: null, retentionRisk: false, state: "syncing" },
+    tier: buildTier(0),
     weeklyRaffle: WEEKLY_RAFFLE_PAUSED,
   };
 }

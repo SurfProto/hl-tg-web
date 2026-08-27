@@ -186,9 +186,15 @@ export interface SyncAccountDepositsDeps {
  */
 export async function syncAccountDeposits(
   config: RewardsConfig,
-  account: { userId: string; walletAddress: string },
+  claim: { userId: string; walletAddress: string },
   deps: SyncAccountDepositsDeps,
 ): Promise<DepositSyncResult> {
+  // Narrowed rather than spread. The worker hands over its fill claim, which
+  // carries that checkpoint's `cursorTime` — and spreading it into a completion
+  // call handed the *fill* cursor to the deposit checkpoint, so a failed read
+  // advanced the deposit cursor past history it had just failed to record.
+  const account = { userId: claim.userId, walletAddress: claim.walletAddress };
+
   const endMs = deps.now?.() ?? Date.now();
   const cursorTime = await openDepositSync(config, account);
   const startMs = new Date(cursorTime).getTime();

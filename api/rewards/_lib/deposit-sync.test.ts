@@ -11,7 +11,18 @@ vi.mock("./supabase-admin", () => supabaseAdmin);
 
 import { syncAccountDeposits } from "./deposits";
 
+/**
+ * Shaped like what the worker actually passes: its fill claim, which carries
+ * that checkpoint's own `cursorTime`. Spreading this into a completion call
+ * handed the fill cursor to the deposit checkpoint, so a failed read advanced
+ * the deposit cursor past history it had just failed to record. Every test
+ * below passes the whole claim for that reason.
+ */
 const ACCOUNT = {
+  checkpointId: "cp-1",
+  cursorTime: "2026-08-27T14:40:52.097Z",
+  fillsIngested: 0,
+  seasonId: "season-1",
   userId: "user-1",
   walletAddress: "0x0fBB6d45a796Bb32617EA066A86a79f6E3774204",
 };
@@ -129,5 +140,34 @@ describe("deposit ledger sync", () => {
     expect(result.errorCode).toBe("LEDGER_WRITE_FAILED");
     const [, input] = supabaseAdmin.completeDepositSync.mock.calls[0]!;
     expect(input.cursorTime).toBeUndefined();
+  });
+
+  /**
+   * The defect this guards, seen on the first production run: the fill claim
+   * carries its own `cursorTime`, it was spread into the completion call, and
+   * a failed deposit read therefore moved the deposit cursor forward to the
+   * fill cursor — skipping the account's whole history on the next run.
+   */
+  it("never lets the caller's own cursor reach the deposit checkpoint", async () => {
+    for (const failure of [
+      () => supabaseAdmin.upsertDepositEvents.mockRejectedValue(new Error("write")),
+      () => undefined,
+    ]) {
+      vi.clearAllMocks();
+      supabaseAdmin.openDepositSync.mockResolvedValue(new Date(0).toISOString());
+      failure();
+
+      await syncAccountDeposits(config(), ACCOUNT, {
+        fetchLedgerUpdates: async () => {
+          throw new Error("exchange down");
+        },
+        now: () => NOW,
+      });
+
+      const [, input] = supabaseAdmin.completeDepositSync.mock.calls[0]!;
+      expect(input.cursorTime).toBeUndefined();
+      expect(input).not.toHaveProperty("checkpointId");
+      expect(input).not.toHaveProperty("seasonId");
+    }
   });
 });

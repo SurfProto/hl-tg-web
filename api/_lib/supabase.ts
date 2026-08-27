@@ -60,6 +60,19 @@ export async function supabaseRequest<T>(
   const rawBody = await response.text();
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
 
+  // `Prefer: return=minimal` answers a PATCH with 204 but an insert with 201
+  // and an empty body, which the check above does not cover. Parsing that threw
+  // "invalid JSON", so a write that had in fact succeeded was reported to its
+  // caller as a failure — which cost the deposit worker its first production
+  // run: seventeen rows landed, the checkpoint recorded LEDGER_WRITE_FAILED,
+  // and the cursor was left behind data that was already written.
+  //
+  // An empty body is never valid JSON, so nothing that used to succeed changes
+  // meaning here; a response with no content is reported as no content.
+  if (rawBody.length === 0) {
+    return null as T;
+  }
+
   if (contentType.includes("text/html") || looksLikeHtml(rawBody)) {
     throw new Error(`Supabase returned HTML for ${path}`);
   }

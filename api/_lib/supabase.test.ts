@@ -83,6 +83,19 @@ describe("supabaseRequest", () => {
     await expect(supabaseRequest(config, "users?id=eq.1")).resolves.toBeNull();
   });
 
+  /**
+   * `Prefer: return=minimal` answers a PATCH with 204 but an insert with 201
+   * and an empty body. Parsing that threw "invalid JSON", so a write that had
+   * succeeded was reported to its caller as a failure — which is exactly what
+   * happened on the deposit worker's first production run: the rows landed and
+   * the checkpoint recorded LEDGER_WRITE_FAILED.
+   */
+  it("returns null for a 201 with no body, which is what a minimal insert sends", async () => {
+    stubResponse({ status: 201, body: "" });
+
+    await expect(supabaseRequest(config, "hl_deposits")).resolves.toBeNull();
+  });
+
   it("rejects an HTML body even when the content type claims JSON", async () => {
     // vercel.json routes an unknown /api/* path to index.html, so a mistyped
     // path can come back as a 200 page of markup.

@@ -41,6 +41,8 @@ interface FillEvent {
   occurredAt: string;
   price: number;
   size: number;
+  /** USDC the exchange charged as a builder fee on this fill. */
+  builderFeeUsd?: number;
 }
 
 interface BuildQuestSnapshotInput {
@@ -96,7 +98,33 @@ function getFillNotional(fill: FillEvent) {
   return Math.max(0, Math.abs(fill.price) * Math.abs(fill.size));
 }
 
-export function isAppAttributedFill(fill: Pick<FillEvent, "cloid">) {
+/**
+ * Did this fill pay us?
+ *
+ * It used to test whether the order's `cloid` began with the app's prefix.
+ * That was wrong twice over. A client order ID is chosen by whoever places the
+ * order, so anyone could mint volume XP by tagging orders they routed
+ * elsewhere — and it under-counted badly in the other direction, because
+ * orders the app places without carrying that prefix through, notably triggered
+ * take-profit and stop-loss orders, earned the user nothing. On the first
+ * account checked, 99 of 108 fills had paid a builder fee and only 24 carried
+ * the prefix: roughly three quarters of genuinely earned volume was invisible.
+ *
+ * A builder fee is recorded by the exchange, not by the client. It cannot be
+ * set without actually routing through a builder the user has approved, so it
+ * cannot be forged for free — the closest attack is routing through a
+ * competitor and paying them real money, which is not a rational way to farm.
+ *
+ * This is the observed tier. Verifying that the fee was paid to *us* rather
+ * than to some other builder needs the daily builder-fills export, which names
+ * the builder; see the reconciliation notes on rewards_builder_fee_totals.
+ */
+export function isAppAttributedFill(fill: Pick<FillEvent, "builderFeeUsd">) {
+  return (fill.builderFeeUsd ?? 0) > 0;
+}
+
+/** Kept for the metadata trail. No longer decides whether a fill earns anything. */
+export function hasAppCloid(fill: Pick<FillEvent, "cloid">) {
   return fill.cloid?.toLowerCase().startsWith(APP_TRADE_CLOID_PREFIX) ?? false;
 }
 

@@ -26,6 +26,8 @@ export const FILL_HISTORY_LIMIT = 10000;
 const MAX_SUBDIVISION_DEPTH = 40;
 
 export interface RawFill {
+  /** USDC charged as a builder fee. Exchange-recorded, so it cannot be forged. */
+  builderFee?: number | string | null;
   cloid?: string | null;
   hash: string;
   oid: number;
@@ -36,6 +38,7 @@ export interface RawFill {
 }
 
 export interface FillSummary {
+  builderFeeUsd: number;
   cloid: string | null;
   fillKey: string;
   occurredAt: string;
@@ -77,6 +80,7 @@ export function toFillKey(fill: RawFill): string {
 
 export function toFillSummary(fill: RawFill): FillSummary {
   return {
+    builderFeeUsd: Number(fill.builderFee ?? 0),
     cloid: fill.cloid ?? null,
     fillKey: toFillKey(fill),
     occurredAt: new Date(fill.time).toISOString(),

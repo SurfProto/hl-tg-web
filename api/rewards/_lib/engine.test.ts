@@ -30,6 +30,7 @@ describe("buildQuestSnapshot", () => {
       deposits: [{ amountUsd: 80, occurredAt: "2026-04-01T10:00:00.000Z" }],
       fills: [
         {
+          builderFeeUsd: 0.01,
           cloid: `${APP_TRADE_CLOID_PREFIX}aa01`,
           occurredAt: "2026-04-02T10:00:00.000Z",
           price: 2,
@@ -44,6 +45,7 @@ describe("buildQuestSnapshot", () => {
       deposits: [],
       fills: [
         {
+          builderFeeUsd: 0.01,
           cloid: `${APP_TRADE_CLOID_PREFIX}aa01`,
           occurredAt: "2026-04-02T10:00:00.000Z",
           price: 2,
@@ -80,6 +82,7 @@ describe("buildVolumeXpGrants", () => {
       fills: [
         {
           fillKey: "fill-1",
+          builderFeeUsd: 0.01,
           cloid: `${APP_TRADE_CLOID_PREFIX}1111`,
           occurredAt: "2026-04-14T08:00:00.000Z",
           price: 2,
@@ -87,6 +90,7 @@ describe("buildVolumeXpGrants", () => {
         },
         {
           fillKey: "fill-2",
+          builderFeeUsd: 0.01,
           cloid: `${APP_TRADE_CLOID_PREFIX}2222`,
           occurredAt: "2026-04-14T09:00:00.000Z",
           price: 3,
@@ -94,6 +98,7 @@ describe("buildVolumeXpGrants", () => {
         },
         {
           fillKey: "fill-3",
+          builderFeeUsd: 0,
           cloid: null,
           occurredAt: "2026-04-14T09:30:00.000Z",
           price: 9,

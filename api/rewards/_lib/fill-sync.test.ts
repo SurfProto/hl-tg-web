@@ -38,6 +38,9 @@ function claim(overrides: Record<string, unknown> = {}) {
 /** App-attributed: only fills carrying the app's cloid prefix earn XP. */
 function appFill(timeMs: number, id: number, notional = 100): RawFill {
   return {
+    // The exchange-recorded builder fee is what makes a fill ours. The cloid is
+    // kept only as supporting evidence.
+    builderFee: notional * 0.0001,
     cloid: "0x1a17000000000000",
     hash: `0xhash${id}`,
     oid: id,
@@ -92,8 +95,68 @@ describe("account fill sync", () => {
     );
   });
 
-  it("ignores fills that are not app-attributed", async () => {
-    const foreign: RawFill = { cloid: null, hash: "0xz", oid: 9, px: 500, sz: 2, tid: 9, time: NOW - 100 };
+  /**
+   * The security property. Attribution used to test a client order ID prefix,
+   * which is chosen by whoever places the order — so anyone could mint volume
+   * XP by tagging orders routed through somebody else. A builder fee is
+   * recorded by the exchange and cannot be set without actually paying one.
+   */
+  it("ignores a fill that spoofs the app cloid but paid no builder fee", async () => {
+    const spoofed: RawFill = {
+      builderFee: 0,
+      cloid: "0x1a17deadbeefdeadbeef",
+      hash: "0xspoof",
+      oid: 77,
+      px: 100_000,
+      sz: 5,
+      tid: 77,
+      time: NOW - 100,
+    };
+    const fetchFills = vi.fn(async () => [spoofed]);
+
+    await syncAccountFills(config(), claim(), {
+      fetchFills,
+      now: () => NOW,
+      seasonStartsAt: SEASON_START,
+    });
+
+    const [, entries] = supabaseAdmin.upsertRewardLedgerEntries.mock.calls[0]!;
+    expect(entries.filter((e: { source: string }) => e.source === "volume_xp")).toEqual([]);
+  });
+
+  /**
+   * The correctness half. Orders the app places without carrying the prefix
+   * through — triggered take-profit and stop-loss among them — earned nothing.
+   * On the first account checked, 99 of 108 fills had paid a builder fee and
+   * only 24 carried the prefix.
+   */
+  it("grants XP for a fill that paid a builder fee without the app cloid", async () => {
+    const untagged: RawFill = {
+      builderFee: 0.02,
+      cloid: null,
+      hash: "0xtrigger",
+      oid: 88,
+      px: 200,
+      sz: 1,
+      tid: 88,
+      time: NOW - 100,
+    };
+    const fetchFills = vi.fn(async () => [untagged]);
+
+    await syncAccountFills(config(), claim(), {
+      fetchFills,
+      now: () => NOW,
+      seasonStartsAt: SEASON_START,
+    });
+
+    const [, entries] = supabaseAdmin.upsertRewardLedgerEntries.mock.calls[0]!;
+    const volume = entries.filter((e: { source: string }) => e.source === "volume_xp");
+    expect(volume).toHaveLength(1);
+    expect((volume[0] as { metadata: { builderFeeUsd: number } }).metadata.builderFeeUsd).toBe(0.02);
+  });
+
+  it("ignores fills that paid no builder fee", async () => {
+    const foreign: RawFill = { builderFee: 0, cloid: null, hash: "0xz", oid: 9, px: 500, sz: 2, tid: 9, time: NOW - 100 };
     const fetchFills = vi.fn(async () => [foreign]);
 
     const result = await syncAccountFills(config(), claim(), {

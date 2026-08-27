@@ -13,7 +13,7 @@ import { getWeekStartIso } from "./weeks";
 import {
   completeFillSync,
   getFundedReferralStats,
-  getSuccessfulOnrampDeposits,
+  getQualifyingDeposits,
   getUserById,
   upsertRewardLedgerEntries,
   type FillSyncClaim,
@@ -303,7 +303,7 @@ export async function buildQuestAndReferralEntries(
 ): Promise<RewardLedgerInsertInput[]> {
   const weekStart = getWeekStartIso(new Date());
   const [deposits, referralStats, user] = await Promise.all([
-    getSuccessfulOnrampDeposits(config, claim.userId, args.seasonStartsAt),
+    getQualifyingDeposits(config, claim.userId, args.seasonStartsAt),
     getFundedReferralStats(
       config,
       claim.userId,

@@ -52,16 +52,6 @@ export interface WeeklyRewardRow {
   week_start: string;
 }
 
-interface SupabaseDepositRow {
-  created_at: string;
-  fee_amount: string | null;
-  id: string;
-  last_synced_at: string | null;
-  payin_amount: string | null;
-  payout_amount: string | null;
-  provider_touched_at: string | null;
-}
-
 export interface RewardLedgerInsertInput {
   amount: number;
   asset: string | null;
@@ -393,30 +383,39 @@ export async function claimReferrer(
   return outcome as ReferrerClaimOutcome;
 }
 
-export async function getSuccessfulOnrampDeposits(
+/**
+ * Money that arrived in this account, from wherever it came.
+ *
+ * This used to read `onramp_orders`, which records only card purchases we
+ * brokered — so a user who bridged their own USDC in had funded nothing as far
+ * as the quests were concerned. The account's own ledger is a superset: an
+ * onramp purchase lands on it as a `deposit` like any other bridge transfer.
+ * See migration 020.
+ *
+ * Inflows only. Withdrawals are stored on the same table with a negative
+ * amount, and the referral rung nets them off, but a quest asking "have you
+ * ever deposited" is answered by arrivals.
+ */
+export async function getQualifyingDeposits(
   config: RewardsConfig,
   userId: string,
-  seasonStart: string,
+  since: string,
 ) {
-  const rows = await supabaseRequest<SupabaseDepositRow[]>(
+  const rows = await supabaseRequest<
+    Array<{ amount_usd: string | number; id: string; occurred_at: string }>
+  >(
     config,
-    `onramp_orders?user_id=eq.${userId}&app_state=eq.success&created_at=gte.${encodeURIComponent(
-      seasonStart,
-    )}&select=id,payout_amount,payin_amount,fee_amount,provider_touched_at,last_synced_at,created_at&order=created_at.asc`,
+    `hl_deposits?user_id=eq.${userId}&is_external=is.true&amount_usd=gt.0&occurred_at=gte.${encodeURIComponent(
+      since,
+    )}&select=id,amount_usd,occurred_at&order=occurred_at.asc`,
     { headers: buildHeaders(config) },
   );
 
-  return rows.map((row) => {
-    const payoutAmount = Number(row.payout_amount ?? 0);
-    const payinAmount = Number(row.payin_amount ?? 0);
-    const feeAmount = Number(row.fee_amount ?? 0);
-
-    return {
-      amountUsd: payoutAmount > 0 ? payoutAmount : Math.max(payinAmount - feeAmount, 0),
-      id: row.id,
-      occurredAt: row.provider_touched_at ?? row.last_synced_at ?? row.created_at,
-    };
-  });
+  return rows.map((row) => ({
+    amountUsd: Number(row.amount_usd ?? 0),
+    id: row.id,
+    occurredAt: row.occurred_at,
+  }));
 }
 
 export async function getFundedReferralStats(
@@ -435,27 +434,24 @@ export async function getFundedReferralStats(
     return { fundedReferralCount: 0, fundedReferralVolume: 0, referredCount: 0 };
   }
 
-  const orders = await supabaseRequest<Array<{ user_id: string; payout_amount: string | null; payin_amount: string | null; fee_amount: string | null }>>(
+  const events = await supabaseRequest<Array<{ amount_usd: string | number; user_id: string }>>(
     config,
-    `onramp_orders?user_id=in.${formatInList(
+    `hl_deposits?user_id=in.${formatInList(
       referredUsers.map((user) => user.id),
-    )}&app_state=eq.success&created_at=gte.${encodeURIComponent(
+    )}&is_external=is.true&amount_usd=gt.0&occurred_at=gte.${encodeURIComponent(
       seasonStart,
-    )}&select=user_id,payout_amount,payin_amount,fee_amount`,
+    )}&select=user_id,amount_usd`,
     { headers: buildHeaders(config) },
   );
 
   const volumeByUser = new Map<string, number>();
-  for (const order of orders) {
-    const payoutAmount = Number(order.payout_amount ?? 0);
-    const payinAmount = Number(order.payin_amount ?? 0);
-    const feeAmount = Number(order.fee_amount ?? 0);
-    const amount = payoutAmount > 0 ? payoutAmount : Math.max(payinAmount - feeAmount, 0);
+  for (const event of events) {
+    const amount = Number(event.amount_usd ?? 0);
     if (amount <= 0) {
       continue;
     }
 
-    volumeByUser.set(order.user_id, (volumeByUser.get(order.user_id) ?? 0) + amount);
+    volumeByUser.set(event.user_id, (volumeByUser.get(event.user_id) ?? 0) + amount);
   }
 
   const fundedUsers = [...volumeByUser.entries()].filter(([, amount]) => amount >= fundedDepositThresholdUsd);
@@ -1041,6 +1037,101 @@ export async function getFillCheckpointStatus(
     lastSuccessAt: row.last_success_at,
     retentionRisk: Boolean(row.retention_risk),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Deposit ledger ingestion
+// ---------------------------------------------------------------------------
+
+export interface DepositEventInsert {
+  amountUsd: number;
+  eventKey: string;
+  eventType: string;
+  isExternal: boolean;
+  occurredAt: string;
+  userId: string;
+  walletAddress: string;
+}
+
+/**
+ * The instant this account's ledger has provably been read to, creating the
+ * checkpoint on first sight. New checkpoints start at the epoch, so a first run
+ * reads the account's whole history.
+ */
+export async function openDepositSync(
+  config: RewardsConfig,
+  account: { userId: string; walletAddress: string },
+): Promise<string> {
+  const cursor = await supabaseRequest<string | null>(config, "rpc/rewards_open_deposit_sync", {
+    body: JSON.stringify({
+      p_user_id: account.userId,
+      p_wallet_address: account.walletAddress,
+    }),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
+
+  return cursor ?? new Date(0).toISOString();
+}
+
+/** Record the outcome. Advances the cursor only when one is supplied. */
+export async function completeDepositSync(
+  config: RewardsConfig,
+  input: {
+    cursorTime?: string;
+    errorCode?: string | null;
+    eventsIngested?: number;
+    userId: string;
+    walletAddress: string;
+  },
+): Promise<void> {
+  await supabaseRequest<null>(config, "rpc/rewards_complete_deposit_sync", {
+    body: JSON.stringify({
+      p_cursor_time: input.cursorTime ?? null,
+      p_error_code: input.errorCode ?? null,
+      p_events_ingested: input.eventsIngested ?? 0,
+      p_user_id: input.userId,
+      p_wallet_address: input.walletAddress,
+    }),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
+}
+
+/**
+ * Append ledger events, ignoring ones already recorded.
+ *
+ * `ignore-duplicates` rather than `merge-duplicates` for the same reason the
+ * reward ledger uses it: this is a record of what the exchange said happened,
+ * and re-reading a window may add to it but must never restate it. A change to
+ * how events are classified is therefore a recomputation over the stored type
+ * and amount, not a silent rewrite on the next sync.
+ */
+export async function upsertDepositEvents(
+  config: RewardsConfig,
+  events: DepositEventInsert[],
+): Promise<void> {
+  if (events.length === 0) {
+    return;
+  }
+
+  await supabaseRequest<null>(config, "hl_deposits?on_conflict=user_id,event_key", {
+    body: JSON.stringify(
+      events.map((event) => ({
+        amount_usd: event.amountUsd,
+        event_key: event.eventKey,
+        event_type: event.eventType,
+        is_external: event.isExternal,
+        occurred_at: event.occurredAt,
+        user_id: event.userId,
+        wallet_address: event.walletAddress,
+      })),
+    ),
+    headers: buildHeaders(config, {
+      Prefer: "resolution=ignore-duplicates,return=minimal",
+    }),
+    method: "POST",
+  });
 }
 
 // ---------------------------------------------------------------------------

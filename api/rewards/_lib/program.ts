@@ -24,7 +24,7 @@ import {
   getSeasonUserStanding,
   getLifetimeXp,
   getSeasonXpTotals,
-  getSuccessfulOnrampDeposits,
+  getQualifyingDeposits,
   getUserByReferralCode,
   claimReferrer,
   type FillCheckpointStatus,
@@ -154,7 +154,7 @@ export async function getRewardsDashboard(
     checkInStreak,
     lifetimeXp,
   ] = await Promise.all([
-    getSuccessfulOnrampDeposits(config, user.id, season.starts_at),
+    getQualifyingDeposits(config, user.id, season.starts_at),
     getFundedReferralStats(config, user.id, season.starts_at, config.fundedDepositThresholdUsd),
     getGrantedQuestIds(config, user.id, season.id),
     getSeasonXpTotals(config, user.id, season.id),

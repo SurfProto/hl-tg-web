@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   getOrCreateActiveSeason: vi.fn(),
   grantReferralMilestones: vi.fn(),
   rebuildProjections: vi.fn(),
+  syncAccountDeposits: vi.fn(),
   syncAccountFills: vi.fn(),
 }));
 
@@ -17,6 +18,7 @@ vi.mock("./_lib/supabase-admin", () => ({
   getOrCreateActiveSeason: mocks.getOrCreateActiveSeason,
   rebuildProjections: mocks.rebuildProjections,
 }));
+vi.mock("./_lib/deposits", () => ({ syncAccountDeposits: mocks.syncAccountDeposits }));
 vi.mock("./_lib/fill-sync", () => ({ syncAccountFills: mocks.syncAccountFills }));
 vi.mock("./_lib/referrals", () => ({ grantReferralMilestones: mocks.grantReferralMilestones }));
 vi.mock("./_lib/config", () => ({
@@ -53,6 +55,12 @@ beforeEach(() => {
   mocks.claimFillSyncBatch.mockResolvedValue([]);
   mocks.rebuildProjections.mockResolvedValue({ pointsRows: 0, weeklyRows: 0 });
   mocks.grantReferralMilestones.mockResolvedValue({ granted: 0, milestones: 0 });
+  mocks.syncAccountDeposits.mockResolvedValue({
+    errorCode: null,
+    eventsIngested: 0,
+    externalEvents: 0,
+    windowStartMs: 0,
+  });
 });
 
 describe("/api/rewards/sync-fills", () => {

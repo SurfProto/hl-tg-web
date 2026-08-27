@@ -4,7 +4,7 @@ import { FILL_PAGE_LIMIT, type FillWindow, type RawFill } from "./fill-windows";
 const supabaseAdmin = vi.hoisted(() => ({
   completeFillSync: vi.fn(),
   getFundedReferralStats: vi.fn(),
-  getSuccessfulOnrampDeposits: vi.fn(),
+  getQualifyingDeposits: vi.fn(),
   getUserById: vi.fn(),
   upsertRewardLedgerEntries: vi.fn(),
 }));
@@ -55,7 +55,7 @@ const NOW = Date.parse("2026-08-02T00:00:00.000Z");
 
 beforeEach(() => {
   vi.clearAllMocks();
-  supabaseAdmin.getSuccessfulOnrampDeposits.mockResolvedValue([]);
+  supabaseAdmin.getQualifyingDeposits.mockResolvedValue([]);
   supabaseAdmin.getFundedReferralStats.mockResolvedValue({
     fundedReferralCount: 0,
     fundedReferralVolume: 0,
@@ -323,7 +323,7 @@ describe("account fill sync", () => {
    */
   it("writes no referral XP, leaving that to the milestone ladder", async () => {
     supabaseAdmin.getUserById.mockResolvedValue({ id: "user-1", referred_by: "referrer-1" });
-    supabaseAdmin.getSuccessfulOnrampDeposits.mockResolvedValue([
+    supabaseAdmin.getQualifyingDeposits.mockResolvedValue([
       { amountUsd: 100, occurredAt: SEASON_START },
     ]);
     const fetchFills = vi.fn(async () => []);

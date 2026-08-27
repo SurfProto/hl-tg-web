@@ -2,6 +2,7 @@ import { constantTimeEquals } from "../_lib/secret-compare";
 import { fetchWithTimeout } from "../_lib/fetch-with-timeout";
 import { ensureMethod, HttpError, json, withJsonRoute } from "../onramp/_lib/http";
 import { getRewardsConfig, type RewardsConfig } from "./_lib/config";
+import { syncAccountDeposits, type RawLedgerUpdate } from "./_lib/deposits";
 import { syncAccountFills } from "./_lib/fill-sync";
 import { grantReferralMilestones } from "./_lib/referrals";
 import { getWeekStartIso } from "./_lib/weeks";
@@ -80,6 +81,38 @@ async function fetchFillsByTime(
 }
 
 /**
+ * The account's record of money moving in and out.
+ *
+ * One request for the whole window, with none of the subdivision the fill
+ * endpoint needs: this feed carries tens of events over an account's lifetime
+ * rather than thousands, and Hyperliquid retains all of it.
+ */
+async function fetchLedgerUpdates(
+  config: RewardsConfig,
+  walletAddress: string,
+  window: FillWindow,
+): Promise<RawLedgerUpdate[]> {
+  const response = await fetchWithTimeout(hyperliquidInfoUrl(config), {
+    body: JSON.stringify({
+      endTime: window.endMs,
+      startTime: window.startMs,
+      type: "userNonFundingLedgerUpdates",
+      user: walletAddress,
+    }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Hyperliquid userNonFundingLedgerUpdates failed with status ${response.status}`,
+    );
+  }
+
+  return (await response.json()) as RawLedgerUpdate[];
+}
+
+/**
  * Never the full address.
  *
  * Run logs are the one place this code routinely writes wallet identifiers, and
@@ -119,12 +152,32 @@ export default async function handler(request: any, response: any) {
 
     let accountsSynced = 0;
     let accountsFailed = 0;
+    let depositEvents = 0;
+    let depositsFailed = 0;
     let fillsIngested = 0;
     let grantsWritten = 0;
     let requestCount = 0;
     let retentionRiskAccounts = 0;
 
     for (const claim of claims) {
+      // Before the fills, so that a first deposit and the quest it completes
+      // land in the same run rather than a cadence apart. Its own checkpoint
+      // and its own failure: an unreadable ledger must not cost this account
+      // its trading XP, and the quest simply waits for the next run.
+      const deposits = await syncAccountDeposits(config, claim, {
+        fetchLedgerUpdates: (walletAddress, window) =>
+          fetchLedgerUpdates(config, walletAddress, window),
+      });
+
+      if (deposits.errorCode) {
+        depositsFailed += 1;
+        console.warn(
+          `[rewards-sync] deposits failed user=${claim.userId} wallet=${walletTag(claim.walletAddress)} code=${deposits.errorCode}`,
+        );
+      } else {
+        depositEvents += deposits.eventsIngested;
+      }
+
       // One account's failure is recorded against its own checkpoint and the
       // run continues; an unreachable wallet must not stop everyone else's XP.
       const result = await syncAccountFills(config, claim, {
@@ -173,6 +226,7 @@ export default async function handler(request: any, response: any) {
     console.info(
       `[rewards-sync] run complete season=${season.id} checkpointsCreated=${created} claimed=${claims.length} ` +
         `synced=${accountsSynced} failed=${accountsFailed} fills=${fillsIngested} grants=${grantsWritten} ` +
+        `depositEvents=${depositEvents} depositsFailed=${depositsFailed} ` +
         `requests=${requestCount} retentionRisk=${retentionRiskAccounts} ` +
         `referralMilestones=${referrals.milestones} referralRows=${referrals.granted} ` +
         `projectionRows=${projections.pointsRows}/${projections.weeklyRows} durationMs=${durationMs}`,
@@ -185,6 +239,8 @@ export default async function handler(request: any, response: any) {
         accountsSynced,
         checkpointsCreated: created,
         claimed: claims.length,
+        depositEvents,
+        depositsFailed,
         durationMs,
         fillsIngested,
         grantsWritten,

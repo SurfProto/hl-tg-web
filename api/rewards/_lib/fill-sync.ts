@@ -70,12 +70,18 @@ function toGrantEntries(args: {
     xpPerUsd: args.xpPerUsd,
   });
 
+  // Indexed so the builder fee behind each grant can be looked up without
+  // re-deriving it from the exchange. That is what lets the ledger be
+  // reconciled against the builder-fee total Hyperliquid reports for us.
+  const feeByFillKey = new Map(args.fills.map((fill) => [fill.fillKey, fill.builderFeeUsd]));
+
   return grants.map((grant) => ({
     amount: grant.xp,
     asset: null,
     description: `Trading volume XP for ${grant.volumeUsd.toFixed(2)} USD of app volume.`,
     idempotencyKey: `volume_xp:${args.seasonId}:${args.userId}:${grant.fillKey}`,
     metadata: {
+      builderFeeUsd: feeByFillKey.get(grant.fillKey) ?? 0,
       fillKey: grant.fillKey,
       volumeUsd: grant.volumeUsd,
     },

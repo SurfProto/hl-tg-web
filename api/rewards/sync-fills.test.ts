@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   backfillFillCheckpoints: vi.fn(),
   claimFillSyncBatch: vi.fn(),
   getOrCreateActiveSeason: vi.fn(),
+  rebuildProjections: vi.fn(),
   syncAccountFills: vi.fn(),
 }));
 
@@ -13,6 +14,7 @@ vi.mock("./_lib/supabase-admin", () => ({
   backfillFillCheckpoints: mocks.backfillFillCheckpoints,
   claimFillSyncBatch: mocks.claimFillSyncBatch,
   getOrCreateActiveSeason: mocks.getOrCreateActiveSeason,
+  rebuildProjections: mocks.rebuildProjections,
 }));
 vi.mock("./_lib/fill-sync", () => ({ syncAccountFills: mocks.syncAccountFills }));
 vi.mock("./_lib/config", () => ({
@@ -47,6 +49,7 @@ beforeEach(() => {
   });
   mocks.backfillFillCheckpoints.mockResolvedValue(0);
   mocks.claimFillSyncBatch.mockResolvedValue([]);
+  mocks.rebuildProjections.mockResolvedValue({ pointsRows: 0, weeklyRows: 0 });
 });
 
 describe("/api/rewards/sync-fills", () => {
@@ -99,6 +102,37 @@ describe("/api/rewards/sync-fills", () => {
 
     const intervalSeconds = Number(everyNMinutes![1]) * 60;
     expect(CLAIM_STALE_AFTER_SECONDS).toBeLessThanOrEqual(intervalSeconds / 2);
+  });
+
+  /**
+   * The leaderboard ranks on `user_points.total_volume`. Making the dashboard
+   * read-only removed the only writer and the worker never took over, so that
+   * column sat frozen while the ledger moved on. Rebuilding once per run makes
+   * the projection self-healing rather than dependent on every writer.
+   */
+  it("rebuilds the season projections after the batch", async () => {
+    mocks.rebuildProjections.mockResolvedValue({ pointsRows: 2, weeklyRows: 3 });
+    const { default: handler } = await import("./sync-fills");
+    const response = makeResponse();
+
+    await handler(AUTHED, response);
+
+    expect(mocks.rebuildProjections).toHaveBeenCalledWith(expect.anything(), "season-1");
+    expect(response.body.data).toMatchObject({
+      projectionPointsRows: 2,
+      projectionWeeklyRows: 3,
+    });
+  });
+
+  // Even a run that claims nothing must reconcile: drift does not require
+  // ingestion to have happened, only for a writer to have been wrong earlier.
+  it("rebuilds projections even when no account is due", async () => {
+    mocks.claimFillSyncBatch.mockResolvedValue([]);
+    const { default: handler } = await import("./sync-fills");
+
+    await handler(AUTHED, makeResponse());
+
+    expect(mocks.rebuildProjections).toHaveBeenCalledTimes(1);
   });
 
   // One unreachable wallet must not stop everyone else's XP.

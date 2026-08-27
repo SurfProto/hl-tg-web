@@ -19,13 +19,19 @@ describe("fetchRewardsDashboard", () => {
     );
 
     await expect(
-      fetchRewardsDashboard("token", {
-        startParam: null,
-      }),
+      fetchRewardsDashboard("token"),
     ).rejects.toThrow("Rewards API /api/rewards/dashboard returned non-JSON");
   });
 
-  it("posts only referral context when loading rewards", async () => {
+  /**
+   * The dashboard read carries no referral context at all.
+   *
+   * It used to send `startParam`, and the server used to link a referrer while
+   * serving the read. The server ignores it now, so continuing to send it made
+   * invite links look wired when they were not — the code went out and was
+   * discarded. Linking is the explicit mutation below.
+   */
+  it("sends no referral context when loading rewards", async () => {
     const fetchSpy = vi.fn().mockResolvedValue({
       headers: { get: () => "application/json" },
       ok: true,
@@ -33,13 +39,11 @@ describe("fetchRewardsDashboard", () => {
     });
     vi.stubGlobal("fetch", fetchSpy);
 
-    await fetchRewardsDashboard("token", { startParam: "ref_friend" });
+    await fetchRewardsDashboard("token");
 
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/rewards/dashboard",
-      expect.objectContaining({
-        body: JSON.stringify({ startParam: "ref_friend" }),
-      }),
+      expect.objectContaining({ body: "{}" }),
     );
   });
 

@@ -96,3 +96,16 @@ export async function updateNotificationPreferences(
     },
   );
 }
+
+/**
+ * Send one test notification to the caller's own Telegram channel.
+ *
+ * Answers "do my alerts work?" without waiting for a trade. Resolves when
+ * Telegram accepted the message and rejects with the API error otherwise —
+ * a blocked bot is the commonest cause of silence and the reply says so.
+ */
+export async function sendTestNotification(accessToken: string): Promise<{ delivered: boolean }> {
+  return requestJson<{ delivered: boolean }>("/api/notifications/test", accessToken, {
+    method: "POST",
+  });
+}

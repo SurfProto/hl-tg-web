@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useToken } from '@privy-io/react-auth';
 import { useTranslation } from 'react-i18next';
-import { fetchProfile, updateNotificationPreferences } from '../../lib/profile';
+import { fetchProfile, sendTestNotification, updateNotificationPreferences } from '../../lib/profile';
 
 type NotificationPrefs = {
   liquidation_alerts: boolean;
@@ -32,6 +32,25 @@ export function NotificationsPage() {
   const { t } = useTranslation();
   const [prefs, setPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
   const [deliveryState, setDeliveryState] = useState<DeliveryState>('unavailable');
+  const [testState, setTestState] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
+
+  const runTest = async () => {
+    setTestState('sending');
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        setTestState('failed');
+        return;
+      }
+
+      await sendTestNotification(accessToken);
+      setTestState('sent');
+    } catch {
+      // The endpoint already turns Telegram's own wording into an instruction;
+      // showing the raw upstream text here would only leak it to the screen.
+      setTestState('failed');
+    }
+  };
 
   useEffect(() => {
     void (async () => {
@@ -115,6 +134,31 @@ export function NotificationsPage() {
           </button>
         ))}
       </div>
+
+      {/*
+        A pipeline with nothing to report and a broken one look identical from
+        here — which is exactly how working alerts came to be reported as dead.
+        This exercises the parts that actually fail: the bot token, the stored
+        chat target, and whether Telegram will deliver at all.
+      */}
+      <button
+        type="button"
+        onClick={runTest}
+        disabled={testState === 'sending'}
+        className="mt-4 w-full rounded-[18px] border border-separator bg-white px-4 py-4 text-sm font-semibold text-foreground disabled:opacity-60"
+      >
+        {testState === 'sending'
+          ? t('notifications.sendTestPending')
+          : testState === 'sent'
+            ? t('notifications.sendTestSent')
+            : t('notifications.sendTest')}
+      </button>
+
+      {testState === 'failed' && (
+        <p role="status" className="mt-2 text-sm text-negative">
+          {t('notifications.sendTestFailed')}
+        </p>
+      )}
     </div>
   );
 }

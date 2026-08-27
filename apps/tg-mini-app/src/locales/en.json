@@ -506,6 +506,10 @@
     "deliveryInvalidBody": "Open the Telegram bot from the linked account, then relaunch the mini app.",
     "deliveryUnavailableTitle": "Telegram delivery is unavailable",
     "deliveryUnavailableBody": "Open this mini app from your linked Telegram account to receive alerts.",
+    "sendTest": "Send a test alert",
+    "sendTestPending": "Sending…",
+    "sendTestSent": "Sent — check Telegram",
+    "sendTestFailed": "Couldn't send. Make sure you haven't blocked the bot, then try again.",
     "liquidationAlerts": "Liquidation alerts",
     "orderFills": "Order fills",
     "usdcDeposits": "USDC deposits"

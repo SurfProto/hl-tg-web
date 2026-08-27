@@ -19,7 +19,7 @@ const supabaseAdmin = vi.hoisted(() => ({
   getGrantedQuestIds: vi.fn(),
   getFillCheckpointStatus: vi.fn(),
   claimReferrer: vi.fn(),
-  getSuccessfulOnrampDeposits: vi.fn(),
+  getQualifyingDeposits: vi.fn(),
   getUserById: vi.fn(),
   getUserByReferralCode: vi.fn(),
   getUserPointsForSeason: vi.fn(),
@@ -172,7 +172,7 @@ describe("getRewardsDashboard", () => {
       starts_at: "2026-04-01T00:00:00.000Z",
       ends_at: "2026-05-01T00:00:00.000Z",
     });
-    supabaseAdmin.getSuccessfulOnrampDeposits.mockResolvedValue([]);
+    supabaseAdmin.getQualifyingDeposits.mockResolvedValue([]);
     supabaseAdmin.getFundedReferralStats.mockResolvedValue({
       fundedReferralCount: 0,
       fundedReferralVolume: 0,

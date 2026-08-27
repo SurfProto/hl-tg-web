@@ -3,6 +3,8 @@ import { fetchWithTimeout } from "../_lib/fetch-with-timeout";
 import { ensureMethod, HttpError, json, withJsonRoute } from "../onramp/_lib/http";
 import { getRewardsConfig, type RewardsConfig } from "./_lib/config";
 import { syncAccountFills } from "./_lib/fill-sync";
+import { grantReferralMilestones } from "./_lib/referrals";
+import { getWeekStartIso } from "./_lib/weeks";
 import type { FillWindow, RawFill } from "./_lib/fill-windows";
 import {
   backfillFillCheckpoints,
@@ -153,6 +155,14 @@ export default async function handler(request: any, response: any) {
       );
     }
 
+    // Referral rungs depend on one user's activity and pay a different user,
+    // so there is no account they naturally belong to. Once per run, before the
+    // rebuild, so the XP they grant lands in the projection immediately.
+    const referrals = await grantReferralMilestones(config, {
+      seasonId: season.id,
+      weekStart: getWeekStartIso(new Date()),
+    });
+
     // After the batch, not per account: the projection is a whole-season
     // aggregate, and rebuilding it once per run keeps it self-healing. Nothing
     // wrote these between the dashboard becoming read-only and this line, which
@@ -164,6 +174,7 @@ export default async function handler(request: any, response: any) {
       `[rewards-sync] run complete season=${season.id} checkpointsCreated=${created} claimed=${claims.length} ` +
         `synced=${accountsSynced} failed=${accountsFailed} fills=${fillsIngested} grants=${grantsWritten} ` +
         `requests=${requestCount} retentionRisk=${retentionRiskAccounts} ` +
+        `referralMilestones=${referrals.milestones} referralRows=${referrals.granted} ` +
         `projectionRows=${projections.pointsRows}/${projections.weeklyRows} durationMs=${durationMs}`,
     );
 
@@ -179,6 +190,8 @@ export default async function handler(request: any, response: any) {
         grantsWritten,
         projectionPointsRows: projections.pointsRows,
         projectionWeeklyRows: projections.weeklyRows,
+        referralMilestones: referrals.milestones,
+        referralRows: referrals.granted,
         requestCount,
         retentionRiskAccounts,
         seasonId: season.id,

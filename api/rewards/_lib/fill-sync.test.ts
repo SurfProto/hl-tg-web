@@ -313,7 +313,15 @@ describe("account fill sync", () => {
     expect(result.retentionRisk).toBe(true);
   });
 
-  it("writes the referred user's bonus and the referrer's quest together", async () => {
+  /**
+   * Referral XP no longer comes from here at all.
+   *
+   * The old grant key was quest:{season}:{referrer}:referral_funded_friend:xp —
+   * one row per referrer per season — so a referrer who brought ten funded
+   * friends was paid for one. The milestone ladder keys on the referee and runs
+   * once per worker pass; this path must not also pay, or both would.
+   */
+  it("writes no referral XP, leaving that to the milestone ladder", async () => {
     supabaseAdmin.getUserById.mockResolvedValue({ id: "user-1", referred_by: "referrer-1" });
     supabaseAdmin.getSuccessfulOnrampDeposits.mockResolvedValue([
       { amountUsd: 100, occurredAt: SEASON_START },
@@ -327,10 +335,11 @@ describe("account fill sync", () => {
     });
 
     const [, entries] = supabaseAdmin.upsertRewardLedgerEntries.mock.calls[0]!;
-    const sources = entries.map((e: { source: string; userId: string }) => `${e.source}:${e.userId}`);
+    const sources = entries.map((e: { source: string }) => e.source);
 
-    expect(sources).toContain("referral_bonus:user-1");
-    expect(sources).toContain("quest:referrer-1");
-    expect(entries.every((e: { rewardKind: string }) => e.rewardKind === "xp")).toBe(true);
+    expect(sources).not.toContain("referral_bonus");
+    expect(sources).not.toContain("referral");
+    // Nothing is granted to anybody other than the account being synced.
+    expect(entries.every((e: { userId: string }) => e.userId === "user-1")).toBe(true);
   });
 });

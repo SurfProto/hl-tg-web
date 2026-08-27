@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   backfillFillCheckpoints: vi.fn(),
   claimFillSyncBatch: vi.fn(),
   getOrCreateActiveSeason: vi.fn(),
+  grantReferralMilestones: vi.fn(),
   rebuildProjections: vi.fn(),
   syncAccountFills: vi.fn(),
 }));
@@ -17,6 +18,7 @@ vi.mock("./_lib/supabase-admin", () => ({
   rebuildProjections: mocks.rebuildProjections,
 }));
 vi.mock("./_lib/fill-sync", () => ({ syncAccountFills: mocks.syncAccountFills }));
+vi.mock("./_lib/referrals", () => ({ grantReferralMilestones: mocks.grantReferralMilestones }));
 vi.mock("./_lib/config", () => ({
   getRewardsConfig: vi.fn(() => ({ hyperliquidTestnet: false, xpPerUsd: 1 })),
 }));
@@ -50,6 +52,7 @@ beforeEach(() => {
   mocks.backfillFillCheckpoints.mockResolvedValue(0);
   mocks.claimFillSyncBatch.mockResolvedValue([]);
   mocks.rebuildProjections.mockResolvedValue({ pointsRows: 0, weeklyRows: 0 });
+  mocks.grantReferralMilestones.mockResolvedValue({ granted: 0, milestones: 0 });
 });
 
 describe("/api/rewards/sync-fills", () => {
@@ -122,6 +125,22 @@ describe("/api/rewards/sync-fills", () => {
       projectionPointsRows: 2,
       projectionWeeklyRows: 3,
     });
+  });
+
+  /**
+   * Referral rungs depend on one user's activity and pay a different user, so
+   * there is no account they belong to — they are granted once per run, and a
+   * run that claims no accounts must still grant them.
+   */
+  it("grants referral milestones every run", async () => {
+    mocks.grantReferralMilestones.mockResolvedValue({ granted: 4, milestones: 3 });
+    const { default: handler } = await import("./sync-fills");
+    const response = makeResponse();
+
+    await handler(AUTHED, response);
+
+    expect(mocks.grantReferralMilestones).toHaveBeenCalledTimes(1);
+    expect(response.body.data).toMatchObject({ referralMilestones: 3, referralRows: 4 });
   });
 
   // Even a run that claims nothing must reconcile: drift does not require

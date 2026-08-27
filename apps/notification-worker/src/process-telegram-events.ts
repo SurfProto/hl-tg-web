@@ -33,6 +33,10 @@ export async function processTelegramEvents({
 
     if (result.ok) {
       await repository.markEventSent(event.id);
+      // The channel is what the health surface reads, and a delivery is the
+      // strongest evidence it works. Marking only the event left that surface
+      // reporting "never delivered" for a channel that was delivering.
+      await repository.recordChannelDelivery(event.userId);
       continue;
     }
 

@@ -39,6 +39,7 @@ function makeRepository(): NotificationRepository {
     enqueueEvent: vi.fn(),
     listPendingTelegramEvents: vi.fn(),
     markEventSent: vi.fn(),
+    recordChannelDelivery: vi.fn(),
     markEventRetry: vi.fn(),
     markEventFailed: vi.fn(),
     updateChannelStatus: vi.fn(),
@@ -61,6 +62,8 @@ describe("processTelegramEvents", () => {
 
     expect(telegram.sendMessage).toHaveBeenCalledOnce();
     expect(repository.markEventSent).toHaveBeenCalledWith("event-1");
+    // The health surface reads the channel, not the event.
+    expect(repository.recordChannelDelivery).toHaveBeenCalledWith("user-1");
     expect(repository.markEventRetry).not.toHaveBeenCalled();
   });
 

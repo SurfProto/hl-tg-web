@@ -4,6 +4,7 @@ import { FILL_PAGE_LIMIT, type FillWindow, type RawFill } from "./fill-windows";
 const supabaseAdmin = vi.hoisted(() => ({
   completeFillSync: vi.fn(),
   getFundedReferralStats: vi.fn(),
+  getGrantedQuestIds: vi.fn(),
   getQualifyingDeposits: vi.fn(),
   getUserById: vi.fn(),
   upsertRewardLedgerEntries: vi.fn(),
@@ -56,6 +57,7 @@ const NOW = Date.parse("2026-08-02T00:00:00.000Z");
 beforeEach(() => {
   vi.clearAllMocks();
   supabaseAdmin.getQualifyingDeposits.mockResolvedValue([]);
+  supabaseAdmin.getGrantedQuestIds.mockResolvedValue([]);
   supabaseAdmin.getFundedReferralStats.mockResolvedValue({
     fundedReferralCount: 0,
     fundedReferralVolume: 0,

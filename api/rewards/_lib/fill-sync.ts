@@ -9,10 +9,12 @@ import {
   type FillWindow,
   type RawFill,
 } from "./fill-windows";
+import { getChannelMembership } from "./telegram-membership";
 import { getWeekStartIso } from "./weeks";
 import {
   completeFillSync,
   getFundedReferralStats,
+  getGrantedQuestIds,
   getQualifyingDeposits,
   getUserById,
   upsertRewardLedgerEntries,
@@ -238,6 +240,10 @@ export function buildQuestRewardEntries(args: {
   const definitions: Record<QuestId, { description: string; xp: number }> = {
     first_deposit: { description: "Completed your first qualifying deposit.", xp: 500 },
     first_trade: { description: "Completed your first qualifying trade.", xp: 300 },
+    join_telegram_channel: {
+      description: "Joined the P34K channel on Telegram.",
+      xp: 200,
+    },
     referral_funded_friend: {
       description: "A referred friend completed a funded deposit.",
       xp: 500,
@@ -296,13 +302,55 @@ export function buildReferralBonusEntries(args: {
  * Returned rather than written so the caller can commit them in the same
  * append-only batch as the volume grants — one write, one failure mode.
  */
+/**
+ * Whether this user is in the Telegram channel, or null if we cannot say.
+ *
+ * Asked of Telegram only while the quest is unpaid. Once the grant exists the
+ * answer cannot change anything — the ledger is append-only — so continuing to
+ * ask would be one outbound request per account per run, forever, against a bot
+ * API with a global rate limit.
+ *
+ * An unavailable answer is logged rather than folded into "not a member". A
+ * channel id that is wrong, or a bot that is not an administrator of it, would
+ * otherwise look exactly like nobody having joined, and the quest would sit at
+ * zero indefinitely with nothing reporting a fault — which is precisely how the
+ * fill notifications managed to be silent for four months.
+ */
+async function resolveChannelMembership(
+  config: RewardsConfig,
+  args: { grantedQuestIds: QuestId[]; telegramId: string | null; userId: string },
+): Promise<boolean | null> {
+  if (args.grantedQuestIds.includes("join_telegram_channel")) {
+    return true;
+  }
+
+  if (!config.telegramBotToken || !config.telegramChannelId || !args.telegramId) {
+    return null;
+  }
+
+  const membership = await getChannelMembership({
+    botToken: config.telegramBotToken,
+    channelId: config.telegramChannelId,
+    telegramUserId: args.telegramId,
+  });
+
+  if (membership.kind === "unavailable") {
+    console.warn(
+      `[rewards-sync] channel membership unavailable user=${args.userId} code=${membership.code}`,
+    );
+    return null;
+  }
+
+  return membership.kind === "member";
+}
+
 export async function buildQuestAndReferralEntries(
   config: RewardsConfig,
   claim: FillSyncClaim,
   args: { fills: FillSummary[]; seasonStartsAt: string },
 ): Promise<RewardLedgerInsertInput[]> {
   const weekStart = getWeekStartIso(new Date());
-  const [deposits, referralStats, user] = await Promise.all([
+  const [deposits, referralStats, user, grantedQuestIds] = await Promise.all([
     getQualifyingDeposits(config, claim.userId, args.seasonStartsAt),
     getFundedReferralStats(
       config,
@@ -311,6 +359,7 @@ export async function buildQuestAndReferralEntries(
       config.fundedDepositThresholdUsd,
     ),
     getUserById(config, claim.userId),
+    getGrantedQuestIds(config, claim.userId, claim.seasonId),
   ]);
 
   const snapshot = buildQuestSnapshot({
@@ -319,7 +368,13 @@ export async function buildQuestAndReferralEntries(
     fills: args.fills,
     firstTradeThresholdUsd: config.firstTradeThresholdUsd,
     fundedDepositThresholdUsd: config.fundedDepositThresholdUsd,
+    grantedQuestIds,
     hasFundedReferral: referralStats.fundedReferralCount > 0,
+    hasJoinedTelegramChannel: await resolveChannelMembership(config, {
+      grantedQuestIds,
+      telegramId: user?.telegram_id ?? null,
+      userId: claim.userId,
+    }),
   });
 
   // referral_funded_friend is excluded deliberately. Its grant key was

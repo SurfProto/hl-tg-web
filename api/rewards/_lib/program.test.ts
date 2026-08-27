@@ -51,6 +51,8 @@ function config(): RewardsConfig {
     rewardsAdminKey: "admin-secret",
     supabaseServiceRoleKey: "service-role",
     supabaseUrl: "https://example.supabase.co",
+    telegramBotToken: null,
+    telegramChannelId: null,
     weeklyRewardPoolUsd: 100,
     weeklyTopTraderCohortSize: 10,
     weeklyWinnerCount: 1,

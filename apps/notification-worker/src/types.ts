@@ -95,6 +95,7 @@ export interface NotificationRepository {
   enqueueEvent(event: QueuedNotificationEvent): Promise<void>;
   listPendingTelegramEvents(limit: number, now: Date): Promise<PendingNotificationEvent[]>;
   markEventSent(eventId: string): Promise<void>;
+  recordChannelDelivery(userId: string): Promise<void>;
   markEventRetry(
     eventId: string,
     nextAttemptAt: Date,

@@ -87,3 +87,27 @@ export async function applyReferralCode(
     method: "POST",
   });
 }
+
+export interface CheckInResult {
+  alreadyCheckedIn: boolean;
+  bonusXp?: number;
+  streak: {
+    availableToday: boolean;
+    currentDays: number;
+    lastCheckInAt: string | null;
+    longestDays: number;
+  };
+  xpGranted: number;
+}
+
+/**
+ * Take today's check-in.
+ *
+ * Safe to call twice: the server keys the grant by UTC date, so a second call
+ * returns the same state rather than an error.
+ */
+export async function checkIn(accessToken: string): Promise<CheckInResult> {
+  return requestJson<CheckInResult>("/api/rewards/check-in", accessToken, {
+    method: "POST",
+  });
+}

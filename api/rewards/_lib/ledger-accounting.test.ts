@@ -131,8 +131,10 @@ describe("season XP totals come from the database", () => {
     ]);
 
     await expect(getSeasonXpTotals(config, USER, SEASON)).resolves.toEqual({
+      checkInXp: 0,
       questXp: 800,
       referralBonusXp: 500,
+      tierBonusXp: 0,
       totalXp: 9300,
       volumeXp: 8000,
     });
@@ -156,8 +158,10 @@ describe("season XP totals come from the database", () => {
     supabase.supabaseRequest.mockResolvedValue([]);
 
     await expect(getSeasonXpTotals(config, USER, SEASON)).resolves.toEqual({
+      checkInXp: 0,
       questXp: 0,
       referralBonusXp: 0,
+      tierBonusXp: 0,
       totalXp: 0,
       volumeXp: 0,
     });

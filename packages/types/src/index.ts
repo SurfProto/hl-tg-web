@@ -514,6 +514,43 @@ export interface WeeklyRafflePaused {
   state: "paused";
 }
 
+export type RewardsRank = "basecamp" | "climber" | "ridge" | "summit" | "peak";
+
+/**
+ * A user's standing, derived from cumulative season XP.
+ *
+ * Not from leaderboard position: position is zero-sum, so a growing cohort
+ * pushes people down for doing nothing wrong. A threshold is achievable and
+ * cannot be taken away by somebody else trading.
+ */
+export interface RewardsTier {
+  rank: RewardsRank;
+  /** Applied to new grants, never retroactively to earned XP. */
+  multiplier: number;
+  nextRank: RewardsRank | null;
+  nextRankAtXp: number | null;
+  /** Null at the top rank — zero would read as being on the cusp of something. */
+  xpToNextRank: number | null;
+}
+
+/**
+ * The daily check-in, and the streak it builds.
+ *
+ * Derived from dated ledger rows rather than stored as a counter, so it is
+ * reconstructible like every other total and cannot drift from what was
+ * actually granted.
+ */
+export interface RewardsStreak {
+  /** Consecutive days ending today or yesterday. Zero once a day is missed. */
+  currentDays: number;
+  longestDays: number;
+  /** False once today's check-in has been taken. */
+  availableToday: boolean;
+  lastCheckInAt: string | null;
+  /** XP the next check-in grants, before any tier bonus. */
+  nextRewardXp: number;
+}
+
 /**
  * How fresh the numbers on the dashboard are.
  *
@@ -585,6 +622,8 @@ export interface SeasonSnapshot {
   volumeXpTotal: number;
   /** XP granted for referrals, as the ledger recorded it. */
   referralXpTotal: number;
+  /** XP earned from showing up, as opposed to trading. */
+  checkInXpTotal: number;
   eligibleVolume: number;
   leaderboardRank: number | null;
 }
@@ -610,4 +649,8 @@ export interface RewardsDashboard {
   rewardHistory: RewardLedgerEntry[];
   programStatus: RewardsProgramStatus;
   sync: RewardsSyncStatus;
+  tier: RewardsTier;
+  streak: RewardsStreak;
+  /** Never resets. The permanent record, and the natural basis for a snapshot. */
+  lifetimeXp: number;
 }

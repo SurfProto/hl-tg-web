@@ -11,7 +11,9 @@ const supabaseAdmin = vi.hoisted(() => ({
   getRewardLedgerEntries: vi.fn(),
   getRewardLedgerEntriesBySource: vi.fn(),
   getSeasonLeaderboard: vi.fn(),
-  getSeasonUserRank: vi.fn(),
+  getSeasonUserStanding: vi.fn(),
+  getCheckInStreak: vi.fn(),
+  getLifetimeXp: vi.fn(),
   getSeasonXpTotals: vi.fn(),
   getActiveSeason: vi.fn(),
   getGrantedQuestIds: vi.fn(),
@@ -180,15 +182,28 @@ describe("getRewardsDashboard", () => {
     supabaseAdmin.upsertRewardLedgerEntries.mockResolvedValue([]);
     supabaseAdmin.getRewardLedgerEntries.mockResolvedValue([]);
     supabaseAdmin.getSeasonXpTotals.mockResolvedValue({
+      checkInXp: 0,
       questXp: 0,
       referralBonusXp: 0,
+      tierBonusXp: 0,
       totalXp: 0,
       volumeXp: 0,
     });
     supabaseAdmin.upsertUserPoints.mockResolvedValue(undefined);
     supabaseAdmin.upsertWeeklyReward.mockResolvedValue(undefined);
     supabaseAdmin.getSeasonLeaderboard.mockResolvedValue([]);
-    supabaseAdmin.getSeasonUserRank.mockResolvedValue(null);
+    supabaseAdmin.getSeasonUserStanding.mockResolvedValue({
+      eligibleVolume: 0,
+      rank: null,
+      xp: 0,
+    });
+    supabaseAdmin.getCheckInStreak.mockResolvedValue({
+      availableToday: true,
+      currentDays: 0,
+      lastCheckInAt: null,
+      longestDays: 0,
+    });
+    supabaseAdmin.getLifetimeXp.mockResolvedValue(0);
     supabaseAdmin.getUserPointsForSeason.mockResolvedValue({ xp: 0 });
   });
 
@@ -444,7 +459,11 @@ describe("getRewardsDashboard", () => {
       { alias: "Trader-1C27BA90", eligibleVolume: 5000, isCurrentUser: false, rank: 1, xp: 900 },
       { alias: "Trader-38C6CBD2", eligibleVolume: 1000, isCurrentUser: true, rank: 2, xp: 500 },
     ]);
-    supabaseAdmin.getSeasonUserRank.mockResolvedValue(2);
+    supabaseAdmin.getSeasonUserStanding.mockResolvedValue({
+      eligibleVolume: 1000,
+      rank: 2,
+      xp: 500,
+    });
     const { getRewardsDashboard } = await import("./program");
 
     const dashboard = await getRewardsDashboard({ privyUserId: "privy-1" }, config());
@@ -475,16 +494,52 @@ describe("getRewardsDashboard", () => {
     );
   });
 
-  it("reports the caller's own eligible volume from their leaderboard row", async () => {
+  /**
+   * The caller's own figures come from their standing, not from the leaderboard
+   * page. That page is the top ten, so reading volume out of it showed anyone
+   * ranked eleventh or worse that they had traded nothing.
+   */
+  it("reports the caller's own volume when they are outside the top page", async () => {
     supabaseAdmin.getSeasonLeaderboard.mockResolvedValue([
       { alias: "Trader-AAAA1111", eligibleVolume: 9000, isCurrentUser: false, rank: 1, xp: 10 },
-      { alias: "Trader-BBBB2222", eligibleVolume: 4200, isCurrentUser: true, rank: 2, xp: 20 },
+      { alias: "Trader-BBBB2222", eligibleVolume: 8000, isCurrentUser: false, rank: 2, xp: 20 },
     ]);
+    supabaseAdmin.getSeasonUserStanding.mockResolvedValue({
+      eligibleVolume: 4200,
+      rank: 47,
+      xp: 900,
+    });
     const { getRewardsDashboard } = await import("./program");
 
     const dashboard = await getRewardsDashboard({ privyUserId: "privy-1" }, config());
 
     expect(dashboard.season.eligibleVolume).toBe(4200);
+    expect(dashboard.season.leaderboardRank).toBe(47);
+    expect(dashboard.leaderboard.userRank).toBe(47);
+  });
+
+  it("reports rank and tier alongside the totals", async () => {
+    supabaseAdmin.getSeasonXpTotals.mockResolvedValue({
+      checkInXp: 500,
+      questXp: 800,
+      referralBonusXp: 0,
+      tierBonusXp: 200,
+      totalXp: 12_000,
+      volumeXp: 10_500,
+    });
+    supabaseAdmin.getLifetimeXp.mockResolvedValue(48_000);
+    const { getRewardsDashboard } = await import("./program");
+
+    const dashboard = await getRewardsDashboard({ privyUserId: "privy-1" }, config());
+
+    // 12,000 season XP sits in Ridge, which starts at 10,000.
+    expect(dashboard.tier.rank).toBe("ridge");
+    expect(dashboard.tier.multiplier).toBe(1.25);
+    expect(dashboard.tier.nextRank).toBe("summit");
+    expect(dashboard.tier.xpToNextRank).toBe(28_000);
+    // Lifetime is a different number from the season total and never resets.
+    expect(dashboard.lifetimeXp).toBe(48_000);
+    expect(dashboard.season.checkInXpTotal).toBe(500);
   });
 
   it("reports referral XP from the ledger aggregate", async () => {

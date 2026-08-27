@@ -15,6 +15,7 @@ const POSTGRES_LEAK =
 
 const fetchRewardsDashboard = vi.fn();
 const applyReferralCode = vi.fn();
+const checkIn = vi.fn();
 let startParam: string | null = null;
 const warn = vi.fn();
 let currentUser: { id: string; wallet: { address: string } } | null = null;
@@ -23,24 +24,38 @@ let currentUser: { id: string; wallet: { address: string } } | null = null;
 // page renders but never defines is precisely the bug this page shipped with —
 // t("errors.generic") printed "errors.generic" at users — so the test has to be
 // able to see it.
+function lookup(key: string): unknown {
+  return key
+    .split(".")
+    .reduce<unknown>(
+      (acc, part) =>
+        acc && typeof acc === "object" ? (acc as Record<string, unknown>)[part] : undefined,
+      en,
+    );
+}
+
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string) => {
-      const value = key
-        .split(".")
-        .reduce<unknown>(
-          (acc, part) =>
-            acc && typeof acc === "object"
-              ? (acc as Record<string, unknown>)[part]
-              : undefined,
-          en,
-        );
+    t: (key: string, options?: Record<string, unknown>) => {
+      // i18next resolves a plural key through its category suffixes, so a
+      // lookup that only tries the bare key reports a working string as
+      // missing. English has _one and _other.
+      const candidates =
+        options && typeof options.count === "number"
+          ? [key, `${key}_${options.count === 1 ? "one" : "other"}`]
+          : [key];
+
+      const value = candidates.map(lookup).find((found) => typeof found === "string");
 
       if (typeof value !== "string") {
         throw new Error(`Missing translation key: ${key}`);
       }
 
-      return value;
+      // Interpolate, so a test asserting on rendered copy sees what a user
+      // sees rather than a raw {{placeholder}}.
+      return value.replace(/\{\{(\w+)\}\}/g, (match, name) =>
+        options && name in options ? String(options[name]) : match,
+      );
     },
   }),
 }));
@@ -53,6 +68,7 @@ vi.mock("@privy-io/react-auth", () => ({
 vi.mock("../lib/rewards", () => ({
   fetchRewardsDashboard: (...args: unknown[]) => fetchRewardsDashboard(...args),
   applyReferralCode: (...args: unknown[]) => applyReferralCode(...args),
+  checkIn: (...args: unknown[]) => checkIn(...args),
   RewardsApiError: class extends Error {},
 }));
 
@@ -116,6 +132,21 @@ function xpOnlyDashboard(overrides: Record<string, unknown> = {}) {
     weeklyRaffle: { state: "paused" },
     rewardHistory: [],
     sync: { lastSyncedAt: "2026-08-24T12:00:00.000Z", retentionRisk: false, state: "synced" },
+    lifetimeXp: 4200,
+    tier: {
+      multiplier: 1.25,
+      nextRank: "summit",
+      nextRankAtXp: 40000,
+      rank: "ridge",
+      xpToNextRank: 28000,
+    },
+    streak: {
+      availableToday: true,
+      currentDays: 3,
+      lastCheckInAt: "2026-08-26T09:00:00.000Z",
+      longestDays: 5,
+      nextRewardXp: 175,
+    },
     programStatus: {
       mode: "xp_only",
       usdcPayoutsEnabled: false,
@@ -143,6 +174,8 @@ describe("PointsPage", () => {
     fetchRewardsDashboard.mockReset();
     applyReferralCode.mockReset();
     applyReferralCode.mockResolvedValue({});
+    checkIn.mockReset();
+    checkIn.mockResolvedValue({ alreadyCheckedIn: false, streak: {}, xpGranted: 100 });
     startParam = null;
     warn.mockReset();
   });
@@ -459,6 +492,50 @@ describe("PointsPage", () => {
 
     expect(screen.queryByText(en.errors.somethingWentWrong)).not.toBeInTheDocument();
     expect(document.body.textContent).not.toContain("REFERRAL_ALREADY_SET");
+  });
+
+  it("shows the rank and the distance to the next one", async () => {
+    fetchRewardsDashboard.mockResolvedValue(xpOnlyDashboard());
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText(en.points.ranks.ridge)).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/28,?000 XP to/)).toBeInTheDocument();
+  });
+
+  it("claims the daily check-in", async () => {
+    fetchRewardsDashboard.mockResolvedValue(xpOnlyDashboard());
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText(en.points.checkIn)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText(en.points.checkIn));
+
+    await waitFor(() => expect(checkIn).toHaveBeenCalledWith("access-token"));
+  });
+
+  // Pressing twice is ordinary and the server keys by date, but the control
+  // should still say the day is done rather than inviting another press.
+  it("shows the day as claimed once taken", async () => {
+    const base = xpOnlyDashboard();
+    fetchRewardsDashboard.mockResolvedValue({
+      ...base,
+      streak: { ...base.streak, availableToday: false },
+    });
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText(en.points.checkInClaimed)).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText(en.points.checkIn)).not.toBeInTheDocument();
   });
 
   // The card labelled "Days active" was subtitled with the weekly raffle rank

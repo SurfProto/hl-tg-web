@@ -1,11 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePrivy, useToken } from "@privy-io/react-auth";
 import type { ReferralSummary, RewardsDashboard } from "@repo/types";
 import { useTranslation } from "react-i18next";
 import { ReferralCard } from "../components/ReferralCard";
 import { getTelegramStartParam } from "../lib/referrals";
-import { applyReferralCode, fetchRewardsDashboard } from "../lib/rewards";
+import { applyReferralCode, checkIn, fetchRewardsDashboard } from "../lib/rewards";
 import { log } from "../lib/logger";
 
 function formatCompactNumber(value: number) {
@@ -75,6 +75,30 @@ export function PointsPage() {
    * ordinary outcome of sharing links, and none of it is worth an error card in
    * front of someone who just arrived.
    */
+  const [claiming, setClaiming] = useState(false);
+
+  /**
+   * Claim today's check-in.
+   *
+   * Safe to press twice — the server keys the grant by UTC date and returns the
+   * same state rather than an error — so this needs no guard beyond not showing
+   * a spinner forever.
+   */
+  const claimCheckIn = async () => {
+    setClaiming(true);
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) return;
+
+      await checkIn(accessToken);
+      await queryClient.invalidateQueries({ queryKey: ["rewardsDashboard"] });
+    } catch (error) {
+      log.warn("[points] Check-in failed", { error });
+    } finally {
+      setClaiming(false);
+    }
+  };
+
   const referralAttempted = useRef(false);
 
   useEffect(() => {
@@ -197,8 +221,9 @@ export function PointsPage() {
         )}
 
         <div className="mt-5 rounded-[20px] bg-primary p-5 text-white">
-          <div className="editorial-kicker text-white/55">
-            {dashboard.season.name} · YOUR POINTS
+          <div className="editorial-kicker flex items-center justify-between text-white/55">
+            <span>{dashboard.season.name} · YOUR POINTS</span>
+            <span className="uppercase">{t(`points.ranks.${dashboard.tier.rank}`)}</span>
           </div>
           <div className="editorial-display mt-3">
             {formatCompactNumber(dashboard.season.xpTotal)}
@@ -214,7 +239,51 @@ export function PointsPage() {
             +{formatCompactNumber(dashboard.season.volumeXpTotal)} {t("points.fromTrading")} · {t("points.rank")} #
             {dashboard.season.leaderboardRank ?? "—"}
           </div>
+
+          {/*
+            Progress toward a real threshold, unlike the tier bar this replaced —
+            that one was arithmetic on the XP total with no backend model behind
+            it, so it invented both the rank and the distance to the next one.
+          */}
+          {dashboard.tier.xpToNextRank != null && dashboard.tier.nextRank && (
+            <div className="mt-3 text-xs text-white/55">
+              {t("points.toNextRank", {
+                count: dashboard.tier.xpToNextRank,
+                rank: t(`points.ranks.${dashboard.tier.nextRank}`),
+              })}
+            </div>
+          )}
         </div>
+
+        {/*
+          The one thing here that rewards showing up rather than trading. The
+          streak is derived from dated ledger rows, so what is displayed cannot
+          drift from what was actually granted.
+        */}
+        <button
+          type="button"
+          onClick={claimCheckIn}
+          disabled={claiming || !dashboard.streak.availableToday}
+          className="editorial-card mt-3 flex w-full items-center justify-between px-4 py-4 text-left disabled:opacity-70"
+        >
+          <div>
+            <div className="editorial-section-title">
+              {dashboard.streak.availableToday
+                ? claiming
+                  ? t("points.checkInPending")
+                  : t("points.checkIn")
+                : t("points.checkInClaimed")}
+            </div>
+            {dashboard.streak.currentDays > 0 && (
+              <div className="mt-1 text-sm text-muted">
+                {t("points.streakDays", { count: dashboard.streak.currentDays })}
+              </div>
+            )}
+          </div>
+          <div className="editorial-mono text-lg font-semibold text-positive">
+            +{formatCompactNumber(dashboard.streak.nextRewardXp)}
+          </div>
+        </button>
 
         {user?.id && accessTokenQuery.data && (
           <div className="pt-4">

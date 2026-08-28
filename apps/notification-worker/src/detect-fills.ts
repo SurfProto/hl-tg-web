@@ -30,9 +30,19 @@ export interface FillCursorState {
   /** Fill ids at exactly `lastFillAtMs`, so the boundary is neither re-sent nor lost. */
   seenAtCursor: string[];
   /**
-   * The old high-water mark. Read but never written: its presence without
-   * `lastFillAtMs` is how a state row written by the previous version is
-   * recognised. See `rebaselined` below.
+   * The old high-water mark. Still written, and it must stay written.
+   *
+   * Its absence is how a row from the previous version is recognised, but that
+   * is only half the story: the previous version reads this field too, and its
+   * guard was `state.maxTid == null || fill.tid > state.maxTid`. Handed a row
+   * without it, that code concludes there is no cursor and emits the entire
+   * window.
+   *
+   * Which is exactly what happened. During the deployment swap a new instance
+   * wrote the new shape, an old instance still in flight read it, and one user
+   * received 108 order-fill messages in a second. Rolling back would do it
+   * again. So the field is kept, populated as the old code would have populated
+   * it, and a reader of either version finds a cursor it understands.
    */
   maxTid?: number | null;
 }
@@ -46,22 +56,50 @@ interface DetectFillEventsArgs {
 
 interface DetectFillEventsResult {
   events: QueuedNotificationEvent[];
+  /** Events suppressed by the burst cap, for the run log. */
+  dropped: number;
   state: FillCursorState;
 }
+
+/**
+ * The most fill notifications one account may be sent from a single run.
+ *
+ * A backstop, not a business rule. No plausible minute of trading produces
+ * twenty fills that a person wants twenty messages about, and every way this
+ * detector can go wrong — a cursor that resets, a state shape a reader does not
+ * understand, an exchange window that widens — turns into the same incident: a
+ * user's phone buzzing a hundred times. One did, for 108 fills, which is what
+ * this exists to make impossible rather than merely unlikely.
+ *
+ * The newest are kept, because the newest are the ones worth telling somebody
+ * about, and the cursor still advances past all of them so the remainder are
+ * dropped rather than redelivered next run.
+ */
+const MAX_EVENTS_PER_RUN = 20;
 
 function fillId(fill: FillRecord): string {
   return String(fill.tid);
 }
 
-/** The cursor implied by a window of fills: newest instant, and who was on it. */
-function cursorFor(fills: FillRecord[]): { lastFillAtMs: number | null; seenAtCursor: string[] } {
+/**
+ * The cursor implied by a window of fills.
+ *
+ * `maxTid` is carried for the previous version of this code, which reads it and
+ * treats its absence as "send everything". See the field's comment.
+ */
+function cursorFor(fills: FillRecord[]): {
+  lastFillAtMs: number | null;
+  maxTid: number | null;
+  seenAtCursor: string[];
+} {
   if (fills.length === 0) {
-    return { lastFillAtMs: null, seenAtCursor: [] };
+    return { lastFillAtMs: null, maxTid: null, seenAtCursor: [] };
   }
 
   const lastFillAtMs = Math.max(...fills.map((fill) => fill.time));
   return {
     lastFillAtMs,
+    maxTid: Math.max(...fills.map((fill) => fill.tid)),
     seenAtCursor: fills.filter((fill) => fill.time === lastFillAtMs).map(fillId),
   };
 }
@@ -86,6 +124,7 @@ export function detectFillEvents({
 
   if (!state?.initialized || rebaselined) {
     return {
+      dropped: 0,
       events: [],
       state: { initialized: true, ...cursorFor(sortedFills) },
     };
@@ -104,8 +143,12 @@ export function detectFillEvents({
     return fill.time === cursorMs && !seenAtCursor.has(fillId(fill));
   });
 
+  // Newest kept: those are the ones worth telling somebody about, and the
+  // cursor advances past the rest either way.
+  const sendable = newFills.slice(-MAX_EVENTS_PER_RUN);
+
   const events = enabled
-    ? newFills.map<QueuedNotificationEvent>((fill) => ({
+    ? sendable.map<QueuedNotificationEvent>((fill) => ({
         userId: user.userId,
         channel: "telegram",
         topic: "order_fill",
@@ -124,9 +167,15 @@ export function detectFillEvents({
   const next = cursorFor(sortedFills);
 
   return {
+    dropped: enabled ? newFills.length - sendable.length : 0,
     events,
     state: {
       initialized: true,
+      // Kept for the previous version of this code, which reads it.
+      maxTid:
+        next.maxTid != null && state.maxTid != null
+          ? Math.max(next.maxTid, state.maxTid)
+          : (next.maxTid ?? state.maxTid ?? null),
       // Never backwards: `userFills` returns a bounded recent window, so a
       // quiet period can return fewer fills than the cursor was built from.
       lastFillAtMs:

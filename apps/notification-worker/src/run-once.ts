@@ -1,5 +1,5 @@
 import { detectDepositEvents } from "./detect-deposits";
-import { detectFillEvents } from "./detect-fills";
+import { detectFillEvents, type FillCursorState } from "./detect-fills";
 import { detectLiquidationEvents } from "./detect-liquidation";
 import { processTelegramEvents } from "./process-telegram-events";
 import type {
@@ -48,7 +48,7 @@ export async function runNotificationWorkerOnce({
     const fillResult = detectFillEvents({
       user,
       fills,
-      state: fillState as { initialized: boolean; maxTid: number | null } | null,
+      state: fillState as FillCursorState | null,
       enabled: user.preferences.order_fills,
     });
     const liquidationResult = detectLiquidationEvents({

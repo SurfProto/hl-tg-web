@@ -69,6 +69,54 @@ describe("buildQuestSnapshot", () => {
 
     expect(snapshot.quests.find((quest) => quest.id === "referral_funded_friend")?.status).toBe("completed");
   });
+
+  const base = {
+    currentTime: "2026-04-14T10:00:00.000Z",
+    deposits: [],
+    fills: [],
+    hasFundedReferral: false,
+  };
+
+  function telegramQuest(snapshot: ReturnType<typeof buildQuestSnapshot>) {
+    return snapshot.quests.find((quest) => quest.id === "join_telegram_channel");
+  }
+
+  it("completes the channel quest when Telegram says the user is in it", () => {
+    const snapshot = buildQuestSnapshot({ ...base, hasJoinedTelegramChannel: true });
+
+    expect(telegramQuest(snapshot)?.status).toBe("completed");
+    expect(snapshot.completedQuestIds).toContain("join_telegram_channel");
+  });
+
+  it("offers the channel quest as unfinished when the user is not in it", () => {
+    const snapshot = buildQuestSnapshot({ ...base, hasJoinedTelegramChannel: false });
+
+    expect(telegramQuest(snapshot)?.status).toBe("in_progress");
+    expect(snapshot.completedQuestIds).not.toContain("join_telegram_channel");
+  });
+
+  /**
+   * Showing a quest nobody can complete is worse than showing no quest. The
+   * read path performs no outbound I/O and an unconfigured channel cannot be
+   * checked, so both pass null.
+   */
+  it("hides the channel quest when membership cannot be checked", () => {
+    const snapshot = buildQuestSnapshot({ ...base, hasJoinedTelegramChannel: null });
+
+    expect(telegramQuest(snapshot)).toBeUndefined();
+  });
+
+  // Except once it has been paid: then the ledger, not a live lookup, is what
+  // says it happened, and the user must keep seeing it as done.
+  it("still shows a paid channel quest when membership cannot be checked", () => {
+    const snapshot = buildQuestSnapshot({
+      ...base,
+      grantedQuestIds: ["join_telegram_channel"],
+      hasJoinedTelegramChannel: null,
+    });
+
+    expect(telegramQuest(snapshot)?.status).toBe("completed");
+  });
 });
 
 describe("buildVolumeXpGrants", () => {

@@ -23,6 +23,8 @@ export interface RewardsConfig {
   rewardsAdminKey: string | null;
   supabaseServiceRoleKey: string;
   supabaseUrl: string;
+  telegramBotToken: string | null;
+  telegramChannelId: string | null;
   weeklyRewardPoolUsd: number;
   weeklyTopTraderCohortSize: number;
   weeklyWinnerCount: number;
@@ -88,6 +90,10 @@ export function getRewardsConfig(env: NodeJS.ProcessEnv = process.env): RewardsC
     rewardsAdminKey: env.REWARDS_ADMIN_KEY ?? null,
     supabaseServiceRoleKey: getRequired(env, "SUPABASE_SERVICE_ROLE_KEY"),
     supabaseUrl: getRequired(env, "SUPABASE_URL"),
+    // Both optional. With either missing the channel quest is not offered at
+    // all, rather than being shown to users who could never complete it.
+    telegramBotToken: env.TELEGRAM_BOT_TOKEN ?? null,
+    telegramChannelId: env.TELEGRAM_CHANNEL_ID ?? null,
     weeklyRewardPoolUsd,
     weeklyTopTraderCohortSize: Math.max(
       1,

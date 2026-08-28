@@ -14,6 +14,8 @@ export interface RewardsUserRow {
   privy_user_id: string | null;
   referral_code: string | null;
   referred_by: string | null;
+  /** The identity the channel-membership quest is verified against. */
+  telegram_id: string | null;
   username: string | null;
   wallet_address: string | null;
 }

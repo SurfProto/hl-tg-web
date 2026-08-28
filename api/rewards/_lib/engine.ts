@@ -49,6 +49,16 @@ interface BuildQuestSnapshotInput {
   deposits: DepositEvent[];
   fills: FillEvent[];
   hasFundedReferral: boolean;
+  /**
+   * Whether Telegram says this user is in the app's channel.
+   *
+   * `null` means the check could not be made — the channel is unconfigured, or
+   * the read path, which performs no outbound I/O, is building the snapshot. In
+   * that case the quest is omitted entirely rather than shown as incomplete: a
+   * quest that cannot be completed is worse than no quest, and a granted one is
+   * restored by `grantedQuestIds` regardless.
+   */
+  hasJoinedTelegramChannel?: boolean | null;
   currentTime: string;
   fundedDepositThresholdUsd?: number;
   firstTradeThresholdUsd?: number;
@@ -184,6 +194,12 @@ export function buildQuestSnapshot(input: BuildQuestSnapshotInput) {
           return getFillNotional(fill) >= tradeThreshold;
         }) ?? null;
 
+  // When membership could not be checked, the channel quest is dropped unless
+  // it has already been paid — in which case the ledger, not a live lookup, is
+  // what says it happened.
+  const showTelegramQuest =
+    input.hasJoinedTelegramChannel != null || granted.has("join_telegram_channel");
+
   const quests: QuestProgress[] = [
     createQuest({
       granted,
@@ -228,6 +244,17 @@ export function buildQuestSnapshot(input: BuildQuestSnapshotInput) {
     }),
     createQuest({
       granted,
+      completedAt: input.hasJoinedTelegramChannel ? input.currentTime : null,
+      description: "Join the P34K channel on Telegram.",
+      id: "join_telegram_channel",
+      progressCurrent: input.hasJoinedTelegramChannel ? 1 : 0,
+      progressTarget: 1,
+      rewards: [{ amount: 200, kind: "xp", label: "200 XP" }],
+      status: input.hasJoinedTelegramChannel ? "completed" : "in_progress",
+      title: "Join the channel",
+    }),
+    createQuest({
+      granted,
       completedAt: secondDepositWithinWindow?.occurredAt ?? null,
       description: `Deposit ${formatUsd(fundedThreshold)} again within 7 days.`,
       id: "second_deposit_7d",
@@ -241,7 +268,7 @@ export function buildQuestSnapshot(input: BuildQuestSnapshotInput) {
           : "locked",
       title: "Come back in 7 days",
     }),
-  ];
+  ].filter((quest) => quest.id !== "join_telegram_channel" || showTelegramQuest);
 
   const completedQuestIds = quests
     .filter((quest) => quest.status === "completed")

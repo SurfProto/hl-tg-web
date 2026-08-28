@@ -58,6 +58,7 @@ function createHarness() {
     }),
     markEventRetry: vi.fn(),
     markEventFailed: vi.fn(),
+    recordChannelDelivery: vi.fn(),
     updateChannelStatus: vi.fn(),
   };
 

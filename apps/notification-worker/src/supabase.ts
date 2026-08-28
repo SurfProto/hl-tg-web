@@ -290,6 +290,37 @@ class SupabaseNotificationRepository implements NotificationRepository {
     });
   }
 
+  /**
+   * Record that a message reached this user.
+   *
+   * Nothing on the worker's path wrote this. `markEventSent` updated the event
+   * and stopped there, so `notification_channels.last_delivered_at` stayed null
+   * however many messages were delivered — and the health surface built on it
+   * reported "never delivered" for a channel that was working. Only the manual
+   * self-test endpoint ever set it, which meant the one number describing
+   * whether notifications work described a different code path from the one
+   * that sends them.
+   *
+   * A delivery is also the strongest evidence a channel is healthy, so it
+   * clears any error a previous failure left behind.
+   */
+  async recordChannelDelivery(userId: string): Promise<void> {
+    const now = new Date().toISOString();
+    const { error } = await this.supabase
+      .from("notification_channels")
+      .update({
+        last_delivered_at: now,
+        last_error_code: null,
+        last_error_message: null,
+        status: "active",
+        updated_at: now,
+      })
+      .eq("user_id", userId)
+      .eq("channel", "telegram");
+
+    if (error) throw error;
+  }
+
   async updateChannelStatus(
     userId: string,
     status: NotificationChannelStatus,

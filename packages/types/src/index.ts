@@ -415,6 +415,7 @@ export interface TelegramInitData {
 export type QuestId =
   | "first_deposit"
   | "first_trade"
+  | "join_telegram_channel"
   | "referral_funded_friend"
   | "second_deposit_7d";
 

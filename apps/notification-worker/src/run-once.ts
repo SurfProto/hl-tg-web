@@ -51,6 +51,15 @@ export async function runNotificationWorkerOnce({
       state: fillState as FillCursorState | null,
       enabled: user.preferences.order_fills,
     });
+    if (fillResult.dropped > 0) {
+      // The burst cap fired. Always a symptom of something else — a cursor that
+      // reset, or a state row a previous version could not read — so it must
+      // not be silent.
+      console.warn(
+        `[notifications] fill burst capped user=${user.userId} dropped=${fillResult.dropped}`,
+      );
+    }
+
     const liquidationResult = detectLiquidationEvents({
       user,
       positions,

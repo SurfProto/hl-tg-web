@@ -44,6 +44,7 @@ describe("detectFillEvents", () => {
     expect(result.state).toEqual({
       initialized: true,
       lastFillAtMs: T0 + 1000,
+      maxTid: 101,
       seenAtCursor: ["101"],
     });
   });
@@ -116,6 +117,7 @@ describe("detectFillEvents", () => {
     expect(result.state).toEqual({
       initialized: true,
       lastFillAtMs: T0 + 2000,
+      maxTid: 3,
       seenAtCursor: ["3"],
     });
   });
@@ -172,6 +174,62 @@ describe("detectFillEvents", () => {
     expect(result.events).toEqual([]);
     expect(result.state.lastFillAtMs).toBe(T0);
     expect(result.state.seenAtCursor).toEqual(["9"]);
+  });
+
+  /**
+   * The incident this prevents. The previous version's guard was
+   * `state.maxTid == null || fill.tid > state.maxTid`, so a state row without
+   * `maxTid` reads to it as "no cursor, send everything". During the deployment
+   * swap a new instance wrote the new shape, an old instance still in flight
+   * read it, and one user received 108 messages in a second. A rollback would
+   * do it again.
+   */
+  it("keeps writing maxTid, which the previous version still reads", () => {
+    const seeded = detectFillEvents({
+      user,
+      fills: [makeFill({ tid: 900, time: T0 }), makeFill({ tid: 5, time: T0 + 1000 })],
+      state: null,
+      enabled: true,
+    });
+
+    expect(seeded.state.maxTid).toBe(900);
+
+    const advanced = detectFillEvents({
+      user,
+      fills: [makeFill({ tid: 7, time: T0 + 2000 })],
+      state: seeded.state,
+      enabled: true,
+    });
+
+    // Never lowered either: the old reader compares against it, and a smaller
+    // value would let it re-send everything above the new one.
+    expect(advanced.state.maxTid).toBe(900);
+  });
+
+  /**
+   * A backstop rather than a business rule. Every way this detector can go
+   * wrong ends in the same incident — a phone buzzing a hundred times — so the
+   * blast radius is bounded regardless of the cause.
+   */
+  it("caps a burst at twenty and reports what it dropped", () => {
+    const fills = Array.from({ length: 108 }, (_, index) =>
+      makeFill({ tid: index + 1, time: T0 + (index + 1) * 1000 }),
+    );
+
+    const result = detectFillEvents({
+      user,
+      fills,
+      state: { initialized: true, lastFillAtMs: T0, seenAtCursor: [] },
+      enabled: true,
+    });
+
+    expect(result.events).toHaveLength(20);
+    expect(result.dropped).toBe(88);
+    // The newest are the ones kept.
+    expect(result.events.at(-1)!.idempotencyKey).toBe("order_fill:0xabc:108");
+    // And the cursor clears the whole window, so the remainder are dropped
+    // rather than redelivered on the next run.
+    expect(result.state.lastFillAtMs).toBe(T0 + 108_000);
   });
 
   it("advances the cursor even when fill notifications are disabled", () => {

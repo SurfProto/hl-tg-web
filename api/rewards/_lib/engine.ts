@@ -163,22 +163,51 @@ export function buildQuestSnapshot(input: BuildQuestSnapshotInput) {
     input.fundedDepositThresholdUsd ?? DEFAULT_FUNDED_DEPOSIT_THRESHOLD_USD;
   const tradeThreshold =
     input.firstTradeThresholdUsd ?? DEFAULT_FIRST_TRADE_THRESHOLD_USD;
-  const qualifyingDeposits = sortByOccurredAt(input.deposits).filter(
-    (deposit) => deposit.amountUsd >= fundedThreshold,
-  );
-  const firstDeposit = qualifyingDeposits[0] ?? null;
-  const secondDepositWithinWindow =
-    firstDeposit == null
-      ? null
-      : qualifyingDeposits.find((deposit, index) => {
-          if (index === 0) {
-            return false;
-          }
-          const delta =
-            new Date(deposit.occurredAt).getTime() -
-            new Date(firstDeposit.occurredAt).getTime();
-          return delta >= 0 && delta <= SEVEN_DAYS_MS;
-        }) ?? null;
+  const deposits = sortByOccurredAt(input.deposits);
+
+  /**
+   * The deposit that takes the running total to the threshold.
+   *
+   * Cumulative, not per-transaction. Two thirty-dollar deposits are sixty
+   * dollars funded, and the old rule — which tested single deposits against the
+   * threshold — saw neither. It also matches how the referral `funded` rung
+   * reads the same ledger (migration 020), so the quest a user sees and the
+   * rung their referrer is paid for cannot disagree about whether funding
+   * happened.
+   */
+  function crossing(rows: DepositEvent[], target: number) {
+    let running = 0;
+    for (const row of rows) {
+      running += row.amountUsd;
+      if (running >= target) {
+        return { at: row.occurredAt, total: running };
+      }
+    }
+
+    return { at: null, total: running };
+  }
+
+  const firstCrossing = crossing(deposits, fundedThreshold);
+  const firstDeposit = firstCrossing.at
+    ? { amountUsd: firstCrossing.total, occurredAt: firstCrossing.at }
+    : null;
+
+  // The second threshold is measured from what arrived *after* the first was
+  // reached, so the same dollars cannot satisfy both.
+  const depositsAfterFunding = firstDeposit
+    ? deposits.filter(
+        (deposit) =>
+          new Date(deposit.occurredAt).getTime() >
+            new Date(firstDeposit.occurredAt).getTime() &&
+          new Date(deposit.occurredAt).getTime() -
+            new Date(firstDeposit.occurredAt).getTime() <=
+            SEVEN_DAYS_MS,
+      )
+    : [];
+  const secondCrossing = crossing(depositsAfterFunding, fundedThreshold);
+  const secondDepositWithinWindow = secondCrossing.at
+    ? { amountUsd: secondCrossing.total, occurredAt: secondCrossing.at }
+    : null;
   const qualifyingTrade =
     firstDeposit == null
       ? null
@@ -194,6 +223,37 @@ export function buildQuestSnapshot(input: BuildQuestSnapshotInput) {
           return getFillNotional(fill) >= tradeThreshold;
         }) ?? null;
 
+  /**
+   * Progress against a dollar threshold, for the bar and its caption.
+   *
+   * A quest whose bar sits at zero until the instant it completes tells the
+   * user nothing about how close they are. Reporting the dollars makes the bar
+   * proportional — twenty-five of a fifty-dollar deposit reads as half done,
+   * because it is.
+   */
+  function usdProgress(current: number, target: number) {
+    const clamped = Math.max(0, Math.min(current, target));
+    return {
+      progressCurrent: clamped,
+      progressLabel: `${formatUsd(clamped)} / ${formatUsd(target)}`,
+      progressTarget: target,
+    };
+  }
+
+  // The biggest single trade so far. `first_trade` needs one trade over the
+  // threshold, so the nearest miss is the honest measure of progress — not the
+  // running total, which would promise a completion that never arrives.
+  const largestTradeUsd = firstDeposit
+    ? input.fills
+        .filter(
+          (fill) =>
+            isAppAttributedFill(fill) &&
+            new Date(fill.occurredAt).getTime() >=
+              new Date(firstDeposit.occurredAt).getTime(),
+        )
+        .reduce((largest, fill) => Math.max(largest, getFillNotional(fill)), 0)
+    : 0;
+
   // When membership could not be checked, the channel quest is dropped unless
   // it has already been paid — in which case the ledger, not a live lookup, is
   // what says it happened.
@@ -206,8 +266,7 @@ export function buildQuestSnapshot(input: BuildQuestSnapshotInput) {
       completedAt: firstDeposit?.occurredAt ?? null,
       description: `Fund ${formatUsd(fundedThreshold)} or more for the first time.`,
       id: "first_deposit",
-      progressCurrent: Math.min(qualifyingDeposits.length, 1),
-      progressTarget: 1,
+      ...usdProgress(firstCrossing.total, fundedThreshold),
       // XP only, matching what buildQuestRewardEntries actually writes. The
       // USDC line that used to sit here was both a promise the ledger no
       // longer makes and, because the card renders rewards[0], the only
@@ -221,8 +280,7 @@ export function buildQuestSnapshot(input: BuildQuestSnapshotInput) {
       completedAt: qualifyingTrade?.occurredAt ?? null,
       description: `Place your first app trade over ${formatUsd(tradeThreshold)} after funding.`,
       id: "first_trade",
-      progressCurrent: qualifyingTrade ? 1 : 0,
-      progressTarget: 1,
+      ...usdProgress(qualifyingTrade ? tradeThreshold : largestTradeUsd, tradeThreshold),
       rewards: [{ amount: 300, kind: "xp", label: "300 XP" }],
       status: qualifyingTrade
         ? "completed"
@@ -258,8 +316,7 @@ export function buildQuestSnapshot(input: BuildQuestSnapshotInput) {
       completedAt: secondDepositWithinWindow?.occurredAt ?? null,
       description: `Deposit ${formatUsd(fundedThreshold)} again within 7 days.`,
       id: "second_deposit_7d",
-      progressCurrent: Math.min(qualifyingDeposits.length, 2),
-      progressTarget: 2,
+      ...usdProgress(secondCrossing.total, fundedThreshold),
       rewards: [{ amount: 250, kind: "xp", label: "250 XP" }],
       status: secondDepositWithinWindow
         ? "completed"

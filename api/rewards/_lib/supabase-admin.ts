@@ -1137,6 +1137,98 @@ export async function upsertDepositEvents(
 }
 
 // ---------------------------------------------------------------------------
+// Builder-fill verification
+// ---------------------------------------------------------------------------
+
+export interface BuilderFillInsert {
+  builderFeeUsd: number;
+  coin: string;
+  day: string;
+  isTrigger: boolean;
+  occurredAt: string;
+  px: number;
+  rowKey: string;
+  side: string;
+  sz: number;
+  walletAddress: string;
+}
+
+/** Days from `p_from` to yesterday that have not been ingested, oldest first. */
+export async function getPendingBuilderFillDays(
+  config: RewardsConfig,
+  input: { from: string; limit?: number },
+): Promise<string[]> {
+  const rows = await supabaseRequest<Array<{ day: string }>>(
+    config,
+    "rpc/rewards_pending_builder_fill_days",
+    {
+      body: JSON.stringify({ p_from: input.from, p_limit: input.limit ?? 7 }),
+      headers: buildHeaders(config),
+      method: "POST",
+    },
+  );
+
+  return rows.map((row) => row.day);
+}
+
+/** Append a day's rows. Keyed by `{day}:{line}`, so re-reading a day is free. */
+export async function upsertBuilderFills(
+  config: RewardsConfig,
+  rows: BuilderFillInsert[],
+): Promise<void> {
+  if (rows.length === 0) {
+    return;
+  }
+
+  await supabaseRequest<null>(config, "builder_fills?on_conflict=row_key", {
+    body: JSON.stringify(
+      rows.map((row) => ({
+        builder_fee_usd: row.builderFeeUsd,
+        coin: row.coin,
+        day: row.day,
+        is_trigger: row.isTrigger,
+        occurred_at: row.occurredAt,
+        px: row.px,
+        row_key: row.rowKey,
+        side: row.side,
+        sz: row.sz,
+        wallet_address: row.walletAddress,
+      })),
+    ),
+    headers: buildHeaders(config, {
+      Prefer: "resolution=ignore-duplicates,return=minimal",
+    }),
+    method: "POST",
+  });
+}
+
+/** Record how a day's fetch went. Never downgrades a day already ingested. */
+export async function recordBuilderFillDay(
+  config: RewardsConfig,
+  input: {
+    day: string;
+    errorCode?: string | null;
+    feeUsd?: number;
+    malformed?: number;
+    rows?: number;
+    status: "ingested" | "unpublished" | "unavailable";
+  },
+): Promise<void> {
+  await supabaseRequest<null>(config, "rpc/rewards_record_builder_fill_day", {
+    body: JSON.stringify({
+      p_day: input.day,
+      p_error_code: input.errorCode ?? null,
+      p_fee_usd: input.feeUsd ?? 0,
+      p_malformed: input.malformed ?? 0,
+      p_rows: input.rows ?? 0,
+      p_status: input.status,
+    }),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Reconciliation
 // ---------------------------------------------------------------------------
 

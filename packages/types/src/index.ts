@@ -449,6 +449,16 @@ export interface QuestProgress {
   completedAt: string | null;
   progressCurrent: number;
   progressTarget: number;
+  /**
+   * How to render the two numbers above, when they are not a plain count.
+   *
+   * A quest with a dollar threshold reports dollars, so the bar fills
+   * proportionally rather than staying empty until the moment it completes —
+   * $25 of a $50 deposit is half done and should look it. The raw pair would
+   * render as "25/50", which is not wrong but is not money either. Absent, the
+   * client falls back to `current/target`.
+   */
+  progressLabel?: string;
   rewards: QuestReward[];
 }
 

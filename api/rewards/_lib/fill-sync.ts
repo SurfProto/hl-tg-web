@@ -85,6 +85,11 @@ function toGrantEntries(args: {
     metadata: {
       builderFeeUsd: feeByFillKey.get(grant.fillKey) ?? 0,
       fillKey: grant.fillKey,
+      // When the fill happened, not when the grant was written. Reconciling
+      // against the daily builder-fills export needs to put each grant on the
+      // day the exchange filed it under, and a grant written by a backfill can
+      // be days later than the trade it pays for.
+      occurredAt: grant.occurredAt,
       volumeUsd: grant.volumeUsd,
     },
     postedAt: new Date().toISOString(),

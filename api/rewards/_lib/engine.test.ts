@@ -77,6 +77,84 @@ describe("buildQuestSnapshot", () => {
     hasFundedReferral: false,
   };
 
+  /**
+   * A bar that sits at zero until the instant it completes tells the user
+   * nothing about how close they are. Half the money is half the quest.
+   */
+  it("reports a part-funded deposit quest in dollars, not as zero of one", () => {
+    const snapshot = buildQuestSnapshot({
+      ...base,
+      deposits: [
+        { amountUsd: 15, occurredAt: "2026-04-01T10:00:00.000Z" },
+        { amountUsd: 10, occurredAt: "2026-04-02T10:00:00.000Z" },
+      ],
+    });
+
+    const quest = snapshot.quests.find((entry) => entry.id === "first_deposit")!;
+    expect(quest.status).toBe("in_progress");
+    expect(quest.progressCurrent).toBe(25);
+    expect(quest.progressTarget).toBe(50);
+    expect(quest.progressLabel).toBe("$25 / $50");
+  });
+
+  /**
+   * Cumulative, matching the referral `funded` rung against the same ledger, so
+   * the quest a user sees and the rung their referrer is paid for cannot
+   * disagree. The old rule tested single deposits and saw neither of these.
+   */
+  it("completes the deposit quest on deposits that only add up together", () => {
+    const snapshot = buildQuestSnapshot({
+      ...base,
+      deposits: [
+        { amountUsd: 30, occurredAt: "2026-04-01T10:00:00.000Z" },
+        { amountUsd: 30, occurredAt: "2026-04-02T10:00:00.000Z" },
+      ],
+    });
+
+    const quest = snapshot.quests.find((entry) => entry.id === "first_deposit")!;
+    expect(quest.status).toBe("completed");
+    // Dated from the deposit that crossed the bar, not the first one.
+    expect(quest.completedAt).toBe("2026-04-02T10:00:00.000Z");
+    expect(quest.progressLabel).toBe("$50 / $50");
+  });
+
+  // The same dollars must not satisfy both thresholds.
+  it("measures the seven-day quest only on what arrived after funding", () => {
+    const snapshot = buildQuestSnapshot({
+      ...base,
+      deposits: [
+        { amountUsd: 60, occurredAt: "2026-04-01T10:00:00.000Z" },
+        { amountUsd: 20, occurredAt: "2026-04-03T10:00:00.000Z" },
+      ],
+    });
+
+    const quest = snapshot.quests.find((entry) => entry.id === "second_deposit_7d")!;
+    expect(quest.status).toBe("in_progress");
+    expect(quest.progressCurrent).toBe(20);
+  });
+
+  /**
+   * `first_trade` needs one trade over the threshold, so the nearest miss is
+   * the honest measure — a running total would promise a completion that never
+   * arrives.
+   */
+  it("measures the trade quest on the largest single trade so far", () => {
+    const snapshot = buildQuestSnapshot({
+      ...base,
+      deposits: [{ amountUsd: 80, occurredAt: "2026-04-01T10:00:00.000Z" }],
+      fills: [
+        { builderFeeUsd: 0.01, cloid: null, occurredAt: "2026-04-02T10:00:00.000Z", price: 2, size: 1 },
+        { builderFeeUsd: 0.01, cloid: null, occurredAt: "2026-04-03T10:00:00.000Z", price: 4, size: 1 },
+      ],
+    });
+
+    const quest = snapshot.quests.find((entry) => entry.id === "first_trade")!;
+    expect(quest.status).toBe("in_progress");
+    // The $4 trade, not the $6 the two of them add up to.
+    expect(quest.progressCurrent).toBe(4);
+    expect(quest.progressLabel).toBe("$4 / $10");
+  });
+
   function telegramQuest(snapshot: ReturnType<typeof buildQuestSnapshot>) {
     return snapshot.quests.find((quest) => quest.id === "join_telegram_channel");
   }

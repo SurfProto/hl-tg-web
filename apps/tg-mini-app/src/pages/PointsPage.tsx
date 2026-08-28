@@ -378,7 +378,7 @@ export function PointsPage() {
                       />
                     </div>
                     <div className="editorial-mono mt-2 text-xs text-muted">
-                      {quest.progressCurrent}/{quest.progressTarget}
+                      {quest.progressLabel ?? `${quest.progressCurrent}/${quest.progressTarget}`}
                     </div>
                   </div>
                 </div>

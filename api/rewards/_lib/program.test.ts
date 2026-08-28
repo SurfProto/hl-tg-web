@@ -43,6 +43,7 @@ vi.mock("@repo/hyperliquid-sdk", () => ({ HyperliquidClient: vi.fn() }));
 
 function config(): RewardsConfig {
   return {
+    builderAddress: null,
     firstTradeThresholdUsd: 50,
     fundedDepositThresholdUsd: 50,
     hyperliquidTestnet: false,

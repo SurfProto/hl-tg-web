@@ -15,6 +15,11 @@ import {
  * no deployed handler imports. Setting the variable has no effect on the API.
  */
 export interface RewardsConfig {
+  /**
+   * The builder address fees are paid to, which is also the key the daily
+   * builder-fills export is published under. Public, not a secret.
+   */
+  builderAddress: string | null;
   firstTradeThresholdUsd: number;
   fundedDepositThresholdUsd: number;
   hyperliquidTestnet: boolean;
@@ -74,6 +79,7 @@ export function getRewardsConfig(env: NodeJS.ProcessEnv = process.env): RewardsC
   const weeklyWinnerCount = Math.max(1, Math.floor(getNumber(env, "REWARDS_WEEKLY_WINNER_COUNT", 3)));
 
   return {
+    builderAddress: env.VITE_BUILDER_ADDRESS ?? null,
     firstTradeThresholdUsd: getNumber(
       env,
       "REWARDS_FIRST_TRADE_THRESHOLD_USD",

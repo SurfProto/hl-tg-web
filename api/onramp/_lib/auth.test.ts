@@ -165,6 +165,61 @@ describe("requirePrivySession", () => {
     );
   });
 
+  /**
+   * An unknown kid triggers one forced JWKS refetch — a genuine rotation needs
+   * exactly one. Unthrottled, every attacker-minted kid bought an outbound
+   * request to Privy: an unauthenticated lever on our JWKS access.
+   */
+  it("throttles the forced refresh an unknown kid triggers", async () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ec", {
+      namedCurve: "prime256v1",
+    });
+    const publicJwk = publicKey.export({ format: "jwk" }) as JsonWebKey;
+    process.env.PRIVY_JWKS_URL = "https://privy.example/jwks-throttle.json";
+
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () =>
+        new Response(
+          JSON.stringify({
+            keys: [{ ...publicJwk, use: "sig", alg: "ES256", kid: "kid-1" }],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+    const rogueToken = () =>
+      createJwt(
+        {
+          sub: "did:privy:user:123",
+          iss: "https://auth.privy.io",
+          aud: "privy-app-id",
+          exp: Math.floor(Date.now() / 1000) + 60,
+        },
+        privateKey.export({ format: "pem", type: "pkcs8" }).toString(),
+        { alg: "ES256", typ: "JWT", kid: "kid-unknown" },
+      );
+
+    await expect(
+      requirePrivySession(
+        { headers: { authorization: `Bearer ${rogueToken()}` } },
+        "privy-app-id",
+      ),
+    ).rejects.toThrowError(expect.objectContaining({ statusCode: 401 }));
+    // Initial cache load plus the one forced refresh.
+    const outboundAfterFirst = fetchSpy.mock.calls.length;
+
+    await expect(
+      requirePrivySession(
+        { headers: { authorization: `Bearer ${rogueToken()}` } },
+        "privy-app-id",
+      ),
+    ).rejects.toThrowError(expect.objectContaining({ statusCode: 401 }));
+
+    // The second unknown kid inside the cooldown buys no outbound request.
+    expect(fetchSpy.mock.calls.length).toBe(outboundAfterFirst);
+  });
+
   it("rejects tokens for a different app audience", async () => {
     const { privateKey, publicKey } = generateKeyPairSync("ec", {
       namedCurve: "prime256v1",

@@ -36,7 +36,15 @@ const JWKS_TTL_MS = 5 * 60 * 1000;
 // Cap whatever Cache-Control the JWKS endpoint sends. Honouring a long max-age
 // means a Privy key rotation locks every user out until the cache expires.
 const JWKS_MAX_TTL_MS = 10 * 60 * 1000;
+// The unknown-kid refetch happens at most once a minute per URL. An unknown
+// kid is either a genuine rotation — one refetch repopulates the cache for
+// everyone — or an attacker-minted token, and unthrottled, each such token
+// bought an outbound request to Privy: an unauthenticated lever to get our
+// JWKS access rate-limited and real users 401'd. During a genuine rotation
+// under attack, the normal TTL expiry still repopulates the cache.
+const JWKS_FORCED_REFRESH_COOLDOWN_MS = 60 * 1000;
 const jwksCache = new Map<string, { expiresAt: number; keys: JsonWebKey[] }>();
+const jwksForcedRefreshAt = new Map<string, number>();
 
 function decodeBase64Url(value: string): Buffer {
   return Buffer.from(value, "base64url");
@@ -182,7 +190,15 @@ async function getVerificationKey(header: PrivyJwtHeader): Promise<KeyObject> {
 
   // Unknown kid usually means Privy rotated its signing keys since we cached
   // the set. Refetch once before rejecting, otherwise every request 401s until
-  // the cache expires.
+  // the cache expires — but at most once per cooldown window, or every
+  // garbage kid costs an outbound request (see JWKS_FORCED_REFRESH_COOLDOWN_MS).
+  const lastForcedAt = jwksForcedRefreshAt.get(jwksUrl) ?? 0;
+  if (Date.now() - lastForcedAt < JWKS_FORCED_REFRESH_COOLDOWN_MS) {
+    throw new HttpError(401, "UNAUTHORIZED", "Missing or invalid access token");
+  }
+  // Stamped before the await so a concurrent burst shares this one refetch.
+  jwksForcedRefreshAt.set(jwksUrl, Date.now());
+
   const rotated = findJwk(header, await fetchJwks(jwksUrl, true));
   if (!rotated) {
     throw new HttpError(401, "UNAUTHORIZED", "Missing or invalid access token");

@@ -20,6 +20,7 @@ const user: EligibleUser = {
     usdc_deposits: true,
   },
   channelStatus: null,
+  channelTarget: null,
 };
 
 function createHarness() {
@@ -207,5 +208,56 @@ describe("runNotificationWorkerOnce", () => {
     expect(repository.listPendingTelegramEvents).toHaveBeenCalled();
     expect(errorSpy).toHaveBeenCalled();
     errorSpy.mockRestore();
+  });
+
+  /**
+   * The channel row used to be written once and never updated, so after a user
+   * linked a different Telegram account their fills and liquidation alerts
+   * kept going to the previous chat — someone else's, possibly.
+   */
+  it("re-points the channel only when the linked Telegram account changed", async () => {
+    const current = { ...user, userId: "user-current", channelTarget: "123" };
+    const relinked = {
+      ...user,
+      userId: "user-relinked",
+      telegramId: "999",
+      channelTarget: "123",
+    };
+
+    const repository: NotificationRepository = {
+      listEligibleUsers: vi.fn().mockResolvedValue([current, relinked]),
+      ensureTelegramChannel: vi.fn(),
+      getRuntimeState: (async () => null) as NotificationRepository["getRuntimeState"],
+      setRuntimeState: vi.fn(),
+      listSuccessfulDepositOrders: vi.fn().mockResolvedValue([]),
+      enqueueEvent: vi.fn(),
+      listPendingTelegramEvents: vi.fn(async () => []),
+      markEventSent: vi.fn(),
+      markEventRetry: vi.fn(),
+      markEventFailed: vi.fn(),
+      recordChannelDelivery: vi.fn(),
+      updateChannelStatus: vi.fn(),
+    };
+    const marketData: MarketDataService = {
+      getFills: vi.fn().mockResolvedValue([]),
+      getPositions: vi.fn().mockResolvedValue([]),
+      getMids: vi.fn().mockResolvedValue({}),
+    };
+    const telegram: TelegramClient = {
+      sendMessage: vi.fn(async () => ({ ok: true })),
+    };
+
+    await runNotificationWorkerOnce({
+      repository,
+      marketData,
+      telegram,
+      now: new Date("2026-04-14T12:00:00.000Z"),
+    });
+
+    expect(repository.ensureTelegramChannel).toHaveBeenCalledTimes(1);
+    expect(repository.ensureTelegramChannel).toHaveBeenCalledWith(
+      "user-relinked",
+      "999",
+    );
   });
 });

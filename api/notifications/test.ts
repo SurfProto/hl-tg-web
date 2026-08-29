@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from "../_lib/fetch-with-timeout";
+import { enforceRateLimit } from "../market/_lib/rate-limit";
 import { requirePrivySession } from "../onramp/_lib/auth";
 import { ensureMethod, HttpError, json, withJsonRoute } from "../onramp/_lib/http";
 import { getProfileConfig } from "../profile/_lib/config";
@@ -38,6 +40,17 @@ export default async function handler(request: any, response: any) {
       throw new HttpError(404, "PROFILE_NOT_FOUND", "No profile for this session");
     }
 
+    // Telegram caps the bot's sends globally (~30/s across every user), so an
+    // unmetered self-test was a lever for one account to get the bot 429'd and
+    // silence everyone's real alerts. Three a minute answers "do my
+    // notifications work?" just as well.
+    await enforceRateLimit({
+      scope: "notifications-test",
+      id: profile.id,
+      limit: 3,
+      windowSeconds: 60,
+    });
+
     const channel = await getTelegramChannel(config, profile.id);
     if (!channel) {
       throw new HttpError(
@@ -54,15 +67,28 @@ export default async function handler(request: any, response: any) {
 
     // The worker's client is built around its own run loop and repository. This
     // is one request; importing that machinery to make it would cost more than
-    // the call itself.
-    const telegramResponse = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      body: JSON.stringify({
-        chat_id: channel.target,
-        disable_web_page_preview: true,
-        text: TEST_MESSAGE,
-      }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
+    // the call itself. Deadlined like every other outbound call — this was the
+    // codebase's one bare fetch, and a stalled Telegram held the function open
+    // to the platform limit.
+    const telegramResponse = await fetchWithTimeout(
+      `https://api.telegram.org/bot${botToken}/sendMessage`,
+      {
+        body: JSON.stringify({
+          chat_id: channel.target,
+          disable_web_page_preview: true,
+          text: TEST_MESSAGE,
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      },
+    ).catch(() => {
+      // A timeout leaves the outcome unknown, so the channel probe is not
+      // recorded — only a definite refusal should mark a channel broken.
+      throw new HttpError(
+        502,
+        "TELEGRAM_SEND_FAILED",
+        "Telegram could not deliver the message. Try again shortly.",
+      );
     });
 
     const payload = (await telegramResponse.json().catch(() => ({}))) as {

@@ -63,7 +63,12 @@ async function detectUserEvents(
   user: EligibleUser,
   now: Date,
 ): Promise<void> {
-  await repository.ensureTelegramChannel(user.userId, user.telegramId);
+  // Missing row, or a re-linked Telegram account whose channel still points
+  // at the previous chat — re-point it (which also clears the old chat's
+  // status). An unchanged channel takes no write.
+  if (user.channelTarget !== user.telegramId) {
+    await repository.ensureTelegramChannel(user.userId, user.telegramId);
+  }
 
   const [fills, positions, depositOrders, fillState, liquidationState, depositState] =
     await Promise.all([

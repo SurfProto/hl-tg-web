@@ -109,19 +109,34 @@ class SupabaseNotificationRepository implements NotificationRepository {
           language: row.language ?? "en",
           preferences: prefs,
           channelStatus: channel?.status ?? null,
+          channelTarget: channel?.target ?? null,
         } satisfies EligibleUser;
       })
-      .filter(
-        (user) =>
-          user.channelStatus !== "blocked" &&
-          user.channelStatus !== "invalid" &&
+      .filter((user) => {
+        // A blocked or invalid verdict belongs to the chat it was recorded
+        // against. When the user has since linked a different Telegram
+        // account, the old chat's block must not keep the new one ineligible
+        // forever — let them through so the channel row gets re-pointed.
+        const verdictIsForCurrentChat = user.channelTarget === user.telegramId;
+        const unreachable =
+          verdictIsForCurrentChat &&
+          (user.channelStatus === "blocked" || user.channelStatus === "invalid");
+        return (
+          !unreachable &&
           (user.preferences.liquidation_alerts ||
             user.preferences.order_fills ||
-            user.preferences.usdc_deposits),
-      );
+            user.preferences.usdc_deposits)
+        );
+      });
   }
 
   async ensureTelegramChannel(userId: string, telegramId: string): Promise<void> {
+    // A real merge, not ignoreDuplicates: written once and never updated, the
+    // row kept delivering fills and liquidation alerts to a chat the user had
+    // re-linked away from. Status and errors reset with the target, because a
+    // block recorded against the old chat says nothing about the new one.
+    // Callers gate on channelTarget !== telegramId, so an unchanged channel
+    // never takes this write.
     const { error } = await this.supabase
       .from("notification_channels")
       .upsert(
@@ -129,10 +144,13 @@ class SupabaseNotificationRepository implements NotificationRepository {
           user_id: userId,
           channel: "telegram",
           target: telegramId,
+          status: "active",
+          last_error_code: null,
+          last_error_message: null,
+          updated_at: new Date().toISOString(),
         },
         {
           onConflict: "user_id,channel",
-          ignoreDuplicates: true,
         },
       );
 

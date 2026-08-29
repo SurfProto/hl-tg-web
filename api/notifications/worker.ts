@@ -1,3 +1,4 @@
+import { constantTimeEquals } from "../_lib/secret-compare";
 import { HttpError, json, withJsonRoute } from "../onramp/_lib/http";
 
 /**
@@ -45,8 +46,10 @@ function ensureCronRequest(request: any) {
     throw new HttpError(500, "CRON_SECRET_MISSING", "Missing CRON_SECRET");
   }
 
+  // Constant-time, like the three rewards crons — this was the fourth copy of
+  // "verify cron secret" and the one that had drifted to a plain !==.
   const authorization = request.headers?.authorization ?? request.headers?.Authorization;
-  if (authorization !== `Bearer ${cronSecret}`) {
+  if (!constantTimeEquals(authorization, `Bearer ${cronSecret}`)) {
     throw new HttpError(401, "UNAUTHORIZED", "Missing or invalid cron authorization");
   }
 }

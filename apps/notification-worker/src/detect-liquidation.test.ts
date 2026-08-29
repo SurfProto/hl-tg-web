@@ -13,6 +13,7 @@ const user: EligibleUser = {
     usdc_deposits: true,
   },
   channelStatus: "active",
+  channelTarget: "123",
 };
 
 const T1 = "2026-01-01T00:00:00.000Z";

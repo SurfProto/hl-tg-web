@@ -17,6 +17,7 @@ import {
   getFillCheckpointStatus,
   getFundedReferralStats,
   getGrantedQuestIds,
+  getLargestTradeUsd,
   getOrCreateActiveSeason,
   getOrCreateRewardsUser,
   getRewardLedgerEntries,
@@ -153,6 +154,7 @@ export async function getRewardsDashboard(
     checkpoint,
     checkInStreak,
     lifetimeXp,
+    largestTradeUsd,
   ] = await Promise.all([
     getQualifyingDeposits(config, user.id, season.starts_at),
     getFundedReferralStats(config, user.id, season.starts_at, config.fundedDepositThresholdUsd),
@@ -162,6 +164,7 @@ export async function getRewardsDashboard(
     getFillCheckpointStatus(config, user.id, season.id),
     getCheckInStreak(config, user.id, season.id, now),
     getLifetimeXp(config, user.id),
+    getLargestTradeUsd(config, user.id, season.id),
   ]);
 
   const questSnapshot = buildQuestSnapshot({
@@ -175,6 +178,9 @@ export async function getRewardsDashboard(
     fundedDepositThresholdUsd: config.fundedDepositThresholdUsd,
     grantedQuestIds,
     hasFundedReferral: referralStats.fundedReferralCount > 0,
+    // The read path has no fills, so the trade quest's progress comes from what
+    // the ledger already recorded rather than from trades it cannot see.
+    largestTradeUsd,
   });
 
   // Ranked, truncated and anonymised by the database. Two bounded queries

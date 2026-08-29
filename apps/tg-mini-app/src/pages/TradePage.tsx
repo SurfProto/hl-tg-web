@@ -98,6 +98,13 @@ export function TradePage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [setupVisible, setSetupVisible] = useState(false);
   const setupWalletRef = useRef<string | null>(null);
+  // Guards the confirm tap synchronously. placeOrder.isPending disables the
+  // button only after React Query's state change re-renders, so two taps
+  // landing in the same frame both reached mutateAsync — two live orders with
+  // two distinct cloids. The fiat checkout solved this class with an
+  // idempotency key; the trade path gets the ref because each tap must mint a
+  // fresh cloid once an order actually settles.
+  const confirmInFlightRef = useRef(false);
 
   const side: "buy" | "sell" = useMemo(() => {
     const requestedSide = searchParams.get("side");
@@ -471,6 +478,16 @@ export function TradePage() {
   };
 
   const handleConfirmOrder = async () => {
+    if (!reviewedTrade || confirmInFlightRef.current) return;
+    confirmInFlightRef.current = true;
+    try {
+      await submitReviewedOrder();
+    } finally {
+      confirmInFlightRef.current = false;
+    }
+  };
+
+  const submitReviewedOrder = async () => {
     if (!reviewedTrade) return;
     setSubmitError(null);
     haptics.medium();

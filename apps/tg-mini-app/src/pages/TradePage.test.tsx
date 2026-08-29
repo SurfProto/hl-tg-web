@@ -193,6 +193,35 @@ describe("TradePage", () => {
     expect(screen.getByRole("button", { name: "View positions" })).toBeInTheDocument();
   });
 
+  /**
+   * placeOrder.isPending disables the button only after React Query's state
+   * change re-renders, so two taps landing in the same frame used to both
+   * reach mutateAsync — two live orders with two distinct cloids.
+   */
+  it("places one order however fast Confirm is tapped twice", async () => {
+    let release!: () => void;
+    mutateAsync.mockImplementation(
+      () =>
+        new Promise<Record<string, never>>((resolve) => {
+          release = () => resolve({});
+        }),
+    );
+    renderTrade();
+
+    fireEvent.click(screen.getByRole("button", { name: "Enter amount" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review order" }));
+
+    const confirm = screen.getByRole("button", { name: "Confirm order" });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+
+    release();
+    await waitFor(() =>
+      expect(screen.getByText("Order placed")).toBeInTheDocument(),
+    );
+    expect(mutateAsync).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps the reviewed order intact when trading setup blocks confirmation", () => {
     canTrade = false;
     authenticated = true;

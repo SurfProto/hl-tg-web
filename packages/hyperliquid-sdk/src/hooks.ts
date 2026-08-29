@@ -918,11 +918,14 @@ export function useFills() {
  */
 export function useHistoricalOrders() {
   const { client } = useHyperliquid();
+  const scope = useAccountScope();
 
   return useQuery({
-    queryKey: ["historicalOrders"],
+    // Account data, so the account belongs in the key — without it a login as
+    // someone else served the previous user's order history from cache.
+    queryKey: ["historicalOrders", scope],
     queryFn: () => client?.getHistoricalOrders(),
-    enabled: !!client,
+    enabled: !!client && Boolean(scope),
     staleTime: 1000 * 60, // 1 minute
   });
 }
@@ -1004,11 +1007,13 @@ export function useUpdateIsolatedMargin() {
  */
 export function usePortfolio() {
   const { client } = useHyperliquid();
+  const scope = useAccountScope();
 
   return useQuery({
-    queryKey: ["portfolio"],
+    // Account data, so the account belongs in the key — see useAccountScope.
+    queryKey: ["portfolio", scope],
     queryFn: () => client?.getPortfolio(),
-    enabled: !!client,
+    enabled: !!client && Boolean(scope),
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 }

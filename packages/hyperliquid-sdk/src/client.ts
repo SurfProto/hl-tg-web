@@ -1316,7 +1316,13 @@ export class HyperliquidClient {
     ) {
       return this.userStateCache.data;
     }
-    const cache = await this.ensureMarketCache();
+    await this.ensureMarketCache();
+    // Loaded dexes only, like getMids and refreshAssetCtxs: this runs before
+    // every leveraged order via ensurePerpLeverage, where fanning out to every
+    // named dex (247 on testnet) is what rate-limited the order in the first
+    // place. Positions on HIP-3 dexes still surface, because enumerating
+    // markets — which the app does at startup — loads every dex.
+    const perpDexs = this.getLoadedPerpDexs();
     const [
       baseState,
       spotState,
@@ -1334,7 +1340,7 @@ export class HyperliquidClient {
       }).catch(() => null),
       this.getUserAbstraction(),
       this.getUserDexAbstraction(),
-      ...cache.perpDexs.map(({ dex }) =>
+      ...perpDexs.map(({ dex }) =>
         this.postInfo<any>({
           type: "clearinghouseState",
           dex,
@@ -1348,7 +1354,7 @@ export class HyperliquidClient {
       spotState,
       abstraction,
       hip3DexAbstractionEnabled: hip3DexAbstraction,
-      perpDexs: cache.perpDexs,
+      perpDexs,
       dexStates,
     });
     this.userStateCache = { data: result, expiresAt: Date.now() + 2000 };

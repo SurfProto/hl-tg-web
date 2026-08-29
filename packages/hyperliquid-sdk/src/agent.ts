@@ -22,37 +22,22 @@ export function getStoredAgentKey(userAddress: string): `0x${string}` | null {
   }
 }
 
-/**
- * The write helpers swallow storage failures like the read helpers do. A
- * storage-restricted WebView throws on setItem, and an unguarded write
- * crashed the approval flow after the on-chain approval had already
- * succeeded. Losing the write is the better failure: this session trades on
- * the in-memory key, and the next load walks the reauthorize path.
- */
 export function storeAgentKey(
   userAddress: string,
   privateKey: `0x${string}`,
 ): void {
-  try {
-    localStorage.setItem(
-      `${AGENT_KEY_PREFIX}${userAddress.toLowerCase()}`,
-      privateKey,
-    );
-  } catch {
-    console.warn("[agent] could not persist the agent key; it will live for this session only");
-  }
+  localStorage.setItem(
+    `${AGENT_KEY_PREFIX}${userAddress.toLowerCase()}`,
+    privateKey,
+  );
 }
 
 export function clearStoredAgentKey(userAddress: string): void {
-  try {
-    localStorage.removeItem(`${AGENT_KEY_PREFIX}${userAddress.toLowerCase()}`);
-    localStorage.removeItem(`${AGENT_EXPIRY_PREFIX}${userAddress.toLowerCase()}`);
-    localStorage.removeItem(
-      `${AGENT_APPROVED_AT_PREFIX}${userAddress.toLowerCase()}`,
-    );
-  } catch {
-    // Called on error paths; a storage failure must not mask the original.
-  }
+  localStorage.removeItem(`${AGENT_KEY_PREFIX}${userAddress.toLowerCase()}`);
+  localStorage.removeItem(`${AGENT_EXPIRY_PREFIX}${userAddress.toLowerCase()}`);
+  localStorage.removeItem(
+    `${AGENT_APPROVED_AT_PREFIX}${userAddress.toLowerCase()}`,
+  );
 }
 
 /**
@@ -66,14 +51,10 @@ export function storeAgentApprovedAt(
   userAddress: string,
   approvedAt: number,
 ): void {
-  try {
-    localStorage.setItem(
-      `${AGENT_APPROVED_AT_PREFIX}${userAddress.toLowerCase()}`,
-      String(approvedAt),
-    );
-  } catch {
-    // See storeAgentKey: losing the write beats crashing the approval flow.
-  }
+  localStorage.setItem(
+    `${AGENT_APPROVED_AT_PREFIX}${userAddress.toLowerCase()}`,
+    String(approvedAt),
+  );
 }
 
 export function getStoredAgentApprovedAt(userAddress: string): number | null {
@@ -90,14 +71,10 @@ export function getStoredAgentApprovedAt(userAddress: string): number | null {
 }
 
 export function storeAgentExpiry(userAddress: string, expiryMs: number): void {
-  try {
-    localStorage.setItem(
-      `${AGENT_EXPIRY_PREFIX}${userAddress.toLowerCase()}`,
-      String(expiryMs),
-    );
-  } catch {
-    // See storeAgentKey: losing the write beats crashing the approval flow.
-  }
+  localStorage.setItem(
+    `${AGENT_EXPIRY_PREFIX}${userAddress.toLowerCase()}`,
+    String(expiryMs),
+  );
 }
 
 export function getStoredAgentExpiry(userAddress: string): number | null {

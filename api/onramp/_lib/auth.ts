@@ -6,6 +6,7 @@ import {
 } from "node:crypto";
 
 import { fetchWithTimeout } from "../../_lib/fetch-with-timeout";
+import { enforceRateLimit, getRequestIp } from "../../market/_lib/rate-limit";
 import { HttpError } from "./http";
 
 interface PrivyJwtHeader {
@@ -238,6 +239,18 @@ function verifyJwtSignature(accessToken: string, key: KeyObject) {
 }
 
 export async function requirePrivySession(request: any, expectedAppId: string | null): Promise<PrivySession> {
+  // Per-IP, before any parsing or signature work, so a flood burns the limit
+  // rather than CPU and JWKS traffic. This is the one gate every
+  // Privy-authenticated route passes through — rewards, profile, onramp and
+  // notifications carried no rate limit at all, while the account and market
+  // routes had theirs (120 and 240 a minute) from the start. Fails open like
+  // those do: an unreachable Redis must not become a full outage.
+  await enforceRateLimit({
+    scope: "privy-auth",
+    id: getRequestIp(request),
+    limit: 120,
+  });
+
   const accessToken = parseBearerToken(request);
   const parts = accessToken.split(".");
   if (parts.length !== 3) {

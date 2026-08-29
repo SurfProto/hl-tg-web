@@ -250,7 +250,7 @@ Applied this session, one at a time, each verified:
 |---|---|---|
 | `001` `telegram_id drop not null` | `NOT NULL` — every new user's rewards 500'd | nullable |
 | `006_weekly_raffle_runs` | table and both RPCs absent — raffle 500'd | present, RLS on |
-| `003_auth_data_boundary_hardening` | pre-hardening policies live | service-role-only |
+| `003z_auth_data_boundary_hardening` | pre-hardening policies live | service-role-only |
 | `005_profile_data_boundary_hardening` | same | service-role-only |
 
 `004` and `005_platform` remain unapplied, correctly — they belong to the
@@ -281,9 +281,10 @@ minute of 006 landing.
 ```
 001_identity_and_rls
 002_onramp_v1
-003_auth_data_boundary_hardening   ┐
-003_notifications                  ├ three files share prefix 003
+003_notifications                  ┐ two files share prefix 003
 003_rewards_v1                     ┘
+003z_auth_data_boundary_hardening  ← renamed from 003_ so a clean replay sorts
+                                     it after the tables it hardens
 004_platform_orchestration         (parked layer — do not apply)
 005_platform_hardening             ┐ two files share prefix 005
 005_profile_data_boundary_hardening┘

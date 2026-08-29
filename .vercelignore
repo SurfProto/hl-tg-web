@@ -1,0 +1,5 @@
+# Vercel builds every non-underscore .ts under api/ into a live function.
+# Underscore paths (_lib, _parked) are excluded by convention; test files are
+# not, so without this each api/**/*.test.ts deployed as a routable endpoint
+# that imports vitest and crashes on invocation.
+api/**/*.test.ts

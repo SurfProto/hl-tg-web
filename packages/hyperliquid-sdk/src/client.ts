@@ -877,8 +877,12 @@ export class HyperliquidClient {
       return this.builderApprovalCache.result;
     }
 
+    // The approval must cover the fee every order will actually carry, not
+    // merely exist: an account approved below the configured rate passed the
+    // old `> 0` check and then had every single order rejected upstream with
+    // a raw exchange error, instead of being asked to re-approve once.
     const maxFee = await this.getMaxBuilderFee(getBuilderAddress());
-    if (maxFee <= 0) {
+    if (maxFee < (getBuilderConfig()?.f ?? 0)) {
       throw new Error("Builder fee approval is required before trading.");
     }
 

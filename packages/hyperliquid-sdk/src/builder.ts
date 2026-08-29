@@ -65,13 +65,19 @@ export async function approveBuilderFee(
 
 /**
  * Check if builder fee is approved for the user.
+ *
+ * Approved means approved *at the configured rate*: every order carries
+ * `f: _config.feeTenthsBp`, so an approval below it is as good as none — the
+ * exchange rejects each order. Testing `> 0` here while orders sent the full
+ * fee left such accounts looking approved in the setup flow and failing on
+ * every trade.
  */
 export async function isBuilderFeeApproved(
   client: HyperliquidClient,
 ): Promise<boolean> {
   if (!isBuilderConfigured()) return true;
   const maxFee = await client.getMaxBuilderFee(_config.address);
-  return maxFee > 0;
+  return maxFee >= _config.feeTenthsBp;
 }
 
 /**

@@ -12,7 +12,6 @@ const SUB_ROUTES_HIDE_NAV = [
   '/trade/',
   '/account/deposit',
   '/account/withdraw',
-  '/account/transfer',
   '/account/swap',
   '/account/settings',
 ];

@@ -656,16 +656,6 @@
     "description": "The app has fallen back to standard balance routing. Trading still works, but re-enabling unified account restores the preferred UX.",
     "cta": "Review account mode"
   },
-  "transfer": {
-    "title": "Transfer USDC",
-    "unifiedHint": "Advanced tool for standard-mode fallback. Unified accounts usually do not need manual perp/spot transfers.",
-    "flipDirection": "Swap transfer direction",
-    "amount": "Amount",
-    "availableToTransfer": "Available to transfer {{amount}} USDC",
-    "confirm": "Confirm transfer",
-    "success": "Transfer submitted successfully.",
-    "failed": "Transfer failed"
-  },
   "agentRecovery": {
     "title": "Trading needs reauthorization",
     "didNotExecute": "Your {{action}} was not executed. Nothing changed on your account.",

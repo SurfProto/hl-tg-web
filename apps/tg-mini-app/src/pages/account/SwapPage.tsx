@@ -202,7 +202,7 @@ export function SwapPage() {
               }
               className="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-primary transition-colors active:bg-surface"
             >
-              MAX
+              {t("common.max")}
             </button>
           </div>
 

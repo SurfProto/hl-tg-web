@@ -149,6 +149,82 @@ describe("connect", () => {
 
     await expect(promise).rejects.toThrow("handshake failed");
   });
+
+  /**
+   * The old in-flight path handed late callers a polling interval that could
+   * only resolve — when the attempt errored they hung forever, subscriptions
+   * never registered, and the interval leaked.
+   */
+  it("shares one in-flight attempt and fails every caller together", async () => {
+    const manager = new WebSocketManager();
+    const first = manager.connect();
+    const second = manager.connect();
+
+    expect(sockets()).toHaveLength(1);
+    latest().fail(new Error("handshake failed"));
+
+    await expect(first).rejects.toThrow("handshake failed");
+    await expect(second).rejects.toThrow("handshake failed");
+  });
+
+  it("settles a caller whose socket closed before it ever opened", async () => {
+    const manager = new WebSocketManager();
+    const promise = manager.connect();
+
+    latest().drop();
+
+    await expect(promise).rejects.toThrow(/closed before opening/);
+  });
+});
+
+describe("keepalive", () => {
+  it("pings on an interval so a quiet connection is not culled", async () => {
+    // The exchange drops a connection with no traffic in about a minute; a
+    // subscription that happened to be quiet was reconnecting every minute.
+    const manager = new WebSocketManager();
+    const socket = await connected(manager);
+
+    vi.advanceTimersByTime(30_000);
+    expect(socket.frames()).toContainEqual({ method: "ping" });
+  });
+
+  it("stops pinging after a disconnect", async () => {
+    const manager = new WebSocketManager();
+    const socket = await connected(manager);
+
+    manager.disconnect();
+    const framesBefore = socket.sent.length;
+    vi.advanceTimersByTime(120_000);
+
+    expect(socket.sent.length).toBe(framesBefore);
+  });
+});
+
+describe("user events", () => {
+  it("subscribes with the account the events are for", async () => {
+    // The exchange rejects a bare userEvents subscription, which left the
+    // fast balance-refresh path dead and the account connection silent.
+    const manager = new WebSocketManager();
+    const socket = await connected(manager);
+
+    manager.subscribe("userEvents:0xabc", () => {});
+
+    expect(socket.frames().at(-1)).toEqual({
+      method: "subscribe",
+      subscription: { type: "userEvents", user: "0xabc" },
+    });
+  });
+
+  it("routes events, which arrive on the 'user' channel", async () => {
+    const manager = new WebSocketManager();
+    const socket = await connected(manager);
+    const callback = vi.fn();
+    manager.subscribe("userEvents:0xabc", callback);
+
+    socket.emit({ channel: "user", data: { fills: [] } });
+
+    expect(callback).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("subscriptions", () => {
@@ -436,19 +512,26 @@ describe("reconnect back-off", () => {
     expect(sockets()).toHaveLength(3);
   });
 
-  it("gives up after ten failed attempts", async () => {
+  /**
+   * The old implementation stopped for good after ten attempts (~17 minutes
+   * of backoff), so a phone that lost the network for a while came back to a
+   * UI whose socket silently never reconnected until a full reload. The delay
+   * caps instead; the retries never stop.
+   */
+  it("never gives up — the delay caps at thirty seconds", async () => {
     const manager = new WebSocketManager();
     manager.connect().catch(() => {});
 
-    for (let attempt = 1; attempt <= 10; attempt++) {
+    // Climb well past where the old implementation gave up.
+    for (let attempt = 1; attempt <= 14; attempt++) {
       latest().drop();
-      vi.advanceTimersByTime(1_000 * 2 ** (attempt - 1));
+      vi.advanceTimersByTime(30_000);
     }
-    expect(sockets()).toHaveLength(11);
+    expect(sockets()).toHaveLength(15);
 
     latest().drop();
-    vi.advanceTimersByTime(10 * 60 * 1_000);
-    expect(sockets()).toHaveLength(11);
+    vi.advanceTimersByTime(30_000);
+    expect(sockets()).toHaveLength(16);
   });
 });
 

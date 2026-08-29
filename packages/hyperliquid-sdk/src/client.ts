@@ -1181,7 +1181,16 @@ export class HyperliquidClient {
   }
 
   subscribeToUserEvents(callback: (data: WsMessage) => void): () => void {
-    return this.wsManager.subscribe("userEvents", callback);
+    // The exchange requires the account on this subscription — sent bare it
+    // was rejected, so the fast balance-refresh path never saw an event and
+    // the account connection carried no traffic at all.
+    if (!this.walletAddress) {
+      return () => {};
+    }
+    return this.wsManager.subscribe(
+      `userEvents:${this.walletAddress}`,
+      callback,
+    );
   }
 
   subscribeToAllMids(callback: (data: WsMessage) => void): () => void {

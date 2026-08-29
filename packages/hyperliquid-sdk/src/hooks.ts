@@ -521,13 +521,19 @@ export function useMids() {
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
-    client.connectWs().then(() => {
-      unsubscribe = client.subscribeToAllMids((data: WsMessage) => {
-        if (data.channel === "allMids") {
-          queryClient.setQueryData(["mids"], data.data);
-        }
-      });
-    });
+    client
+      .connectWs()
+      .then(() => {
+        unsubscribe = client.subscribeToAllMids((data: WsMessage) => {
+          if (data.channel === "allMids") {
+            queryClient.setQueryData(["mids"], data.data);
+          }
+        });
+      })
+      // connect() can reject; the manager keeps retrying and logs on its own,
+      // and the polling fallback covers the gap — this only stops the
+      // rejection surfacing as an unhandled one.
+      .catch(() => {});
     return () => {
       unsubscribe?.();
     };
@@ -637,11 +643,17 @@ export function useUserState() {
   useEffect(() => {
     if (!client) return;
     let unsubscribe: (() => void) | undefined;
-    client.connectWs().then(() => {
-      unsubscribe = client.subscribeToUserEvents(() => {
-        queryClient.invalidateQueries({ queryKey: ["userState"] });
-      });
-    });
+    client
+      .connectWs()
+      .then(() => {
+        unsubscribe = client.subscribeToUserEvents(() => {
+          queryClient.invalidateQueries({ queryKey: ["userState"] });
+        });
+      })
+      // connect() can reject; the manager keeps retrying and logs on its own,
+      // and the snapshot poll covers the gap — this only stops the rejection
+      // surfacing as an unhandled one.
+      .catch(() => {});
     return () => {
       unsubscribe?.();
     };
@@ -2005,7 +2017,10 @@ export function useOrderbookWs(coin: string) {
       });
     };
 
-    setupSubscription();
+    setupSubscription().catch(() => {
+      // The manager retries and logs on its own; this only stops the
+      // rejection surfacing as an unhandled one.
+    });
 
     return () => {
       if (unsubscribe) {
@@ -2038,7 +2053,10 @@ export function useTradesWs(coin: string) {
       });
     };
 
-    setupSubscription();
+    setupSubscription().catch(() => {
+      // The manager retries and logs on its own; this only stops the
+      // rejection surfacing as an unhandled one.
+    });
 
     return () => {
       if (unsubscribe) {
@@ -2075,7 +2093,10 @@ export function useCandlesWs(coin: string, interval: string = "1m") {
       );
     };
 
-    setupSubscription();
+    setupSubscription().catch(() => {
+      // The manager retries and logs on its own; this only stops the
+      // rejection surfacing as an unhandled one.
+    });
 
     return () => {
       if (unsubscribe) {
@@ -2106,7 +2127,10 @@ export function useUserEventsWs() {
       });
     };
 
-    setupSubscription();
+    setupSubscription().catch(() => {
+      // The manager retries and logs on its own; this only stops the
+      // rejection surfacing as an unhandled one.
+    });
 
     return () => {
       if (unsubscribe) {
@@ -2137,7 +2161,10 @@ export function useMidsWs() {
       });
     };
 
-    setupSubscription();
+    setupSubscription().catch(() => {
+      // The manager retries and logs on its own; this only stops the
+      // rejection surfacing as an unhandled one.
+    });
 
     return () => {
       if (unsubscribe) {

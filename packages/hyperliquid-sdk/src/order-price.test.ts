@@ -14,8 +14,20 @@ const CHEAP = { name: "CHEAP", priceDecimals: 5 };
 
 describe("limitSignificantFigures", () => {
   it("keeps at most the requested number of significant digits", () => {
-    expect(limitSignificantFigures("123456.789", 5)).toBe("12345");
     expect(limitSignificantFigures("1.23456789", 5)).toBe("1.2345");
+    expect(limitSignificantFigures("1234.5678", 5)).toBe("1234.5");
+  });
+
+  /**
+   * The regression. Integer digits past the cap were skipped, not kept, so
+   * every price gained a factor of ten per dropped digit: "104256" went to
+   * the exchange as "10425". The exchange allows integer prices regardless
+   * of significant figures, so the cap must only ever cut the fraction.
+   */
+  it("never drops integer digits — it drops the fraction instead", () => {
+    expect(limitSignificantFigures("104256", 5)).toBe("104256");
+    expect(limitSignificantFigures("123456.789", 5)).toBe("123456");
+    expect(limitSignificantFigures("10425.5", 5)).toBe("10425");
   });
 
   it("does not count leading zeros as significant", () => {
@@ -43,10 +55,29 @@ describe("formatPrice", () => {
     expect(formatPrice(0.000123456, CHEAP)).toBe("0.00012");
   });
 
-  it("caps at five significant figures", () => {
+  it("caps at five significant figures by cutting the fraction only", () => {
     expect(formatPrice(123456.7, { name: "BIG", priceDecimals: 2 })).toBe(
-      "12345",
+      "123456",
     );
+    expect(formatPrice(10425.5, { name: "MID", priceDecimals: 2 })).toBe(
+      "10425",
+    );
+  });
+
+  /**
+   * The BTC-scale scenario the old behavior broke: an aggressive market price
+   * for a six-figure asset must stay six figures. A buy formatted to "10712"
+   * could never cross the book; a sell formatted to "10088" kept none of its
+   * 3% slippage floor; a trigger at 110,000 was placed at 11,000.
+   */
+  it("keeps six-figure market prices at six figures", () => {
+    expect(formatPrice(getAggressiveMarketPrice(104256, "buy"), BTC)).toBe(
+      "107383",
+    );
+    expect(formatPrice(getAggressiveMarketPrice(104256, "sell"), BTC)).toBe(
+      "101128",
+    );
+    expect(formatPrice(110000, BTC)).toBe("110000");
   });
 
   it("rejects a price that is not a usable positive number", () => {

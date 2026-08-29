@@ -1,5 +1,6 @@
 import { buildHeaders, supabaseRequest } from "../../_lib/supabase";
 import { getSymbolCurrencies, type OnrampConfig } from "./config";
+import { HttpError } from "./http";
 import { normalizeOrderState } from "./normalize";
 import type { OnrampOrderStatus } from "./types";
 
@@ -59,8 +60,14 @@ interface UpdateOrderStatusInput {
   invoiceUrl: string | null;
   invoiceUrlExpiresAt: string | null;
   providerTouchedAt: string | null;
-  errorCode: string | null;
-  errorMessage: string | null;
+  /**
+   * Omitted means "leave the stored value alone". The provider's status
+   * payload carries no error fields, so the poll has nothing to say about
+   * them — and passing null wiped the error recorded at creation on the very
+   * next poll, leaving support looking at a failed order with no reason.
+   */
+  errorCode?: string | null;
+  errorMessage?: string | null;
 }
 
 function normalizeEmail(email: string | null | undefined): string | null {
@@ -230,10 +237,19 @@ export async function updateOwnedOrderStatus(
         invoice_url_expires_at: input.invoiceUrlExpiresAt,
         provider_touched_at: input.providerTouchedAt,
         last_synced_at: new Date().toISOString(),
+        // JSON.stringify drops undefined keys, so an omitted field is not
+        // part of the PATCH and the stored value survives.
         error_code: input.errorCode,
         error_message: input.errorMessage,
       }),
     },
   );
+
+  // A PATCH that matched nothing returns an empty representation — the order
+  // vanished between the ownership check and this write. That is a 404, not
+  // the mapOrderRow(undefined) crash and 500 it used to be.
+  if (!rows[0]) {
+    throw new HttpError(404, "ORDER_NOT_FOUND", "No owned onramp order found");
+  }
   return mapOrderRow(rows[0]);
 }

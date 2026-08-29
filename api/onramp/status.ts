@@ -44,8 +44,9 @@ export default async function handler(request: any, response: any) {
       invoiceUrl: order.invoice_url,
       invoiceUrlExpiresAt: order.invoice_url_expires_at,
       providerTouchedAt: order.touched_at,
-      errorCode: null,
-      errorMessage: null,
+      // No error fields: the provider's status payload carries none, and
+      // writing null here erased the error recorded at creation on the very
+      // next poll.
     });
 
     json(response, 200, {

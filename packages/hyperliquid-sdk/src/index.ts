@@ -10,6 +10,9 @@ export {
   validateOrderInput,
 } from "./order-validation";
 export type { OrderValidationMarket } from "./order-validation";
+// The one sanctioned way to cut a money amount to a decimal budget. Never
+// rounds upwards — a "Max" built on toFixed offered users more than they had.
+export { truncateToDecimals } from "./decimal";
 export {
   fetchAccountFills,
   fetchAccountOrders,

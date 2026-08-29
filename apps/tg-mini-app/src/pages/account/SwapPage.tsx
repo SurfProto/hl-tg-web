@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   SUPPORTED_STABLE_SWAP_ASSETS,
+  truncateToDecimals,
   useSpotBalance,
   useStableSwap,
   useUserState,
@@ -193,10 +194,10 @@ export function SwapPage() {
             <button
               type="button"
               onClick={() =>
+                // Cut, never round: toFixed(6) could carry float noise in
+                // `total - hold` up past the balance actually held.
                 setAmount(
-                  sourceBalance > 0
-                    ? sourceBalance.toFixed(6).replace(/\.?0+$/, "")
-                    : "",
+                  sourceBalance > 0 ? truncateToDecimals(sourceBalance, 6) : "",
                 )
               }
               className="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-primary transition-colors active:bg-surface"

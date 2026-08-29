@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useTranslation } from 'react-i18next';
-import { useUserState, useWithdraw } from '@repo/hyperliquid-sdk';
+import { truncateToDecimals, useUserState, useWithdraw } from '@repo/hyperliquid-sdk';
 import { StableBalanceList } from '../../components/StableBalanceList';
 
 export function WithdrawPage() {
@@ -21,6 +21,10 @@ export function WithdrawPage() {
     userState?.withdrawableBalance ??
     0;
   const destination = user?.wallet?.address;
+  // Cut, never round: toFixed turned 10.996 into "11.00", and the exchange
+  // rejects a withdrawal of more than the account holds. The label uses the
+  // same cut so "Available" never promises what Max cannot set.
+  const withdrawableCut = truncateToDecimals(withdrawable, 2);
 
   return (
     <div className="editorial-page px-4 py-5 space-y-4">
@@ -52,7 +56,7 @@ export function WithdrawPage() {
       <div className="rounded-[18px] border border-separator bg-white p-4 space-y-3">
         <div className="flex items-center justify-between">
           <label htmlFor="withdraw-amount" className="text-sm font-semibold text-foreground">{t('withdraw.amount')}</label>
-          <span className="text-xs text-muted">{t('withdraw.available', { amount: withdrawable.toFixed(2) })}</span>
+          <span className="text-xs text-muted">{t('withdraw.available', { amount: withdrawableCut })}</span>
         </div>
         <div className="flex gap-2">
           <input
@@ -66,7 +70,7 @@ export function WithdrawPage() {
             placeholder="0.00"
             className="flex-1 rounded-xl border border-separator bg-surface px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
           />
-          <button type="button" onClick={() => setAmount(withdrawable.toFixed(2))} className="rounded-xl bg-surface px-4 py-3 text-sm font-semibold text-primary">
+          <button type="button" onClick={() => setAmount(withdrawableCut)} className="rounded-xl bg-surface px-4 py-3 text-sm font-semibold text-primary">
             {t('common.max')}
           </button>
         </div>

@@ -3,6 +3,7 @@ import { usePrivy, useToken } from "@privy-io/react-auth";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
+  truncateToDecimals,
   useArbitrumUsdcBalance,
   useBridgeToHyperliquid,
   useFundArbitrumUsdc,
@@ -995,7 +996,9 @@ export function DepositPage() {
               <button
                 type="button"
                 onClick={() =>
-                  setBridgeAmount((arbUsdcBalance ?? 0).toFixed(2))
+                  // Cut, never round: toFixed offered a cent more than the
+                  // wallet holds whenever the balance carried sub-cent dust.
+                  setBridgeAmount(truncateToDecimals(arbUsdcBalance ?? 0, 2))
                 }
                 className="rounded-2xl bg-surface px-4 py-3 text-sm font-semibold text-primary"
               >

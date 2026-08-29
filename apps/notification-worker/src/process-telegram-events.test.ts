@@ -37,7 +37,7 @@ function makeRepository(): NotificationRepository {
     setRuntimeState: vi.fn(),
     listSuccessfulDepositOrders: vi.fn(),
     enqueueEvent: vi.fn(),
-    listPendingTelegramEvents: vi.fn(),
+    claimPendingTelegramEvents: vi.fn(),
     markEventSent: vi.fn(),
     recordChannelDelivery: vi.fn(),
     markEventRetry: vi.fn(),

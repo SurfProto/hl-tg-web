@@ -45,7 +45,7 @@ export async function runNotificationWorkerOnce({
     }
   }
 
-  const pendingEvents = await repository.listPendingTelegramEvents(
+  const pendingEvents = await repository.claimPendingTelegramEvents(
     deliveryBatchSize,
     now,
   );

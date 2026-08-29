@@ -222,15 +222,35 @@ class SupabaseNotificationRepository implements NotificationRepository {
     if (error) throw error;
   }
 
-  async listPendingTelegramEvents(limit: number, now: Date): Promise<PendingNotificationEvent[]> {
-    const { data: events, error: eventsError } = await this.supabase
+  async claimPendingTelegramEvents(limit: number, now: Date): Promise<PendingNotificationEvent[]> {
+    const { data: candidates, error: candidatesError } = await this.supabase
       .from("notification_events")
-      .select("id, user_id, channel, topic, attempts, payload")
+      .select("id")
       .eq("channel", "telegram")
       .in("status", ["pending", "retry"])
       .lte("next_attempt_at", now.toISOString())
       .order("created_at", { ascending: true })
       .limit(limit);
+
+    if (candidatesError) throw candidatesError;
+    if (!candidates || candidates.length === 0) {
+      return [];
+    }
+
+    // Claim by leasing next_attempt_at into the future. The conditional
+    // UPDATE is atomic per row, so of two workers running at once — the
+    // deploy overlap this file already documents — exactly one wins each
+    // event, where both used to read the same pending batch and double-send
+    // it. A crash after the claim needs no recovery sweep: the lease expires
+    // and the row is due again. markEventSent/Retry/Failed override the lease.
+    const leaseUntil = new Date(now.getTime() + 2 * 60 * 1000).toISOString();
+    const { data: events, error: eventsError } = await this.supabase
+      .from("notification_events")
+      .update({ next_attempt_at: leaseUntil, updated_at: now.toISOString() })
+      .in("id", candidates.map((candidate) => candidate.id))
+      .in("status", ["pending", "retry"])
+      .lte("next_attempt_at", now.toISOString())
+      .select("id, user_id, channel, topic, attempts, payload");
 
     if (eventsError) throw eventsError;
 
@@ -249,7 +269,14 @@ class SupabaseNotificationRepository implements NotificationRepository {
 
     const channelsByUser = new Map((channels ?? []).map((row) => [row.user_id, row]));
 
+    // The claiming UPDATE returns rows in no particular order; restore the
+    // oldest-first order the candidate query established.
+    const candidateOrder = new Map(candidates.map((candidate, index) => [candidate.id, index]));
+
     return (events ?? [])
+      .sort(
+        (a, b) => (candidateOrder.get(a.id) ?? 0) - (candidateOrder.get(b.id) ?? 0),
+      )
       .map((event) => {
         const channel = channelsByUser.get(event.user_id);
         if (!channel?.target || channel.status !== "active") {

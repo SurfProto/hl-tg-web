@@ -52,7 +52,7 @@ function createHarness() {
         payload: event.payload,
       });
     }),
-    listPendingTelegramEvents: vi.fn(async () => [...pendingEvents]),
+    claimPendingTelegramEvents: vi.fn(async () => [...pendingEvents]),
     markEventSent: vi.fn(async (eventId: string) => {
       const index = pendingEvents.findIndex((event) => event.id === eventId);
       if (index >= 0) pendingEvents.splice(index, 1);
@@ -176,7 +176,7 @@ describe("runNotificationWorkerOnce", () => {
       }),
       listSuccessfulDepositOrders: vi.fn().mockResolvedValue([]),
       enqueueEvent: vi.fn(),
-      listPendingTelegramEvents: vi.fn(async () => []),
+      claimPendingTelegramEvents: vi.fn(async () => []),
       markEventSent: vi.fn(),
       markEventRetry: vi.fn(),
       markEventFailed: vi.fn(),
@@ -205,7 +205,7 @@ describe("runNotificationWorkerOnce", () => {
 
     expect(stateWrites).toContain("user-b");
     expect(stateWrites).not.toContain("user-a");
-    expect(repository.listPendingTelegramEvents).toHaveBeenCalled();
+    expect(repository.claimPendingTelegramEvents).toHaveBeenCalled();
     expect(errorSpy).toHaveBeenCalled();
     errorSpy.mockRestore();
   });
@@ -231,7 +231,7 @@ describe("runNotificationWorkerOnce", () => {
       setRuntimeState: vi.fn(),
       listSuccessfulDepositOrders: vi.fn().mockResolvedValue([]),
       enqueueEvent: vi.fn(),
-      listPendingTelegramEvents: vi.fn(async () => []),
+      claimPendingTelegramEvents: vi.fn(async () => []),
       markEventSent: vi.fn(),
       markEventRetry: vi.fn(),
       markEventFailed: vi.fn(),

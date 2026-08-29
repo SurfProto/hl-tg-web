@@ -51,6 +51,7 @@ import {
 } from "./agent";
 import { reportAgentRecoveryIncident } from "./agent-recovery";
 import {
+  TRIGGER_ORDER_SLIPPAGE,
   formatPrice,
   getAggressiveMarketPrice,
   orderbookMidpoint,
@@ -1091,7 +1092,19 @@ export class HyperliquidClient {
     return {
       cloid: (order.cloid as `0x${string}` | undefined) ?? this.generateCloid(),
       market,
-      price: this.formatPrice(order.triggerPx, market),
+      // The limit the triggered market order carries, not the trigger itself.
+      // Priced at exactly the trigger it gives the matcher no room: a stop
+      // fires because the market reached the trigger, so the book is already
+      // at or past it, and after a gap an IOC sell limited to the trigger can
+      // die unfilled while the position rides toward liquidation.
+      price: this.formatPrice(
+        getAggressiveMarketPrice(
+          order.triggerPx,
+          order.side,
+          TRIGGER_ORDER_SLIPPAGE,
+        ),
+        market,
+      ),
       side: order.side,
       size: this.formatSize(order.size, market),
       triggerKind: order.triggerKind,

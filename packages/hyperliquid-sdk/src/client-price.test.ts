@@ -84,6 +84,38 @@ describe("HyperliquidClient.getMarketPrice", () => {
   });
 });
 
+describe("HyperliquidClient.normalizeTriggerOrder", () => {
+  /**
+   * The limit a triggered market order carries must give the matcher room
+   * past the trigger. It used to equal the trigger exactly, so a stop-loss
+   * that fired into a gapping book could die unfilled — "protection" that
+   * lapses precisely when it is needed.
+   */
+  it("prices the triggered order past the trigger, not at it", async () => {
+    const client = createClient();
+
+    const stopLoss = await (client as any).normalizeTriggerOrder({
+      coin: "BTC",
+      side: "sell",
+      size: 0.5,
+      triggerKind: "stopLoss",
+      triggerPx: 100000,
+    });
+    expect(stopLoss.triggerPx).toBe("100000");
+    expect(stopLoss.price).toBe("90000"); // 10% below, room to fill in a gap
+
+    const takeProfit = await (client as any).normalizeTriggerOrder({
+      coin: "BTC",
+      side: "buy",
+      size: 0.5,
+      triggerKind: "takeProfit",
+      triggerPx: 90000,
+    });
+    expect(takeProfit.triggerPx).toBe("90000");
+    expect(takeProfit.price).toBe("99000"); // 10% above for a closing buy
+  });
+});
+
 describe("HyperliquidClient market-price fallbacks", () => {
   it("validates a market order using the per-market fallback price", async () => {
     const client = createClient();

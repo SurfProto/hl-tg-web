@@ -147,6 +147,11 @@ describe("getAggressiveMarketPrice", () => {
     expect(getAggressiveMarketPrice(100, "sell")).toBeCloseTo(97, 10);
   });
 
+  it("widens the band when a caller passes its own slippage", () => {
+    expect(getAggressiveMarketPrice(100, "buy", 0.1)).toBeCloseTo(110, 10);
+    expect(getAggressiveMarketPrice(100, "sell", 0.1)).toBeCloseTo(90, 10);
+  });
+
   it("caps worst-case slippage at the documented tolerance", () => {
     expect(MARKET_ORDER_SLIPPAGE).toBe(0.03);
     const mid = 64000;

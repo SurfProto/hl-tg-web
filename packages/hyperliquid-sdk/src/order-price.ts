@@ -30,6 +30,15 @@ export const MAX_PRICE_SIGNIFICANT_FIGURES = 5;
 export const MARKET_ORDER_SLIPPAGE = 0.03;
 
 /**
+ * How far past the trigger a TP/SL market order may chase, as a fraction of
+ * the trigger price. Wider than MARKET_ORDER_SLIPPAGE because by the time a
+ * stop fires the market is already moving away from it — a stop-loss limited
+ * to exactly its trigger can sit unfilled through a gap while the position
+ * rides on. Matches the 10% Hyperliquid's own frontend allows TP/SL orders.
+ */
+export const TRIGGER_ORDER_SLIPPAGE = 0.1;
+
+/**
  * Keep at most `maxSignificant` significant digits, cutting rather than
  * rounding — the same direction as truncateToDecimals, for the same reason.
  *
@@ -105,16 +114,18 @@ export function formatPrice(rawPrice: number, market: PriceMarket): string {
 /**
  * The limit price that makes a "market" order cross the book.
  *
- * Buy above the mid, sell below it, by MARKET_ORDER_SLIPPAGE either way, so the
- * order takes any depth within that band and IOC cancels the rest.
+ * Buy above the reference, sell below it, by `slippage` either way, so the
+ * order takes any depth within that band and IOC cancels the rest. Triggered
+ * orders pass TRIGGER_ORDER_SLIPPAGE with the trigger as the reference.
  */
 export function getAggressiveMarketPrice(
   midPrice: number,
   side: OrderSide,
+  slippage: number = MARKET_ORDER_SLIPPAGE,
 ): number {
   return side === "buy"
-    ? midPrice * (1 + MARKET_ORDER_SLIPPAGE)
-    : midPrice * (1 - MARKET_ORDER_SLIPPAGE);
+    ? midPrice * (1 + slippage)
+    : midPrice * (1 - slippage);
 }
 
 /**

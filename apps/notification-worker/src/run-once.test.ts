@@ -154,4 +154,58 @@ describe("runNotificationWorkerOnce", () => {
     expect(harness.sentTexts[1]).toContain("Liquidation risk");
     expect(harness.pendingEvents).toEqual([]);
   });
+
+  /**
+   * One account's failure must not starve the accounts behind it. This used
+   * to crash the process, and systemd restarted it into the same user in the
+   * same list order — so everyone after the failing account got no detection,
+   * and delivery, which runs after the loop, never ran for anyone.
+   */
+  it("keeps scanning the remaining users when one account's detection throws", async () => {
+    const userA = { ...user, userId: "user-a", walletAddress: "0xaaa" };
+    const userB = { ...user, userId: "user-b", walletAddress: "0xbbb" };
+    const stateWrites: string[] = [];
+
+    const repository: NotificationRepository = {
+      listEligibleUsers: vi.fn().mockResolvedValue([userA, userB]),
+      ensureTelegramChannel: vi.fn(),
+      getRuntimeState: (async () => null) as NotificationRepository["getRuntimeState"],
+      setRuntimeState: vi.fn(async (userId: string) => {
+        stateWrites.push(userId);
+      }),
+      listSuccessfulDepositOrders: vi.fn().mockResolvedValue([]),
+      enqueueEvent: vi.fn(),
+      listPendingTelegramEvents: vi.fn(async () => []),
+      markEventSent: vi.fn(),
+      markEventRetry: vi.fn(),
+      markEventFailed: vi.fn(),
+      recordChannelDelivery: vi.fn(),
+      updateChannelStatus: vi.fn(),
+    };
+    const marketData: MarketDataService = {
+      getFills: vi.fn(async (wallet: string) => {
+        if (wallet === "0xaaa") throw new Error("hyperliquid 500");
+        return [];
+      }),
+      getPositions: vi.fn().mockResolvedValue([]),
+      getMids: vi.fn().mockResolvedValue({}),
+    };
+    const telegram: TelegramClient = {
+      sendMessage: vi.fn(async () => ({ ok: true })),
+    };
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await runNotificationWorkerOnce({
+      repository,
+      marketData,
+      telegram,
+      now: new Date("2026-04-14T12:00:00.000Z"),
+    });
+
+    expect(stateWrites).toContain("user-b");
+    expect(stateWrites).not.toContain("user-a");
+    expect(repository.listPendingTelegramEvents).toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
 });

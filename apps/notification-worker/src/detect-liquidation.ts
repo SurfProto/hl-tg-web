@@ -6,9 +6,19 @@ import type {
 
 const LIQUIDATION_BANDS = [10, 5, 3] as const;
 
-interface LiquidationRiskState {
+export interface LiquidationRiskState {
   initialized: boolean;
   activeBandsByPosition: Record<string, number[]>;
+  /**
+   * When each position's current danger episode began — an episode running
+   * from the first band crossed until the position leaves all bands or
+   * closes. Part of the idempotency key so a later episode alerts again:
+   * events are deduplicated against a permanently-unique column, and a key
+   * without an episode made every band a once-per-lifetime alert. A user who
+   * recovered, came back months later and drifted toward liquidation again
+   * got silence.
+   */
+  episodeStartByPosition?: Record<string, string>;
 }
 
 interface DetectLiquidationEventsArgs {
@@ -17,6 +27,8 @@ interface DetectLiquidationEventsArgs {
   midsByCoin: Record<string, number>;
   state: LiquidationRiskState | null;
   enabled: boolean;
+  /** The scan time, stamped onto any episode that begins this scan. */
+  nowIso: string;
 }
 
 interface DetectLiquidationEventsResult {
@@ -38,8 +50,10 @@ export function detectLiquidationEvents({
   midsByCoin,
   state,
   enabled,
+  nowIso,
 }: DetectLiquidationEventsArgs): DetectLiquidationEventsResult {
   const nextActiveBandsByPosition: Record<string, number[]> = {};
+  const nextEpisodeStartByPosition: Record<string, string> = {};
   const events: QueuedNotificationEvent[] = [];
 
   for (const position of positions) {
@@ -58,11 +72,26 @@ export function detectLiquidationEvents({
     );
     nextActiveBandsByPosition[positionKey] = [...currentBands];
 
+    const previousBands = new Set(
+      state?.activeBandsByPosition[positionKey] ?? [],
+    );
+
+    // A new episode starts when a band-free position crosses its first band.
+    // The missing-start fallback covers state written before episodes existed:
+    // mid-episode positions adopt the scan time, which no stored key can
+    // collide with.
+    let episodeStartedAt = state?.episodeStartByPosition?.[positionKey];
+    if (currentBands.length > 0) {
+      if (!episodeStartedAt || previousBands.size === 0) {
+        episodeStartedAt = nowIso;
+      }
+      nextEpisodeStartByPosition[positionKey] = episodeStartedAt;
+    }
+
     if (!state?.initialized || !enabled) {
       continue;
     }
 
-    const previousBands = new Set(state.activeBandsByPosition[positionKey] ?? []);
     const newlyCrossedBands = currentBands.filter((band) => !previousBands.has(band));
     if (newlyCrossedBands.length === 0) {
       continue;
@@ -73,7 +102,7 @@ export function detectLiquidationEvents({
       userId: user.userId,
       channel: "telegram",
       topic: "liquidation_risk",
-      idempotencyKey: `liquidation_risk:${user.walletAddress}:${positionKey}:${band}`,
+      idempotencyKey: `liquidation_risk:${user.walletAddress}:${positionKey}:${band}:${episodeStartedAt}`,
       language: user.language,
       payload: {
         band,
@@ -93,6 +122,7 @@ export function detectLiquidationEvents({
     state: {
       initialized: true,
       activeBandsByPosition: nextActiveBandsByPosition,
+      episodeStartByPosition: nextEpisodeStartByPosition,
     },
   };
 }

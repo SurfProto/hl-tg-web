@@ -3,6 +3,7 @@ import type {
   NotificationRepository,
   PendingNotificationEvent,
   TelegramClient,
+  TelegramSendResult,
 } from "./types";
 
 interface ProcessTelegramEventsArgs {
@@ -26,10 +27,22 @@ export async function processTelegramEvents({
   now,
 }: ProcessTelegramEventsArgs): Promise<void> {
   for (const event of events) {
-    const result = await telegram.sendMessage({
-      target: event.target,
-      text: buildTelegramMessage(event),
-    });
+    // A thrown send (network down, DNS failure) is as retryable as a 5xx.
+    // Uncaught it left the loop, so one flaky request stalled every pending
+    // event behind it and crashed the process.
+    let result: TelegramSendResult;
+    try {
+      result = await telegram.sendMessage({
+        target: event.target,
+        text: buildTelegramMessage(event),
+      });
+    } catch (error) {
+      result = {
+        ok: false,
+        description:
+          error instanceof Error ? error.message : "Telegram send threw",
+      };
+    }
 
     if (result.ok) {
       await repository.markEventSent(event.id);

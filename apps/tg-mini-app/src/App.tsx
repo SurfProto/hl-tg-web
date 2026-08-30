@@ -9,7 +9,11 @@ import {
 } from "@privy-io/react-auth";
 import { useTranslation } from "react-i18next";
 import { arbitrum } from "viem/chains";
-import { useMarketData, useSetupTrading } from "@repo/hyperliquid-sdk";
+import {
+  clearStoredAgentKey,
+  useMarketData,
+  useSetupTrading,
+} from "@repo/hyperliquid-sdk";
 import { Layout } from "./components/Layout";
 import { HomePage } from "./pages/HomePage";
 import { NotFoundPage } from "./pages/NotFoundPage";
@@ -233,6 +237,7 @@ export function TelegramAuthGate({ children }: { children: React.ReactNode }) {
   // otherwise linger in memory for the rest of the session. Clearing on change
   // means a sign-out leaves nothing behind.
   const previousUserId = useRef<string | null>(null);
+  const previousWallet = useRef<string | null>(null);
   useEffect(() => {
     if (!ready) return;
 
@@ -242,9 +247,26 @@ export function TelegramAuthGate({ children }: { children: React.ReactNode }) {
       previousUserId.current !== currentUserId
     ) {
       queryClient.clear();
+      // The end of an account's session on this device is the moment its
+      // trading key must stop existing here: the key can sign orders for up
+      // to 180 days and localStorage outlives the session, so the next person
+      // holding the device must not inherit it. Deleting the key is enough —
+      // the on-chain approval is inert without it, and the next login's
+      // approval replaces the named agent anyway. An on-chain revoke here
+      // would demand a signature from a user who is already gone.
+      if (previousWallet.current) {
+        clearStoredAgentKey(previousWallet.current);
+      }
     }
     previousUserId.current = currentUserId;
-  }, [authenticated, ready, user?.id]);
+    if (currentUserId === null) {
+      previousWallet.current = null;
+    } else if (user?.wallet?.address) {
+      // The embedded wallet can arrive a beat after the user id; keep the
+      // last known address until the new one exists.
+      previousWallet.current = user.wallet.address;
+    }
+  }, [authenticated, ready, user?.id, user?.wallet?.address]);
 
   if (!ready) {
     return (

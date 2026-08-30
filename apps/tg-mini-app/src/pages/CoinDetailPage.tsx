@@ -38,18 +38,20 @@ function formatFunding(rate: number): string {
   return `${rate >= 0 ? '+' : ''}${(rate * 100).toFixed(4)}%`;
 }
 
-function formatTooltipTimestamp(candle: Candle, interval: string): string {
+// Locale comes from i18n, like ApprovalsPage — this was hardcoded to en-US,
+// so the Russian UI dated its chart tooltips in English.
+function formatTooltipTimestamp(candle: Candle, interval: string, locale: string): string {
   const date = new Date(candle.T || candle.t);
 
   if (interval === '1d') {
-    return new Intl.DateTimeFormat('en-US', {
+    return new Intl.DateTimeFormat(locale, {
       month: 'short',
       day: 'numeric',
       year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric',
     }).format(date);
   }
 
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat(locale, {
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
@@ -61,7 +63,7 @@ export function CoinDetailPage() {
   const { symbol: rawSymbol = '' } = useParams<{ symbol: string }>();
   const symbol = decodeURIComponent(rawSymbol);
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const [interval, setInterval] = useState('1h');
   const [activeInspection, setActiveInspection] = useState<LiteCandleInspection | null>(null);
@@ -249,7 +251,7 @@ export function CoinDetailPage() {
                 }}
               >
                 <div className="editorial-kicker">
-                  {formatTooltipTimestamp(inspectionTooltip.candle, interval)}
+                  {formatTooltipTimestamp(inspectionTooltip.candle, interval, i18n.language)}
                 </div>
                 <div className="editorial-mono mt-1 text-lg font-semibold tracking-tight text-foreground">
                   {formatUsdPrice(inspectionTooltip.candle.c)}

@@ -208,6 +208,8 @@
     "bought": "Bought",
     "sold": "Sold",
     "fee": "Fee",
+    "showMore": "Show more",
+    "recentActivityNote": "Recent activity only — the exchange keeps a limited history.",
     "tradeMore": "Trade more",
     "protectionUpdated": "Protection updated",
     "protectionUpdateFailed": "Protection update failed.",

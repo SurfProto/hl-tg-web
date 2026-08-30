@@ -1,9 +1,18 @@
 # P34K Growth-First Moat and 90-Day Design Backlog
 
-**Date:** 2026-08-27
+**Date:** 2026-08-27. Corrected against the codebase 2026-08-30.
 
 **Status:** Growth-first direction approved in conversation; written
-specification awaiting review
+specification awaiting review. Seventeen claims this document made about its own
+codebase were wrong and have been corrected in place — see
+[`../../strategy/2026-08-30-growth-strategy-validation.md`](../../strategy/2026-08-30-growth-strategy-validation.md)
+for the audit, including the problems that are *not* mechanical and remain open.
+
+**Not yet addressed, and load-bearing:** the WNFT definition below is still not a
+payable unit, the 90-day targets are not jointly satisfiable, there is no payback
+or LTV test anywhere in this document, and Telegram's published guidelines
+prohibit signing non-TON transactions inside a Mini App — which is what this
+product does. Correcting the citations did not make the plan executable.
 
 **Decision:** Run a treasury-funded 90-day growth sprint whose primary outcome
 is weekly new funded-and-traded users. Product work is prioritized by its effect
@@ -84,18 +93,34 @@ extended rather than rebuilt:
   and leaderboard projections rebuildable;
 - commit `a2fd79fb` and migration `015` add notification delivery status and a
   self-test path;
-- commit `00eaf2c2` plus migrations `016`/`017` add daily check-ins, streaks,
-  season ranks and lifetime XP; and
+- commit `00eaf2c2` adds daily check-ins, streaks, season ranks and lifetime XP.
+  The check-in endpoint and the rank thresholds live in code — `api/rewards/check-in.ts`
+  and `api/rewards/_lib/tiers.ts` — not in a migration. Migration `016` adds only
+  the streak and lifetime-XP queries those read, and `017` is two unrelated bug
+  fixes; neither contains a check-in or a rank object;
 - commit `17c2516c` plus migration `018` attribute trading XP through positive
-  builder fees instead of a public client-order tag; and
-- commit `4612df3e` plus migration `019` add lifetime
-  dry/funded/traded/retained referral evidence and the `0 / 1 / 3 / 6` XP
-  ladder adopted below.
+  builder fees instead of a public client-order tag, subject to the attribution
+  caveat below; and
+- commit `bed0adee` plus migrations `019` **and `020`** add lifetime
+  dry/funded/traded/retained referral evidence and the XP ladder adopted below.
+  Migration `020` supersedes `019`'s funded rung three minutes after it landed,
+  replacing onramp-only evidence with a cumulative net over the account deposit
+  ledger, so `019` alone no longer describes the deployed function.
 
 Material launch blockers still include the browser-stored agent secret, a
-hard-coded trade-fee estimate, simplified liquidation math, ambiguous
-timeout/retry outcomes, onramp-only referral funding evidence and the absence
-of campaign/CAC attribution.
+hard-coded trade-fee estimate that omits the native Hyperliquid fee entirely,
+simplified liquidation math, ambiguous timeout/retry outcomes and the absence of
+campaign/CAC attribution. Onramp-only referral funding evidence is no longer one
+of them: migration `020` replaced it, in the same commit that added this
+document.
+
+One blocker is newer than this document. Migration `021` records that
+`userFills.builderFee` proves a fill paid *a* builder, not that it paid us: a
+user trading the same Hyperliquid account through another app produces fills
+indistinguishable from ours at that endpoint. The `builder_fills` table it adds
+reconciles against Hyperliquid's own daily export, but no qualification path
+reads it yet — so the north-star metric defined below currently rests on evidence
+this repository itself documents as unverified.
 
 ## North star and reporting contract
 
@@ -110,9 +135,15 @@ A user qualifies when all of the following are true:
 - at least $50 of qualifying net-new funding is present for 72 hours;
 - funding may arrive through P34K's onramp, a bridge, transfer or any other
   supported Hyperliquid funding route;
-- the user has at least two distinct P34K builder-fee-attributed fills;
-- the fills produce at least $0.10 in cumulative P34K builder fees and occur
-  within 30 days of the first qualifying funding event;
+- the user has at least two distinct P34K builder-fee-attributed **orders**.
+  `rewards_referral_milestones` counts `distinct order_id`, not fills, so one
+  order that partially fills twice does not qualify. Earlier drafts of this
+  document said "fills"; the code has always said orders, and orders is the
+  intent — a partial fill is not a second decision to trade;
+- those orders produce at least $0.10 in cumulative P34K builder fees and occur
+  within 30 days of the first qualifying funding event. The fee must be
+  confirmed against `builder_fills`, not `userFills`, for the reason given
+  above;
 - the account is not a test, employee, self-referral, duplicate-owner or held
   abuse account; and
 - fill and funding evidence survives replay and reconciliation.
@@ -215,8 +246,11 @@ Referral milestones are per invitee and idempotent:
 | Traded | Confirmed WNFT definition is satisfied | 750 | 250 | Campaign-configured inviter and invitee fee-credit test; held accounts receive nothing. |
 | Retained | At least three trading days, including one in days 22–30, and at least $1 settled P34K builder fees | 1,500 | 500 | Additional retention credit or affiliate CPA test may be released after review. |
 
-These are literal launch amounts produced from a 250 XP unit and `0 / 1 / 3 /
-6` milestone weights. Each milestone is earned once in the referred user's
+These are literal launch amounts and they match `api/rewards/_lib/referrals.ts`
+exactly. They are not one weight schedule: against a 250 XP unit the inviter runs
+`0 / 0 / 3 / 6` and the invitee runs `0 / 1 / 1 / 2`. The single `0 / 1 / 3 / 6`
+sequence quoted in earlier drafts describes neither column and cannot produce the
+invitee's 500 at all. Each milestone is earned once in the referred user's
 lifetime, not once per season. Referral XP receives no rank multiplier. Empty
 wallets remain visible in the funnel but never create reward inventory.
 
@@ -229,18 +263,37 @@ preserved:
 - 25 additional XP per consecutive day;
 - the streak increment is capped after six steps, for a maximum 250 base XP;
 - one idempotent check-in per UTC day;
-- streak and lifetime XP derive from the append-only ledger; and
+- lifetime XP derives from the append-only ledger; and
 - current season rank may add its separately recorded bonus.
 
-The check-in screen always shows the highest-impact incomplete activation step.
-For an unfunded user that is funding; for a funded user it is the first verified
-trade; for a qualified user it is retention, alerts or referral. Check-ins are
-retention assistance, not evidence of successful acquisition.
+The streak also derives from the ledger, but it is scoped to the active season
+and a season is `date_trunc('month')`. **Every streak therefore resets on the 1st**,
+and no user can reach the 250 XP maximum before the 7th of any month. That is
+not what a habit mechanic is for, and it undercuts "streak at risk" messaging and
+P1-06 before either is built. Decide deliberately whether the streak is
+season-scoped or lifetime, and change either `016` or this paragraph.
 
-Existing rank thresholds remain the launch baseline and are tuned only after
-observing a complete season. Rank unlocks status, badges, leagues, additional
-saved-alert/workspace capacity and eligibility for campaigns. It never raises
-leverage, bypasses risk checks or promises a token.
+The check-in screen *should* always show the highest-impact incomplete activation
+step. For an unfunded user that is funding; for a funded user it is the first
+verified trade; for a qualified user it is retention, alerts or referral. It does
+not do this today — the screen shows streak, day and next XP, and renders quests
+in fixed construction order. P1-06 builds it; it is not part of the preserved
+implementation above. Check-ins are retention assistance, not evidence of
+successful acquisition.
+
+Rank today does exactly one thing: it writes a separately recorded `tier_bonus`
+ledger row on check-in. Status, badges, leagues, saved-alert and workspace
+capacity, and campaign eligibility are all unbuilt, and P2-04 schedules two of
+them. Rank also never raises leverage, bypasses risk checks or promises a token —
+but nothing enforces that. It is a property of the code as written, not a
+constraint on it, and it should become one before rank gates anything economic.
+
+Existing rank thresholds do not survive contact with the cohort this sprint
+buys. The first promotion needs 2,500 season XP at 1 XP per $1 of notional inside
+a single calendar month, while a newly qualified WNFT holds roughly 200 XP. The
+entire acquisition cohort therefore finishes the sprint at multiplier 1.0 and the
+rank bonus pays them nothing. Re-scale the newcomer end of the ladder as a P0
+decision, or stop describing rank as a lever for these users.
 
 ### 5. Quest portfolio
 
@@ -261,8 +314,18 @@ self-funded circular activity.
 The standard P34K builder fee remains **5 bp** while the newcomer sprint lane is
 **2 bp** for the first 30 days or first $25,000 of eligible notional, whichever
 comes first. Explicit reduce-only risk remediation opened from a P34K alert may
-use **0 bp** where supported. Every review shows native Hyperliquid fees and the
-P34K fee separately.
+use **0 bp** where supported — but see the attribution conflict noted under P0-09:
+a zero builder fee is indistinguishable from a revoked one, and cannot satisfy
+the qualification evidence this document requires.
+
+Every review must show native Hyperliquid fees and the P34K fee separately. It
+does not today. The order review renders one undifferentiated fee row hard-coded
+as `sizeUsd * 0.0005`, which is not even read from the builder config, so a 2 bp
+user would still be shown 5 bp. On a $1,000 taker order it displays $0.50 against
+a true all-in cost near $0.95, because the native Hyperliquid fee is omitted
+entirely. Stating the all-in number matters beyond the review screen: at tier-0
+fees of 4.5 bp taker and 1.5 bp maker, a 5 bp builder fee is a **+111% taker and
++333% maker** increase on what the user would pay going direct.
 
 The 2 bp lane is an acquisition subsidy, not the sustainable reward budget. The
 treasury ledger books `(5 bp - charged bp) * eligible notional` as foregone
@@ -371,8 +434,17 @@ order.
 The first allowlisted growth cohort may begin as soon as all of these are true:
 
 - WNFT, campaign and reward events replay deterministically;
-- current referral, rank/check-in, notification and builder-attribution
-  migrations are deployed and verified in the target environment;
+- migrations `014` through `023` are deployed and verified in the target
+  environment, enumerated rather than described as "current": `019` and `020`
+  for referral milestones and funding evidence, `021` for builder-fill
+  verification, `022` for fill-day ordering and `023` for trade progress. Naming
+  the set is the point — this document originally stopped at `019` while the
+  repository had already moved past it;
+- exactly one builder address is pinned as launch configuration and matches in
+  every environment. The code default, the setup documentation and the server
+  config currently name different addresses, the server config has no default at
+  all, and Hyperliquid's daily builder export is keyed by address — so a mismatch
+  silently attributes revenue to nobody;
 - fee review shows the actual native fee, P34K fee and subsidy lane;
 - liquidation/risk review never presents the current simplified estimate as an
   authoritative exchange value;
@@ -418,13 +490,13 @@ user's independent access to Hyperliquid.
 | P0-02 | Canonical WNFT contract | Implement one versioned definition for provisional, confirmed, held and reversed WNFT. Replay produces identical users and qualification weeks. | Funding/fill evidence | L |
 | P0-03 | Channel and campaign registry | Every non-organic link names source, campaign, creative, offer and policy version; disabled or expired campaigns fail visibly. | Event contract | M |
 | P0-04 | Signed acquisition links and immutable first attribution | Telegram reopen, browser fallback and manual code entry preserve the correct first referrer; tampering and self-referral fail; later campaigns cannot steal reward ownership. | P0-03; existing referral flow | L |
-| P0-05 | Dry/funded/traded/retained referral state machine | Deploy/verify `4612df3e` and migration `019`; per-invitee transitions use this spec's evidence, are idempotent and expose pending/held/reversed reasons; each lifetime milestone grants once. | P0-02/04 | M |
-| P0-06 | All-route funding qualification | Detect qualifying Hyperliquid funding beyond the in-app onramp; 72-hour hold and withdrawals reconcile; staff/test/internal transfers are excluded. | Account funding history | XL |
-| P0-07 | Builder-verified trade qualification | Deploy/verify `17c2516c` and migration `018`; two positive-builder-fee fills and cumulative fee threshold qualify deterministically; a CLOID prefix alone never qualifies. | Builder data; P0-02 | M |
+| P0-05 | Dry/funded/traded/retained referral state machine | Deploy/verify `bed0adee` and migrations `019` **and `020`**. `4612df3e`, cited in earlier drafts, exists on no branch and will not resolve in a fresh clone. Per-invitee transitions use this spec's evidence, are idempotent and expose pending/held/reversed reasons; each lifetime milestone grants once. **Held and reversed do not exist yet** — every entry writes `status: "posted"` unconditionally and a referral grant has no reversal path — so this is new work rather than verification, and it gates P0-13. | P0-02/04 | L |
+| P0-06 | All-route funding qualification | Largely delivered already: migration `020` added the `hl_deposits` ledger and moved the funded rung onto a cumulative external-deposit net, with the 72-hour hold. What remains is excluding staff, test and internal accounts, for which the schema carries no marker at all. | Account funding history | S |
+| P0-07 | Builder-verified trade qualification | Larger than a deploy-and-verify. `17c2516c`/`018` moved attribution off the CLOID prefix, but migration `021` then established that `userFills.builderFee` does not prove the fee was ours. Qualification must read the reconciled `builder_fills` table — which no qualification path does today — and must count two distinct **orders**, not fills. | Builder data; P0-02 | L |
 | P0-08 | Treasury CAC and subsidy ledger | Append-only entries cover approved budget, spend, foregone fee, issued/expired/burned credit, CPA hold, release and reversal; campaign totals balance daily. | P0-01/03 | XL |
-| P0-09 | Versioned 2 bp newcomer and 5 bp standard policy | Eligibility, expiry and requested fee are stored per order; the correct approval maximum is verified; review shows native fee, P34K fee, subsidy and USD cost. | Fee-rate source; order review | L |
+| P0-09 | Versioned 2 bp newcomer and 5 bp standard policy | Eligibility, expiry and requested fee are stored per order; the correct approval maximum is verified; review shows native fee, P34K fee, subsidy and USD cost. **None of that machinery exists.** The fee is a module-level global set once at boot from a build-time env var, the accessor is zero-arg and serves all six order paths, and there is no server-side order record to version a policy against. `ApproveBuilderFee` must be signed by the main wallet, so approve the 5 bp ceiling and charge below it — approving 2 bp strands the user at graduation behind a second signature. A 0 bp lane cannot be attributed at all, since revoking a builder is implemented as approving `"0%"`. | Fee-rate source; order review | XL |
 | P0-10 | Referral XP and campaign benefit policy | Publish milestone XP, lifetime idempotency, campaign caps, credit experiments, expiry, holds, reversals and no-token language; every grant names the active policy. | P0-05/08 | M |
-| P0-11 | Deploy and verify daily check-ins, ranks and lifetime XP | Verify `00eaf2c2` plus migrations `016`/`017`; duplicate check-ins grant nothing; UTC streak, tier bonus and lifetime totals rebuild exactly. | Existing rewards ledger | S |
+| P0-11 | Deploy and verify daily check-ins, ranks and lifetime XP | Verify `00eaf2c2`, migration `016`, and the code that actually holds this behaviour — `api/rewards/check-in.ts` and `api/rewards/_lib/tiers.ts`. Migration `017` is unrelated bug fixes and rank thresholds live in code by design, so neither is evidence here. Duplicate check-ins grant nothing; UTC streak, tier bonus and lifetime totals rebuild exactly. Settle the monthly streak reset before this closes. | Existing rewards ledger | S |
 | P0-12 | Activation journey and progress UI | User always sees current stage, missing evidence, offer expiry and next action; median wallet-to-first-review time in canary is under ten minutes. | P0-02/05/09/11 | L |
 | P0-13 | Anti-sybil holds and review queue | Seeded self-referral, duplicate identity, circular funding, shared destination and correlated trade patterns enter a reasoned hold; shared IP alone never decides; manual release/reject is audited. | P0-05/06/07 | L |
 | P0-14 | Growth and cohort dashboard | Confirmed WNFT, funnel, CAC, D7/D30, spend, builder revenue and holds reconcile by source/campaign daily; provisional and confirmed counts never mix. | P0-02/03/08 | L |
@@ -433,7 +505,7 @@ user's independent access to Hyperliquid.
 | P0-17 | Pilot limits, canaries and rollback | Testnet and allowlisted mainnet journeys cover funding, two trades, holds and reversals; per-order/daily limits, cohort steps and rollback owner are enforced. | All P0 truth paths | L |
 | P0-18 | Telegram policy and recovery decision | Document supported Mini App, ordinary-bot and external-web behavior under Telegram's rules; users retain authenticated read/recovery access if Mini App trading is restricted. | Product/legal review | M |
 | P0-19 | Honest pilot risk preview | Remove or disable the simplistic liquidation formula as an authoritative value; label exchange facts, estimates and unavailable states; risk-increasing orders fail closed on materially stale state while reduce/cancel remains accessible. | Account/market freshness | M |
-| P0-20 | Protection confirmation and repair | Entry protection is never claimed before trigger acknowledgement; pending, protected and unprotected states are explicit; retries cannot create duplicate triggers; one-tap repair identifies the exact exposed position. | P0-16; trigger-order queries | M |
+| P0-20 | Protection confirmation and repair | Entry protection is never claimed before trigger acknowledgement; pending, protected and unprotected states are explicit; retries cannot create duplicate triggers; one-tap repair identifies the exact exposed position. No state machine exists to extend — the one protection signal that is computed is referenced by nothing but its own test — so this is a build rather than a hardening. | P0-16; trigger-order queries | L |
 
 ### P0 launch outcome
 
@@ -517,6 +589,17 @@ The program enters the compounding phase when:
 - venue aggregation or a full desktop-terminal clone; and
 - blocking withdrawals or independent Hyperliquid access because a growth
   campaign is held.
+
+Two of these are already violated by shipped code, and the sprint cannot start
+while they are. The season leaderboard orders by `total_volume desc` and renders
+each entry's eligible volume as a USD figure beside a stable per-user alias —
+that is a raw-volume leaderboard publishing absolute position-scale data. Either
+the board drops volume from the row, or these two non-goals are not the policy.
+
+The app also still presents a "Funded referral — 500 XP" quest card that fills
+its progress bar and pays nothing, contradicting the inviter Funded = 0 rung in
+the table above. Remove the card or the reward label before a single invited user
+sees it.
 
 ## Error handling and abuse rules
 

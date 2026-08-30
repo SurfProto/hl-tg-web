@@ -355,43 +355,27 @@ export function CoinDetailPage() {
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 flex gap-3 border-t border-separator bg-white px-4 py-3 bottom-dock-safe">
-        {isPerp ? (
-          <>
-            <button
-              type="button"
-              onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=short`)}
-              className="editorial-button-negative flex-1"
-            >
-              {t('coinDetail.shortButton')}
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=long`)}
-              className="editorial-button-positive flex-1"
-            >
-              {t('coinDetail.longButton')}
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=sell`)}
-              className="editorial-button-negative flex-1"
-            >
-              {t('coinDetail.sellButton')}
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=buy`)}
-              className="editorial-button-positive flex-1"
-            >
-              {t('coinDetail.buyButton')}
-            </button>
-          </>
-        )}
-      </div>
+      {/* Trading is perps-only: TradePage resolves perp markets exclusively,
+          so the Buy/Sell pair this dock rendered for spot symbols led straight
+          to a dead "market metadata unavailable" screen. No dock for spot. */}
+      {isPerp ? (
+        <div className="fixed bottom-0 left-0 right-0 flex gap-3 border-t border-separator bg-white px-4 py-3 bottom-dock-safe">
+          <button
+            type="button"
+            onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=short`)}
+            className="editorial-button-negative flex-1"
+          >
+            {t('coinDetail.shortButton')}
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=long`)}
+            className="editorial-button-positive flex-1"
+          >
+            {t('coinDetail.longButton')}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

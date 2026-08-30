@@ -526,6 +526,7 @@
     "sendTestPending": "Sending…",
     "sendTestSent": "Sent — check Telegram",
     "sendTestFailed": "Couldn't send. Make sure you haven't blocked the bot, then try again.",
+    "prefsSaveFailed": "Couldn't save that setting. It has been switched back — try again.",
     "liquidationAlerts": "Liquidation alerts",
     "orderFills": "Order fills",
     "usdcDeposits": "USDC deposits"

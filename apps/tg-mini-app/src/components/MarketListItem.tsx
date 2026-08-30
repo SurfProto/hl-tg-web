@@ -14,33 +14,6 @@ interface MarketListItemProps {
   onClick: () => void;
 }
 
-// Simple sparkline SVG that mimics a price trend
-function MiniSparkline({ isPositive }: { isPositive: boolean }) {
-  const color = isPositive ? '#3447F3' : '#EB4D3D';
-  const paths = isPositive
-    ? 'M0,20 L8,18 L16,15 L24,16 L32,12 L40,8 L48,10 L56,5'
-    : 'M0,5 L8,8 L16,6 L24,10 L32,12 L40,15 L48,14 L56,18';
-  
-  return (
-    <svg
-      width="56"
-      height="24"
-      viewBox="0 0 56 24"
-      fill="none"
-      className="flex-shrink-0"
-    >
-      <path
-        d={paths}
-        stroke={color}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
-    </svg>
-  );
-}
-
 export function MarketListItem({
   coin,
   displayName,
@@ -79,10 +52,10 @@ export function MarketListItem({
         </span>
       </div>
 
-      <div className="flex-shrink-0">
-        <MiniSparkline isPositive={isPositive} />
-      </div>
-
+      {/* No sparkline: the one that sat here drew one of two fixed paths
+          chosen by the sign of the 24h change — an invented price trend on a
+          trading screen. The change chip below carries the same signal
+          honestly. */}
       <div className="text-right flex-shrink-0 min-w-[72px]">
         {priceState === 'loading' ? (
           <div className="flex flex-col items-end animate-pulse">

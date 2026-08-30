@@ -102,7 +102,10 @@ export function AccountPage() {
                     {telegramUsername ? `@${telegramUsername}` : t("account.traderFallback")}
                   </h1>
                   <p className="editorial-mono mt-1 text-sm text-white/70 truncate">
-                    {walletAddress ? `${formatAddress(walletAddress)} · ` : ""}VIP {user?.vipTier ?? 0}
+                    {/* Just the address. "VIP {tier}" read a field Privy does
+                        not have, so every account displayed a fabricated
+                        "VIP 0" forever. */}
+                    {walletAddress ? formatAddress(walletAddress) : t("common.notLinked")}
                   </p>
                 </>
               )}

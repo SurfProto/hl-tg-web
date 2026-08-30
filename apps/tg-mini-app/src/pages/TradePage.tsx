@@ -126,8 +126,13 @@ export function TradePage() {
   const confirmInFlightRef = useRef(false);
 
   const side: "buy" | "sell" = useMemo(() => {
+    // Every in-app link passes ?side, so the default only decides what a
+    // shared or hand-typed link opens with. It used to be sell — a newcomer
+    // following a bare link landed on a short.
     const requestedSide = searchParams.get("side");
-    return requestedSide === "long" || requestedSide === "buy" ? "buy" : "sell";
+    return requestedSide === "short" || requestedSide === "sell"
+      ? "sell"
+      : "buy";
   }, [searchParams]);
 
   const [activeSide, setActiveSide] = useState<"buy" | "sell">(side);

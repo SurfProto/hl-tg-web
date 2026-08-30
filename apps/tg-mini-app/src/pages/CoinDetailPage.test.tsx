@@ -213,7 +213,13 @@ describe("CoinDetailPage", () => {
     expect(screen.queryByText("—")).not.toBeInTheDocument();
   });
 
-  it("keeps spot-specific holdings and buy/sell actions while using the richer coin detail layout", () => {
+  /**
+   * Spot keeps its holdings view but offers no trade actions: trading is
+   * perps-only (TradePage resolves perp markets exclusively), so the Buy/Sell
+   * pair this screen used to render for spot symbols was a dead end — every
+   * tap landed on "market metadata unavailable".
+   */
+  it("keeps spot-specific holdings but offers no trade actions for spot", () => {
     mockUseMarketData.mockReturnValue({
       data: {
         perp: [{ name: "BTC", maxLeverage: 50 }],
@@ -232,7 +238,7 @@ describe("CoinDetailPage", () => {
     expect(screen.getByText("SPOT")).toBeInTheDocument();
     expect(screen.getByText("Holdings")).toBeInTheDocument();
     expect(screen.getByText("12.5000 HYPE")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sell" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Buy" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sell" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Buy" })).not.toBeInTheDocument();
   });
 });

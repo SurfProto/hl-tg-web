@@ -22,7 +22,6 @@ import type {
   PositionProtectionRequest,
   PortfolioPeriodData,
   PortfolioRange,
-  StableBalanceState,
   StableSwapAsset,
   TriggerOrderKind,
   TriggerOrderRequest,

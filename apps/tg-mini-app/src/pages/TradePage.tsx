@@ -105,8 +105,10 @@ export function TradePage() {
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
   const [step, setStep] = useState<"amount" | "price">("amount");
   const [leverage, setLeverage] = useState(10);
-  const [tif, setTif] = useState<"Gtc" | "Alo" | "Ioc">("Gtc");
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  // No setter: the order-settings sheet that changed tif never shipped, so
+  // every order is Gtc until it does. State rather than a constant so the
+  // fee quote and order payload keep reading it the way that sheet will.
+  const [tif] = useState<"Gtc" | "Alo" | "Ioc">("Gtc");
   const [protectionOpen, setProtectionOpen] = useState(false);
   const [protectionDraft, setProtectionDraft] = useState<ProtectionDraft>(
     EMPTY_PROTECTION_DRAFT,
@@ -147,7 +149,6 @@ export function TradePage() {
     data: userState,
     isError: userStateError,
     isLoading: userStateLoading,
-    refetch: refetchUserState,
   } = useUserState();
   const placeOrder = usePlaceOrder();
   const upsertPositionProtection = useUpsertPositionProtection();
@@ -234,11 +235,6 @@ export function TradePage() {
           })
         : 0,
     [isPerp, symbol, userState],
-  );
-
-  const maxPositionUsd = useMemo(
-    () => availableMarginUsd * leverage,
-    [availableMarginUsd, leverage],
   );
 
   const currentPositionLeverage = useMemo(() => {
@@ -367,6 +363,7 @@ export function TradePage() {
     isPerp,
     leverage,
     limitPriceNum,
+    t,
     orderType,
     selectedMarket,
     activeSide,

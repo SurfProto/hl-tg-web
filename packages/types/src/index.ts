@@ -402,7 +402,7 @@ export interface MarketStats {
   change24h: number; // computed: (markPx - prevDayPx) / prevDayPx * 100
 }
 
-export interface AssetCtx extends MarketStats {}
+export type AssetCtx = MarketStats;
 
 export type PortfolioRange = "1d" | "7d" | "30d";
 

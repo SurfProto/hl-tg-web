@@ -54,6 +54,7 @@ describe("useAgentApprovalStatus", () => {
     let queriedBy: HyperliquidClient | null = null;
     vi.spyOn(HyperliquidClient.prototype, "getExtraAgents").mockImplementation(
       async function (this: HyperliquidClient) {
+        // eslint-disable-next-line @typescript-eslint/no-this-alias -- capturing which instance served the query is the point of this test
         queriedBy = this;
         return [];
       },

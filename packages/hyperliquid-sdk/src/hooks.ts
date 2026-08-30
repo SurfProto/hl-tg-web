@@ -39,11 +39,8 @@ import {
 import {
   formatStableAmount,
   getSpotAvailableBalance,
-  parseBalanceAmount,
   resolveStableSwapLeg,
   roundStableAmount,
-  type ResolvedStableSwapLeg,
-  type StableSpotMarket,
 } from "./stable-swap";
 import {
   getBuilderApprovalState,
@@ -55,7 +52,6 @@ import {
 import { isUserRejectedSignature } from "./exchange-response";
 import type {
   AccountState,
-  ApprovalRequirementState,
   AssetCtx,
   MarketStats,
   OpenOrder,

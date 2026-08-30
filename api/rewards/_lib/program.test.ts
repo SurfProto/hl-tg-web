@@ -62,12 +62,6 @@ function config(): RewardsConfig {
   };
 }
 
-/** The ledger rows a single sync tried to write. */
-function writtenEntries() {
-  return supabaseAdmin.upsertRewardLedgerEntries.mock.calls.flatMap(
-    (call) => call[1] as Array<Record<string, unknown>>,
-  );
-}
 
 describe("applyReferralCode", () => {
   beforeEach(() => {

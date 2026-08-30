@@ -14,15 +14,15 @@ interface MarketListItemProps {
   onClick: () => void;
 }
 
+// `coin` and `volume` stay in the props type — callers pass them and a
+// future row may want them back — but only what renders is destructured.
 export function MarketListItem({
-  coin,
   displayName,
   iconCoin,
   marketType,
   price,
   change24h,
   priceState = 'ready',
-  volume,
   maxLeverage,
   onClick,
 }: MarketListItemProps) {

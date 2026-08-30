@@ -9,7 +9,7 @@ import { HttpError } from "../../onramp/_lib/http";
 import { buildQuestSnapshot } from "./engine";
 import { buildTier } from "./tiers";
 import { checkInRewardFor } from "../check-in";
-import { getRewardsConfig, type RewardsConfig } from "./config";
+import { getRewardsConfig } from "./config";
 import {
   ensureReferralCode,
   getActiveSeason,
@@ -65,24 +65,6 @@ const FAILURES_BEFORE_ERROR = 3;
 
 /** Rows of leaderboard returned to the client. */
 const LEADERBOARD_SIZE = 10;
-
-type FillSummary = {
-  cloid: string | null;
-  fillKey: string;
-  occurredAt: string;
-  price: number;
-  size: number;
-};
-
-type RawUserFill = {
-  cloid?: string | null;
-  hash: string;
-  oid: number;
-  px: number | string;
-  sz: number | string;
-  tid: number;
-  time: number;
-};
 
 function normalizeReferralStartParam(startParam: string | null | undefined) {
   if (!startParam) {

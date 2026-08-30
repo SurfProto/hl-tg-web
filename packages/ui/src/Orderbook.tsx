@@ -9,7 +9,7 @@ interface OrderbookProps {
 }
 
 export function Orderbook({ bids, asks, onPriceClick, currentPrice }: OrderbookProps) {
-  const { maxBidSz, maxAskSz, maxSize, bidTotal, askTotal } = useMemo(() => {
+  const { maxSize, bidTotal, askTotal } = useMemo(() => {
     const maxBidSz = Math.max(...bids.map((b) => b.sz), 0);
     const maxAskSz = Math.max(...asks.map((a) => a.sz), 0);
     const maxSize = Math.max(maxBidSz, maxAskSz);

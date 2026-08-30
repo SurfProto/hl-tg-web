@@ -34,6 +34,13 @@ jobs:
       - name: Typecheck
         run: pnpm exec tsc --noEmit -p tsconfig.json
 
+      # Every package's lint plus api/ and scripts/ (not workspaces, so turbo
+      # never visits them). Enforced only since the flat-config rework: before
+      # it, no package had any eslint config and every lint script died on
+      # "no configuration found" — green CI said nothing about lint.
+      - name: Lint
+        run: pnpm lint
+
       # Runs the workspace suites via turbo *and* the api/ suite. api/ is not a
       # pnpm workspace package, so turbo — which only walks apps/* and
       # packages/* — never picked it up and ~90 tests were dead. See

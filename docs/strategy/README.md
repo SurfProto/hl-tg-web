@@ -1,4 +1,14 @@
-# Strategy notes, recovered 2026-08-29
+# Strategy
+
+## Validation
+
+[`2026-08-30-growth-strategy-validation.md`](2026-08-30-growth-strategy-validation.md)
+audits the growth-first moat design against the codebase it claims, the
+arithmetic it asserts and the market it describes. Read it before acting on that
+document: the unit its budget, CPA and success criteria are all denominated in
+does not survive contact with the code.
+
+## Notes recovered 2026-08-29
 
 Four strategy documents written on 2026-08-26, published as Claude artifacts,
 and later deleted. They are the competitive and economic analysis that the

@@ -53,6 +53,7 @@ export {
   usePredictedFundingRates,
   useUpdateLeverage,
   useUpdateIsolatedMargin,
+  useUserFees,
   usePortfolio,
   // Spot hooks — kept for SwapPage / TransferPage (unrouted, re-enable later)
   useSpotBalance,

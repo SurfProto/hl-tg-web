@@ -47,9 +47,12 @@ vi.mock("@privy-io/react-auth", () => ({
 }));
 
 vi.mock("@repo/hyperliquid-sdk", () => ({
+  getBuilderFeeTenthsBp: () => 50,
   getMarketBaseAsset: () => "BTC",
   getAvailableCollateralForMarket: () => 1000,
   getMarketDisplayName: () => "BTC",
+  truncateToDecimals: (value: number) => String(value),
+  useUserFees: () => ({ data: { takerRate: 0.00045, makerRate: 0.00015 } }),
   useMarketData: () => ({
     data: {
       perp: [{ name: "BTC", maxLeverage: 50, minNotionalUsd: 10 }],
@@ -191,6 +194,38 @@ describe("TradePage", () => {
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
     expect(screen.getByText("Order placed")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "View positions" })).toBeInTheDocument();
+  });
+
+  /**
+   * The limit flow's second step used to edit an invisible field: the first
+   * Review tap silently flipped the NumPad to the limit price while the hero
+   * kept showing the size, nothing gated an untouched price, and the review
+   * screen rendered "—" before the SDK errored on submit.
+   */
+  it("shows the limit price it is editing, and blocks review until one is set", () => {
+    renderTrade();
+
+    fireEvent.click(screen.getByRole("tab", { name: "trade.orderTypeLimit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Enter amount" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review order" }));
+
+    // Second step: the hero card now edits the limit price, visibly.
+    expect(screen.getByText("trade.limitPrice")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Review order" }),
+    ).not.toBeInTheDocument();
+    // No price typed yet — review is gated.
+    expect(screen.getByRole("button", { name: "Review order" })).toBeDisabled();
+
+    // The mocked NumPad types "100"; the typed price must be on screen.
+    fireEvent.click(screen.getByRole("button", { name: "Enter amount" }));
+    expect(screen.getByText("$100")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Review order" }));
+    expect(
+      screen.getByRole("heading", { name: "Review order" }),
+    ).toBeInTheDocument();
+    expect(mutateAsync).not.toHaveBeenCalled();
   });
 
   /**

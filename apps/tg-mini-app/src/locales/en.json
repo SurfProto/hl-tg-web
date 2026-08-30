@@ -92,6 +92,8 @@
     "availShort": "AVAIL",
     "liq": "Liq",
     "fee": "Fee",
+    "feeBuilder": "Builder fee",
+    "feeExchange": "Exchange fee",
     "margin": "Margin",
     "setPrice": "Set Price →",
     "editAmount": "← Edit amount",

@@ -2017,6 +2017,32 @@ export class HyperliquidClient {
     };
   }
 
+  /**
+   * The account's actual exchange fee rates, as decimals of notional.
+   *
+   * userCrossRate/userAddRate are the taker and maker rates the exchange will
+   * actually charge this account — volume tier and referral discount already
+   * applied — which is what a fee quote in the UI should be built from,
+   * rather than a hardcoded base tier.
+   */
+  async getUserFees(): Promise<{ takerRate: number; makerRate: number } | null> {
+    if (!this.walletAddress) return null;
+    const response = await this.postInfo<{
+      userCrossRate?: string;
+      userAddRate?: string;
+    }>({
+      type: "userFees",
+      user: this.walletAddress as `0x${string}`,
+    });
+
+    const takerRate = parseFloat(response?.userCrossRate ?? "");
+    const makerRate = parseFloat(response?.userAddRate ?? "");
+    if (!Number.isFinite(takerRate) || !Number.isFinite(makerRate)) {
+      return null;
+    }
+    return { makerRate, takerRate };
+  }
+
   // Refresh asset contexts cache (30-second TTL, independent of market metadata)
   private async refreshAssetCtxs(): Promise<void> {
     const ASSET_CTX_TTL_MS = 30_000;

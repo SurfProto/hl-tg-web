@@ -1017,6 +1017,23 @@ export function useUpdateIsolatedMargin() {
 /**
  * Hook to fetch portfolio
  */
+/**
+ * The account's actual exchange fee rates, for quoting order costs in the UI.
+ * Rates move with 14-day volume, so an hour of staleness is immaterial;
+ * consumers fall back to the base tier while this loads or errors.
+ */
+export function useUserFees() {
+  const { client } = useHyperliquid();
+  const scope = useAccountScope();
+
+  return useQuery({
+    queryKey: ["userFees", scope],
+    queryFn: () => client?.getUserFees(),
+    enabled: !!client && Boolean(scope),
+    staleTime: 1000 * 60 * 60,
+  });
+}
+
 export function usePortfolio() {
   const { client } = useHyperliquid();
   const scope = useAccountScope();

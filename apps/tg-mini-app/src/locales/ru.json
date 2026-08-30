@@ -87,6 +87,8 @@
     "availShort": "Доступно",
     "liq": "Ликв.",
     "fee": "Комиссия",
+    "feeBuilder": "Комиссия приложения",
+    "feeExchange": "Комиссия биржи",
     "margin": "Маржа",
     "perp": "ПЕРП",
     "orderTypeMarket": "Рынок",

@@ -1,0 +1,391 @@
+<title>The Retention Loop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --ground: #f7f8fa; --surface: #ffffff; --surface-sunk: #eef1f5;
+    --ink: #16202b; --ink-soft: #33414f; --muted: #5c6b7a; --hairline: #dde3e9;
+    --accent: #1f5f4b; --accent-soft: #e4efea; --flag: #a8452b; --flag-soft: #f6e7e2;
+    --display: "Newsreader", Georgia, "Times New Roman", serif;
+    --body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --measure: 68ch;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0f151b; --surface: #161e26; --surface-sunk: #1c262f;
+      --ink: #e6ecf2; --ink-soft: #c3cedb; --muted: #8a9aa8; --hairline: #263039;
+      --accent: #4fa88a; --accent-soft: #16302a; --flag: #d4785e; --flag-soft: #33201a;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0f151b; --surface: #161e26; --surface-sunk: #1c262f;
+    --ink: #e6ecf2; --ink-soft: #c3cedb; --muted: #8a9aa8; --hairline: #263039;
+    --accent: #4fa88a; --accent-soft: #16302a; --flag: #d4785e; --flag-soft: #33201a;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground); color: var(--ink); font-family: var(--body);
+    font-size: 16.5px; line-height: 1.65; margin: 0; padding: 0 5vw 8rem;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: var(--measure); margin: 0 auto; }
+
+  header.masthead { padding: 5rem 0 2.5rem; border-bottom: 1px solid var(--hairline); margin-bottom: 3rem; }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 1.5rem;
+  }
+
+  h1 {
+    font-family: var(--display); font-weight: 500; font-size: clamp(2.4rem, 6vw, 3.7rem);
+    line-height: 1.08; letter-spacing: -0.02em; text-wrap: balance; margin: 0 0 1.25rem;
+  }
+
+  .standfirst { font-size: 1.14rem; color: var(--ink-soft); margin: 0; text-wrap: pretty; }
+
+  section { margin: 4.5rem auto 0; }
+
+  h2 {
+    font-family: var(--display); font-weight: 500; font-size: clamp(1.7rem, 3.5vw, 2.15rem);
+    line-height: 1.2; letter-spacing: -0.015em; text-wrap: balance; margin: 0 0 0.4rem;
+    padding-top: 1.75rem; border-top: 2px solid var(--ink);
+  }
+
+  .section-note {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 1.75rem;
+  }
+
+  h3 { font-family: var(--body); font-weight: 600; font-size: 1.03rem; margin: 2.4rem 0 0.6rem; }
+
+  p { margin: 0 0 1.1rem; text-wrap: pretty; }
+  strong { font-weight: 600; color: var(--ink); }
+
+  code {
+    font-family: var(--mono); font-size: 0.87em; background: var(--surface-sunk);
+    padding: 0.1em 0.36em; border-radius: 2px;
+  }
+
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  .thesis {
+    font-family: var(--display); font-size: 1.28rem; line-height: 1.42; color: var(--ink);
+    border-left: 3px solid var(--accent); padding: 0.15rem 0 0.15rem 1.4rem;
+    margin: 2rem 0; text-wrap: pretty;
+  }
+
+  .callout {
+    background: var(--surface); border: 1px solid var(--hairline); border-left: 3px solid var(--flag);
+    padding: 1.3rem 1.4rem; margin: 2rem 0;
+  }
+  .callout.good { border-left-color: var(--accent); }
+  .callout h3 { margin: 0 0 0.5rem; }
+  .callout p:last-child { margin: 0; }
+
+  ul.plain { padding-left: 1.15rem; margin: 0 0 1.1rem; }
+  ul.plain li { margin-bottom: 0.5rem; }
+
+  /* loop diagram */
+  .loop { display: flex; flex-direction: column; gap: 0.4rem; margin: 2.25rem 0; }
+  .loop-step {
+    border: 1px solid var(--hairline); background: var(--surface); padding: 0.95rem 1.15rem;
+    display: grid; grid-template-columns: auto 1fr; gap: 0.9rem; align-items: baseline;
+  }
+  .loop-step .k {
+    font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); white-space: nowrap;
+  }
+  .loop-step .v { font-size: 0.96rem; }
+  .loop-step.gap { border-left: 3px solid var(--flag); }
+  .loop-step.gap .k { color: var(--flag); }
+  .loop-turn { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); padding-left: 1.15rem; }
+
+  /* horizons */
+  .horizon { border-top: 1px solid var(--hairline); padding: 1.9rem 0 0.4rem; margin-top: 1.9rem; }
+  .horizon:first-of-type { border-top: none; padding-top: 0.5rem; margin-top: 0; }
+
+  .horizon-head { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: baseline; margin-bottom: 0.3rem; }
+  .horizon-head h3 { margin: 0; font-size: 1.16rem; }
+  .horizon-when {
+    font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--accent); background: var(--accent-soft); padding: 0.24rem 0.5rem; border-radius: 2px;
+  }
+  .horizon-goal { color: var(--muted); font-size: 0.92rem; margin: 0 0 1.1rem; }
+
+  .items { display: flex; flex-direction: column; gap: 1px; background: var(--hairline); border: 1px solid var(--hairline); }
+  .item { background: var(--surface); padding: 1rem 1.15rem; }
+  .item strong { display: block; margin-bottom: 0.2rem; font-size: 0.97rem; }
+  .item p { margin: 0; font-size: 0.9rem; color: var(--ink-soft); }
+  .item .dep { display: block; margin-top: 0.4rem; font-family: var(--mono); font-size: 0.71rem; color: var(--muted); }
+
+  footer { margin-top: 5rem; padding-top: 2rem; border-top: 1px solid var(--hairline); font-size: 0.88rem; color: var(--muted); }
+  footer a { color: var(--muted); }
+</style>
+
+<header class="masthead">
+  <div class="wrap">
+    <p class="eyebrow">Roadmap · Telegram-native perp trading · August 2026</p>
+    <h1>The Retention Loop</h1>
+    <p class="standfirst">The thesis is right: a trader who finishes a session and withdraws is a customer you have to acquire again. But the card is the last brick in that wall, not the first — and Hyperbeat won't sell you theirs.</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section>
+    <h2>Can you just integrate Hyperbeat?</h2>
+    <p class="section-note">Asked and answered — not for the card</p>
+
+    <p>Hyperbeat does run a partner programme. <strong>Builder Codes</strong> give third-party developers fee revenue with attribution, plus the Hyperfolio API for portfolio data. Application, whitelist approval, then build.</p>
+
+    <p>What it covers is explicit: <strong>vaults</strong> (HYPE, USDT, BTC, wVLP, dnHYPE, XAUt), <strong>liquid staking</strong> via beHYPE minting, and <strong>vanilla staking</strong> through validator delegation. What it does not cover, anywhere in the public documentation, is Cash, Credit Mode, or the Visa card.</p>
+
+    <p class="thesis">Their card is their moat. Nobody rents out the thing they built the company around.</p>
+
+    <p>So Hyperbeat is not a shortcut past Stripe and Bridge. It is something else, and possibly more immediately useful: <strong>a yield integration.</strong> Which matters here, because yield solves the same problem the card solves, from the other end.</p>
+
+    <div class="callout">
+      <h3>One constraint before anyone gets excited</h3>
+      <p>Hyperbeat's vaults live on HyperEVM. Your users' capital is in a HyperCore perps account, funded through Arbitrum. Routing idle balance into a Hyperbeat vault means another hop across another chain boundary — the same class of friction that makes the card hard. Worth an application to find out the real integration shape, not worth assuming it's free.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>The loop you're actually building</h2>
+    <p class="section-note">Name the leak before choosing the patch</p>
+
+    <p>Your framing — don't let them leave after the trading session — is the right one, and it deserves to be stated as a loop with a named gap.</p>
+
+    <div class="loop">
+      <div class="loop-step"><span class="k">Arrive</span><span class="v">Telegram link opens a working terminal. No install.</span></div>
+      <div class="loop-step"><span class="k">Fund</span><span class="v">On-ramp or bridge. First real friction, partly solved.</span></div>
+      <div class="loop-step"><span class="k">Trade</span><span class="v">The session. This part works.</span></div>
+      <div class="loop-step gap"><span class="k">Then what</span><span class="v">Balance sits idle earning nothing, or leaves. This is the leak.</span></div>
+      <p class="loop-turn">↳ if it leaves, you re-acquire. If it sits idle, you earn nothing and neither do they.</p>
+      <div class="loop-step"><span class="k">Return</span><span class="v">Only if something pulls them back.</span></div>
+    </div>
+
+    <p>Three things plug that gap, and they are not equally hard:</p>
+
+    <ul class="plain">
+      <li><strong>Yield on idle balance.</strong> Money that earns is money that stays. Medium effort, needs a partner.</li>
+      <li><strong>Spending.</strong> Money you can spend is money you never withdraw. Highest impact, hardest, months out.</li>
+      <li><strong>A reason to open the app tomorrow.</strong> Streaks, tiers, quests. Cheapest by a wide margin, and it works on users who have already left.</li>
+    </ul>
+
+    <p>The card is genuinely the strongest of the three — it converts your product from a place people visit into a place their money lives. But it is gated behind KYC, chain mismatch, settlement float and a geography question you haven't answered. Building it first would mean spending a quarter to plug a leak in a bucket with two users in it.</p>
+  </section>
+
+  <section>
+    <h2>The constraint nobody in this roadmap fixes</h2>
+    <p class="section-note">Read this before the sequence</p>
+
+    <p class="thesis">You have two users. No item below changes that.</p>
+
+    <p>Every plan in these documents makes the product better for people who are already here. Tiers, streaks, rebates, cards, HIP-3 markets — all retention and depth instruments, and retention of two people is not a business.</p>
+
+    <p>Your advantage is distribution, and it is real: a Telegram link opens a working perp terminal with no app store between the user and the trade, in Russian, with referrals that ride the messenger's own graph. But an advantage in distribution is not distribution. Somebody has to go and use it.</p>
+
+    <p>So treat the roadmap below as the thing that makes acquisition <em>worth doing</em> — a program worth farming, a reason to stay past the first session — and treat acquisition itself as the parallel track that decides whether any of it matters. If you only do one thing this month, make it the channel, not the code.</p>
+  </section>
+
+  <section>
+    <h2>Roadmap</h2>
+    <p class="section-note">Sequenced by dependency, not by date — I don't know your velocity</p>
+
+    <div class="horizon">
+      <div class="horizon-head">
+        <h3>Make the session worth returning to</h3>
+        <span class="horizon-when">Now · weeks</span>
+      </div>
+      <p class="horizon-goal">All of it sits on infrastructure that already exists. No partners, no capital, no compliance.</p>
+      <div class="items">
+        <div class="item">
+          <strong>Repair the referral funnel before anything is built on it</strong>
+          <p>Telegram invite links are currently discarded, nothing writes the leaderboard projections, a referrer is paid for only one friend per season, trade attribution rests on a forgeable <code>cloid</code> prefix, and "funded" counts only your own on-ramp. All five verified in code; the first two are regressions from making the dashboard read-only.</p>
+          <span class="dep">Blocks: everything else in this horizon · a broken funnel just distributes the brokenness faster</span>
+        </div>
+        <div class="item">
+          <strong>Balance taxonomy and distance-to-liquidation</strong>
+          <p>Name the five layers — wallet, on-venue, margin, unrealised, withdrawable — and show how close a position is to liquidation. Every number is already parsed in <code>account-state.ts</code>.</p>
+          <span class="dep">Do first · removes your worst confusion, and nothing else depends on it</span>
+        </div>
+        <div class="item">
+          <strong>Daily check-in with streaks</strong>
+          <p>A date-scoped idempotency key on a ledger row. Your append-only writer already handles the replay. Largest single gap against Dreamcash.</p>
+          <span class="dep">Independent</span>
+        </div>
+        <div class="item">
+          <strong>Tier system</strong>
+          <p>Five tiers from cumulative season XP, multiplier emitted as its own <code>tier_bonus</code> ledger row rather than applied in the aggregate.</p>
+          <span class="dep">Blocks: every redemption below</span>
+        </div>
+        <div class="item">
+          <strong>Referral ladder</strong>
+          <p>Dry invite pays multiplier progress, not XP. Funded and funded-plus-traded pay XP. Volume share pays a slice of the referee's ongoing volume XP.</p>
+          <span class="dep">Needs: tier system, for the dry rung to have somewhere to go</span>
+        </div>
+        <div class="item">
+          <strong>Telegram channel quest</strong>
+          <p>Verifiable server-side with the bot token you already hold — and re-checkable before any later payout.</p>
+          <span class="dep">Independent · gives you a broadcast channel you don't have</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="horizon">
+      <div class="horizon-head">
+        <h3>Give the balance a reason to stay</h3>
+        <span class="horizon-when">Next · 1–2 months</span>
+      </div>
+      <p class="horizon-goal">First real redemptions, and the first test of whether anyone wants a card at all.</p>
+      <div class="items">
+        <div class="item">
+          <strong>Sponsored deposits as the first redemption</strong>
+          <p><code>bridge_sponsorship_events</code> is already in the schema and nothing reads it. Costs you gas rather than notional, and removes the biggest onboarding drop-off.</p>
+          <span class="dep">Needs: tiers</span>
+        </div>
+        <div class="item">
+          <strong>Fee rebates</strong>
+          <p>Tiered reduction against the builder fee. Self-funding by construction, and the honest anchor for what XP is worth.</p>
+          <span class="dep">Needs: tiers</span>
+        </div>
+        <div class="item">
+          <strong>Apply for Hyperbeat Builder Codes</strong>
+          <p>Vaults and staking, with revenue share. Find out what routing idle balance to HyperEVM actually costs before committing to it.</p>
+          <span class="dep">Application + whitelist · start now, it queues</span>
+        </div>
+        <div class="item">
+          <strong>Refer out to an Arbitrum-native card</strong>
+          <p>Kast, Banqa or Plasma One — users fund from the wallet they already have. Cover the card fee at a high tier. Zero settlement exposure.</p>
+          <span class="dep">The experiment: does anyone fund it twice?</span>
+        </div>
+        <div class="item">
+          <strong>Segregate the wallet layer</strong>
+          <p>Treat Arbitrum wallet balance as a distinct account now, before a card exists. Retrofitting segregation under a live card programme is far worse.</p>
+          <span class="dep">Blocks: any embedded card</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="horizon">
+      <div class="horizon-head">
+        <h3>Own the spending loop</h3>
+        <span class="horizon-when">Then · a quarter+</span>
+      </div>
+      <p class="horizon-goal">Conditional on the refer-out experiment showing repeat funding. If it doesn't, this whole horizon is cancelled and that is a good outcome.</p>
+      <div class="items">
+        <div class="item">
+          <strong>Settle the geography question</strong>
+          <p>Get the real eligible-country list for your actual audience from an issuer. It may reveal the card is for a different user than the one you have.</p>
+          <span class="dep">Gate · do before any scoping</span>
+        </div>
+        <div class="item">
+          <strong>One-geography virtual-card pilot</strong>
+          <p>Through Rain, or Privy with Bridge and Stripe Issuing. Virtual only, one country, hard limits, a dedicated spend wallet that card authorisations can reach and Hyperliquid margin collateral cannot. Needs a funding wallet on a supported chain, since Arbitrum isn't one, and double-spend prevention against pending authorisations.</p>
+          <span class="dep">Needs: segregated wallet, geography answer, proven demand</span>
+        </div>
+        <div class="item">
+          <strong>Position it as profit-to-spending, not cashback</strong>
+          <p>The differentiator is safely moving <em>realised trading profits</em> into everyday spending. Another generic cashback card competes with every neobank on earth; this one competes with the withdrawal button.</p>
+          <span class="dep">Positioning, not engineering</span>
+        </div>
+        <div class="item">
+          <strong>Card tier as the top redemption</strong>
+          <p>Cashback rate or metal card by tier. This is where XP stops being a scoreboard.</p>
+          <span class="dep">Needs: card</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="horizon">
+      <div class="horizon-head">
+        <h3>Own a market</h3>
+        <span class="horizon-when">Parallel · starts now, lands later</span>
+      </div>
+      <p class="horizon-goal">A conversation, not a project. Costs nothing to begin and has the longest lead time of anything here.</p>
+      <div class="items">
+        <div class="item">
+          <strong>Be the best Telegram front end for markets that already exist</strong>
+          <p>Roughly 23 of the top 30 pairs on Hyperliquid are already tokenised equities and commodities, and trade.xyz alone runs 70+ HIP-3 markets. You can route to all of them today, for free, with no bond and no market-integrity obligation.</p>
+          <span class="dep">Start here · this is the step that earns the later ones</span>
+        </div>
+        <div class="item">
+          <strong>Localise the surface, not the market</strong>
+          <p>Prices and P&amp;L in local currency, market hours, earnings dates, corporate-action alerts. This is the differentiated product for a non-US retail trader and it requires no deployer relationship whatsoever.</p>
+          <span class="dep">Needs: nothing · highest ratio of differentiation to effort on this page</span>
+        </div>
+        <div class="item">
+          <strong>Co-launch one market with an existing deployer</strong>
+          <p>Partner with a deployer who already holds the bond, plus an oracle provider and a market maker. You bring the distribution and the demand thesis; they carry the stake and the operational burden.</p>
+          <span class="dep">Needs: proven distribution from the two steps above</span>
+        </div>
+        <div class="item">
+          <strong>Own a DEX — only after volume is proven</strong>
+          <p>500,000 HYPE staked, roughly $25M, and the deployer owns oracles, leverage parameters, settlement, market integrity and slashing risk on an ongoing basis. Hyperion deployed exactly that stake to Skew for equity and revenue share, so the structure is repeatable — but it is an outcome, not an entry point.</p>
+          <span class="dep">Last · the bond is the small part, the operational responsibility is the large one</span>
+        </div>
+      </div>
+
+      <div class="callout">
+        <h3>Correction on local currency</h3>
+        <p>Trading a local currency does <em>not</em> mean holding or settling in one. Permissionless quote assets on HyperCore must satisfy strict dollar-peg requirements, so local-currency collateral is not a usable wedge.</p>
+        <p>The viable form is a <strong>USDC-settled perpetual tracking a rate</strong> — BRL/USD, TRY/USD — exactly as the existing EUR, JPY and KRW markets work. The user's hedge is the position; the collateral stays dollar-denominated throughout.</p>
+        <p>Local equities should likewise begin as a <strong>regional index or curated basket</strong>. Single names drag in exchange hours, holidays, dividends, splits, halts, licensed market data and jurisdictional exposure — an index absorbs most of that.</p>
+      </div>
+    </div>
+
+    <div class="horizon">
+      <div class="horizon-head">
+        <h3>Deliberately not yet</h3>
+        <span class="horizon-when">Hold</span>
+      </div>
+      <div class="items">
+        <div class="item">
+          <strong>Any statement about a token</strong>
+          <p>Design XP as though it will be the allocation basis. Say nothing. The expectation does the work without the liability.</p>
+        </div>
+        <div class="item">
+          <strong>Credit against margin collateral</strong>
+          <p>Hyperbeat lends against spot. Lending against a leveraged perps account stacks leverage on leverage and liquidates both at once.</p>
+        </div>
+        <div class="item">
+          <strong>Your own card programme</strong>
+          <p>Prefunded FBO accounts and 1–3 days of settlement float. A real treasury operation, and an outcome rather than a starting point.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What would tell you this is working</h2>
+    <p class="section-note">Pick the measures before you build, or you'll rationalise afterwards</p>
+
+    <p class="thesis">Trade every market from Telegram. Build your rank. Get real benefits back.</p>
+
+    <p>That is the promise the roadmap is building toward, and it is worth writing down now because it disciplines the sequence: <em>every market</em> is the HIP-3 front-end work, <em>build your rank</em> is the program, <em>real benefits</em> is Credits funded from revenue you actually collect. Nothing on this page that fails to serve one of those three is worth doing yet.</p>
+
+    <ul class="plain">
+      <li><strong>Balance retained 7 days after a session.</strong> The direct measure of the leak. Everything in horizons one and two should move it.</li>
+      <li><strong>Return rate on day 2 and day 7.</strong> What streaks and tiers are actually for.</li>
+      <li><strong>Referrals per active user, split by rung.</strong> If dry invites spike and funded ones don't, you're being farmed and the multiplier design is doing its job by making it worthless.</li>
+      <li><strong>Second card funding.</strong> The single question the refer-out experiment exists to answer. One funding event is curiosity; two is a habit.</li>
+      <li><strong>Reconciliation drift staying at zero.</strong> You now have the tooling. A program used for allocation later needs a clean record from the start.</li>
+    </ul>
+  </section>
+
+  <footer>
+    <p>Hyperbeat partner scope from <a href="https://docs.hyperbeat.org/hyperbeat-builder-codes">their Builder Codes documentation</a> and <a href="https://docs.hyperbeat.org/">product docs</a>. HIP-3 bond structure from <a href="https://www.tradingview.com/news/cointelegraph:c6b90a058094b:0-hyperion-defi-to-deploy-500k-hype-for-hyperliquid-hip-3-markets/">Cointelegraph</a>. Card and settlement detail from <a href="https://docs.privy.io/recipes/bridge-cards">Privy</a> and <a href="https://www.lithic.com/blog/what-are-stablecoin-backed-cards">Lithic</a>. Repository state read at <code>dac71ff</code>.</p>
+  </footer>
+
+</div>

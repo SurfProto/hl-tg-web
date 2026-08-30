@@ -1,0 +1,585 @@
+<title>The Five Basis Point Problem</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --ground: #f7f8fa;
+    --surface: #ffffff;
+    --surface-sunk: #eef1f5;
+    --ink: #16202b;
+    --ink-soft: #33414f;
+    --muted: #5c6b7a;
+    --hairline: #dde3e9;
+    --accent: #1f5f4b;
+    --accent-soft: #e4efea;
+    --flag: #a8452b;
+    --flag-soft: #f6e7e2;
+
+    --display: "Newsreader", Georgia, "Times New Roman", serif;
+    --body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+    --measure: 68ch;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0f151b;
+      --surface: #161e26;
+      --surface-sunk: #1c262f;
+      --ink: #e6ecf2;
+      --ink-soft: #c3cedb;
+      --muted: #8a9aa8;
+      --hairline: #263039;
+      --accent: #4fa88a;
+      --accent-soft: #16302a;
+      --flag: #d4785e;
+      --flag-soft: #33201a;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0f151b;
+    --surface: #161e26;
+    --surface-sunk: #1c262f;
+    --ink: #e6ecf2;
+    --ink-soft: #c3cedb;
+    --muted: #8a9aa8;
+    --hairline: #263039;
+    --accent: #4fa88a;
+    --accent-soft: #16302a;
+    --flag: #d4785e;
+    --flag-soft: #33201a;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16.5px;
+    line-height: 1.65;
+    margin: 0;
+    padding: 0 5vw 8rem;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: var(--measure); margin: 0 auto; }
+  .wide { max-width: 82ch; margin: 0 auto; }
+
+  /* ---------- masthead ---------- */
+
+  header.masthead {
+    padding: 5rem 0 2.5rem;
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: 3rem;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 1.5rem;
+  }
+
+  h1 {
+    font-family: var(--display);
+    font-weight: 500;
+    font-size: clamp(2.4rem, 6vw, 3.7rem);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+    margin: 0 0 1.25rem;
+  }
+
+  .standfirst {
+    font-size: 1.14rem;
+    color: var(--ink-soft);
+    margin: 0;
+    text-wrap: pretty;
+  }
+
+  /* ---------- figures strip ---------- */
+
+  .figures {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px;
+    background: var(--hairline);
+    border: 1px solid var(--hairline);
+    margin: 3rem auto;
+  }
+
+  .fig { background: var(--surface); padding: 1.4rem 1.25rem; }
+
+  .fig dt {
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 0.55rem;
+  }
+
+  .fig dd {
+    font-family: var(--mono);
+    font-size: 1.5rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    margin: 0 0 0.3rem;
+    line-height: 1.1;
+  }
+
+  .fig p { font-size: 0.83rem; color: var(--muted); margin: 0; line-height: 1.45; }
+
+  /* ---------- sections ---------- */
+
+  section { margin: 4.5rem auto 0; }
+
+  h2 {
+    font-family: var(--display);
+    font-weight: 500;
+    font-size: clamp(1.7rem, 3.5vw, 2.15rem);
+    line-height: 1.2;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+    margin: 0 0 0.4rem;
+    padding-top: 1.75rem;
+    border-top: 2px solid var(--ink);
+  }
+
+  .section-note {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 1.75rem;
+  }
+
+  h3 {
+    font-family: var(--body);
+    font-weight: 600;
+    font-size: 1.03rem;
+    letter-spacing: 0.005em;
+    margin: 2.5rem 0 0.6rem;
+  }
+
+  p { margin: 0 0 1.1rem; text-wrap: pretty; }
+  strong { font-weight: 600; color: var(--ink); }
+  em { font-style: italic; }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.87em;
+    background: var(--surface-sunk);
+    padding: 0.1em 0.36em;
+    border-radius: 2px;
+  }
+
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  /* ---------- pull quote ---------- */
+
+  .thesis {
+    font-family: var(--display);
+    font-size: 1.3rem;
+    line-height: 1.42;
+    color: var(--ink);
+    border-left: 3px solid var(--accent);
+    padding: 0.15rem 0 0.15rem 1.4rem;
+    margin: 2rem 0;
+    text-wrap: pretty;
+  }
+
+  /* ---------- tables ---------- */
+
+  .scroll { overflow-x: auto; margin: 1.75rem 0; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+
+  th, td {
+    text-align: left;
+    padding: 0.7rem 0.9rem 0.7rem 0;
+    border-bottom: 1px solid var(--hairline);
+    vertical-align: top;
+  }
+
+  thead th {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 500;
+    border-bottom: 1px solid var(--ink);
+    white-space: nowrap;
+  }
+
+  td.num, th.num {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  tbody tr:last-child td { border-bottom: none; }
+
+  /* ---------- status list ---------- */
+
+  .checks { list-style: none; padding: 0; margin: 1.75rem 0; display: flex; flex-direction: column; gap: 1px; background: var(--hairline); border: 1px solid var(--hairline); }
+
+  .checks li { background: var(--surface); padding: 1.1rem 1.2rem; display: grid; grid-template-columns: auto 1fr; gap: 0.9rem; align-items: start; }
+
+  .chip {
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    font-weight: 600;
+    padding: 0.28rem 0.5rem;
+    border-radius: 2px;
+    white-space: nowrap;
+  }
+
+  .chip.block { background: var(--flag-soft); color: var(--flag); }
+  .chip.ok { background: var(--accent-soft); color: var(--accent); }
+
+  .checks strong { display: block; margin-bottom: 0.2rem; }
+  .checks p { margin: 0; font-size: 0.93rem; color: var(--ink-soft); }
+
+  /* ---------- phased plan ---------- */
+
+  .phases { display: flex; flex-direction: column; gap: 0; margin: 1.75rem 0; counter-reset: phase; }
+
+  .phase {
+    display: grid;
+    grid-template-columns: 3.2rem 1fr;
+    gap: 1.2rem;
+    padding: 1.5rem 0;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .phase:last-child { border-bottom: none; }
+
+  .phase::before {
+    counter-increment: phase;
+    content: counter(phase, decimal-leading-zero);
+    font-family: var(--mono);
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    padding-top: 0.1rem;
+  }
+
+  .phase h3 { margin: 0 0 0.35rem; }
+  .phase p { margin: 0 0 0.5rem; font-size: 0.95rem; }
+  .phase p:last-child { margin: 0; }
+
+  .phase .why { color: var(--muted); font-size: 0.88rem; }
+
+  /* ---------- callout ---------- */
+
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-left: 3px solid var(--flag);
+    padding: 1.3rem 1.4rem;
+    margin: 2rem 0;
+  }
+
+  .callout h3 { margin: 0 0 0.5rem; }
+  .callout p:last-child { margin: 0; }
+
+  ul.plain { padding-left: 1.15rem; margin: 0 0 1.1rem; }
+  ul.plain li { margin-bottom: 0.45rem; }
+
+  footer {
+    margin-top: 5rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--hairline);
+    font-size: 0.88rem;
+    color: var(--muted);
+  }
+
+  footer a { color: var(--muted); }
+</style>
+
+<header class="masthead">
+  <div class="wrap">
+    <p class="eyebrow">Points program · Strategy note · August 2026</p>
+    <h1>The Five Basis Point Problem</h1>
+    <p class="standfirst">Dreamcash is spending $200,000 a week to buy the same users you want. You earn five basis points on notional. That single asymmetry should decide the shape of your points program, your marketing, and whether the card is worth building.</p>
+  </div>
+</header>
+
+<div class="wide">
+  <dl class="figures">
+    <div class="fig">
+      <dt>Your revenue</dt>
+      <dd>5 bps</dd>
+      <p>Builder fee on notional. <code>VITE_BUILDER_FEE=50</code></p>
+    </div>
+    <div class="fig">
+      <dt>Per $1M traded</dt>
+      <dd>$500</dd>
+      <p>Everything you pay out comes from here</p>
+    </div>
+    <div class="fig">
+      <dt>Dreamcash spend</dt>
+      <dd>$2M</dd>
+      <p>$200k weekly × 10 weeks, in USDT</p>
+    </div>
+    <div class="fig">
+      <dt>To fund that at 5 bps</dt>
+      <dd>$4B</dd>
+      <p>Notional volume required</p>
+    </div>
+  </dl>
+</div>
+
+<div class="wrap">
+
+  <section>
+    <h2>Where you actually stand</h2>
+    <p class="section-note">Read this part first — it changes what the rest means</p>
+
+    <p>Two users. Eighteen ledger rows. Three fills ingested since the worker went live this morning. You are pre-launch, and the points program you have is calibrated for a company that isn't.</p>
+
+    <p>Your entire quest set awards <strong>1,550 XP</strong>, and volume pays <strong>1 XP per dollar</strong>. So completing every quest you offer is worth the same as trading $1,550. That is a program tuned to reward volume from people who are already here — a retention and depth instrument. You do not have a retention problem. You have an existence problem.</p>
+
+    <p>The work finished this session matters here in a way that isn't obvious: you now have an XP ledger that is append-only, reconcilable, and correct under replay. That is worth very little to a user and a great deal to the kind of user a points program actually attracts, who will absolutely notice if their number goes down. It also means you can change the program's parameters without fear, because you can rebuild any projection from the ledger.</p>
+  </section>
+
+  <section>
+    <h2>What Dreamcash is really buying</h2>
+    <p class="section-note">Same chain, same primitive, opposite strategy</p>
+
+    <p>Dreamcash is the closest comparable that exists: a mobile-first trading app built on Hyperliquid, running a season-based XP program. On trading volume you are <em>identical</em> — both pay 1 XP per dollar. Everything else diverges sharply.</p>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Mechanic</th>
+            <th class="num">Dreamcash</th>
+            <th class="num">You</th>
+            <th class="num">Volume equivalent</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Trading volume</td>
+            <td class="num">1 XP / $1</td>
+            <td class="num">1 XP / $1</td>
+            <td class="num">—</td>
+          </tr>
+          <tr>
+            <td>Daily check-in</td>
+            <td class="num">20,000 / day</td>
+            <td class="num">none</td>
+            <td class="num">$600k / month</td>
+          </tr>
+          <tr>
+            <td>Successful invite</td>
+            <td class="num">54,000</td>
+            <td class="num">500</td>
+            <td class="num">$54,000</td>
+          </tr>
+          <tr>
+            <td>Signup with code</td>
+            <td class="num">10,000</td>
+            <td class="num">0</td>
+            <td class="num">$10,000</td>
+          </tr>
+          <tr>
+            <td>Rank multiplier</td>
+            <td class="num">up to 2.5×</td>
+            <td class="num">unused</td>
+            <td class="num">—</td>
+          </tr>
+          <tr>
+            <td>Platform steering</td>
+            <td class="num">web pays ½</td>
+            <td class="num">none</td>
+            <td class="num">—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="thesis">A month of Dreamcash check-ins is worth $600,000 of trading. They are not running a volume program with engagement bolted on. They are running an engagement program that happens to sit on a DEX.</p>
+
+    <p>Read the numbers as a budget allocation and the strategy is unambiguous: check-ins and referrals dwarf trading rewards by orders of magnitude. Dreamcash is buying <strong>daily active users and invite-graph growth</strong>, funded by venture money and an airdrop expectation, not by fees. Their $200k weekly incentive would need $4B of notional to cover from builder fees alone.</p>
+
+    <p>Two consequences follow, and they point in opposite directions. You cannot match that spend — not close, not with a bigger number in a config file. But you also don't need to, because they've already proven the demand exists and are paying to educate the market about Hyperliquid mini-apps on your behalf.</p>
+  </section>
+
+  <section>
+    <h2>The tension you just created, and should keep</h2>
+    <p class="section-note">The central strategic question</p>
+
+    <p>Points programs run on the expectation of future value. That expectation is the entire engine. Dreamcash's users are farming an airdrop nobody has promised them.</p>
+
+    <p>You have just spent a full engineering cycle making it structurally impossible for your program to pay cash, and your own design document states that promising retroactive conversion is a non-goal. That was the right call — the payout path was genuinely unsafe. But it leaves a real question you have to answer deliberately rather than by drift:</p>
+
+    <p class="thesis">If XP will never be cash, and you won't imply that it might, what exactly is a user farming?</p>
+
+    <p>There are only three honest answers, and they are not equally good.</p>
+
+    <h3>Declare a token or conversion later</h3>
+    <p>Highest growth, and the one Dreamcash is running. It also re-imports every problem the hardening removed, plus securities exposure that is a legal question rather than an engineering one. If you go here, it should be a deliberate, advised decision — and the relaunch gates in your own spec are the right price of entry.</p>
+
+    <h3>Make XP buy real in-product benefits</h3>
+    <p><strong>This is the recommendation.</strong> Fee rebates, priority access, higher limits, reduced spreads — things you can fund from the five basis points you actually earn, and that are worth something the day they're granted rather than at some unspecified future event. A rebate is not a security. It's self-funding by construction, because the user must trade to earn it and the rebate is a fraction of the fee that trading produced.</p>
+
+    <h3>Status and access only</h3>
+    <p>Cheapest and weakest. Leaderboards and badges retain people who are already engaged; they do not acquire anyone. Keep it as a layer, not as the answer.</p>
+
+    <p>Option two also has a property the others lack: it makes your program legible. "Trade more, pay less" is a sentence a user understands immediately and can verify. "Farm points for an unspecified future event" requires them to trust you, and you are a two-user app with no track record.</p>
+  </section>
+
+  <section>
+    <h2>Concrete program changes</h2>
+    <p class="section-note">Ordered by impact per unit of work</p>
+
+    <p>Your ledger already supports all of this. The <code>multiplier</code> column exists on <code>user_points</code> and has been sitting at <code>1.0</code>, unused, since the schema was created.</p>
+
+    <div class="phases">
+      <div class="phase">
+        <h3>Add a daily engagement grant</h3>
+        <p>The single largest gap against Dreamcash, and the cheapest to close — a ledger row with a date-scoped idempotency key, which your append-only writer already handles correctly.</p>
+        <p class="why">Calibrate deliberately: don't copy 20,000. Pick a number that reads as meaningful next to a day's realistic trading XP, and hold the ratio you intend between showing up and trading.</p>
+      </div>
+
+      <div class="phase">
+        <h3>Turn on the multiplier</h3>
+        <p>Rank, streak, or tier drives a season-long multiplier on earned XP. Compounding is what makes a season feel worth staying in, and it is the mechanic Dreamcash leans on hardest.</p>
+        <p class="why">It is a column that already exists and a number the aggregate already reads. This is close to free.</p>
+      </div>
+
+      <div class="phase">
+        <h3>Reprice referrals against your actual funnel</h3>
+        <p>500 XP for bringing a funded trader is far too low if users are what you need. Dreamcash pays the equivalent of $54,000 in volume. You don't have to match that, but 500 says you don't want referrals.</p>
+        <p class="why">Referral XP is the one grant where the payer is the user's own network, not your fee revenue.</p>
+      </div>
+
+      <div class="phase">
+        <h3>Attach the first real redemption</h3>
+        <p>A fee rebate tier funded from builder fees. This is what converts XP from a scoreboard into a currency, and it is the thing option two above depends on.</p>
+        <p class="why">Do this before scaling acquisition, not after — otherwise you acquire users into a program with nothing at the end of it.</p>
+      </div>
+
+      <div class="phase">
+        <h3>Shorten the season</h3>
+        <p>Monthly seasons with a two-user base means your first leaderboard is a two-horse race. Consider weekly cycles until there is a cohort worth ranking.</p>
+        <p class="why">Your season code is now atomic and non-overlapping, so changing cadence is a configuration decision rather than a risky one.</p>
+      </div>
+    </div>
+
+    <div class="callout">
+      <h3>What not to copy</h3>
+      <p>Dreamcash's inflated denominations — 20,000, 54,000 — are a psychological device, and they work. But they also set an expectation that the points are abundant and therefore individually near-worthless, which fits an airdrop narrative and fights a redemption narrative. If XP buys fee rebates, users need to be able to hold the exchange rate in their head. Pick your denomination to match the story you're telling.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>What you actually have that they don't</h2>
+    <p class="section-note">Marketing follows from this, not the reverse</p>
+
+    <h3>Telegram-native distribution</h3>
+    <p>This is the real advantage and it is structural, not incremental. Dreamcash ships an iOS app, an Android app, and an APK. Every user they acquire passes through an app store install — a step that loses most of the people who start it. You are a Mini App: a link in a chat opens a working trading terminal, with no install, inside the messenger where the conversation about trading is already happening.</p>
+    <p>It also means your referral mechanic can be native rather than bolted on. A Telegram invite link carries the referral code, lands in a chat, and opens the app — and your <code>startParam</code> plumbing already handles that path. Dreamcash's referral has to survive a trip to an app store.</p>
+
+    <h3>You are already localised for the market that lives on Telegram</h3>
+    <p>Russian is shipped and maintained — the locale test enforces parity on every key. Telegram's centre of gravity in RU/CIS is exactly where a Telegram-native trading app should be strongest, and an English-first mobile app is poorly positioned to contest it.</p>
+
+    <h3>Recoverable agent authorisation</h3>
+    <p>The work on classifying rejected agents, recovery sheets that state plainly that the failed action did not execute, and user-revocable access is genuine trust infrastructure. It is invisible when it works, which is why it is worth saying out loud in marketing: most trading apps handle key failure by leaving the user staring at an error.</p>
+
+    <h3>An accounting system that will survive scrutiny</h3>
+    <p>Niche, but not nothing. Points farmers are adversarial and vocal. When a competitor's numbers drift — and they will, because the defect you fixed this morning is the ordinary kind — being the app whose totals reconcile is a reputation you cannot buy quickly.</p>
+
+    <div class="callout">
+      <h3>Where you're weak, plainly</h3>
+      <p>No token narrative, by choice. No HIP-3 market of your own, so you capture builder fees rather than market fees — Dreamcash's CASH markets earn on both sides. A two-user base means no social proof and no liquidity in your own leaderboard. And your program currently offers nothing a user can spend.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>The card: real, and further away than it looks</h2>
+    <p class="section-note">Feasibility, not a recommendation to build yet</p>
+
+    <p>Your instinct is right that a path exists, and it is more concrete than you may realise. Privy was acquired by Stripe in June 2025. Stripe also owns Bridge. Stripe Issuing now supports stablecoin-backed cards funded by Bridge <em>or by a Privy non-custodial wallet</em> — there is a dedicated Privy recipe for exactly this. Virtual cards work with Apple and Google Pay; physical cards exist. Spending pulls from the linked wallet via an on-chain approval at purchase time, so the wallet stays non-custodial.</p>
+
+    <p>The product story is genuinely strong: <strong>trade on Hyperliquid, spend the proceeds directly.</strong> That closes a loop no competitor in your category closes, and it is a far better answer to "what is XP for" than a leaderboard — a card tier funded by XP is a redemption people understand instantly.</p>
+
+    <p>The blockers are specific and worth knowing before anyone builds a roadmap around it.</p>
+
+    <ul class="checks">
+      <li>
+        <span class="chip block">Chain</span>
+        <div>
+          <strong>Bridge cards don't fund from Arbitrum</strong>
+          <p>Supported chains are Tempo, Solana, Base, World Chain and Linea. Your app is Arbitrum-only — <code>supportedChains: [arbitrum]</code> — because that's Hyperliquid's deposit rail. A card requires a second funding wallet on a supported chain and a bridge step to reach it.</p>
+        </div>
+      </li>
+      <li>
+        <span class="chip block">Funds location</span>
+        <div>
+          <strong>The money is on Hyperliquid, not in the wallet</strong>
+          <p>Card spend pulls from the linked wallet. Your users' balances sit in their Hyperliquid account. Spending therefore means withdraw from Hyperliquid, bridge to the card chain, then approve — a multi-step, multi-minute flow that has to feel instant or it won't be used.</p>
+        </div>
+      </li>
+      <li>
+        <span class="chip block">Compliance</span>
+        <div>
+          <strong>KYC, and a geography that may not match yours</strong>
+          <p>Bridge requires KYC completed within 24 hours or the endorsement is revoked, plus a Bridge developer account and an assigned merchant ID. Cards are live in about 30 countries. Your strongest localisation is Russian; the overlap between "lives on Telegram in RU/CIS" and "passes Stripe KYC in a supported country" needs checking before anything is scoped.</p>
+        </div>
+      </li>
+      <li>
+        <span class="chip block">Model</span>
+        <div>
+          <strong>One wallet, one card</strong>
+          <p>Bridge does not support multiple cards spending from the same wallet. That constrains any design involving per-user card tiers, replacement cards, or shared accounts, and it needs deciding up front rather than discovered later.</p>
+        </div>
+      </li>
+      <li>
+        <span class="chip ok">Buildable</span>
+        <div>
+          <strong>The integration itself is ordinary</strong>
+          <p>Request the cards endorsement, take the Stripe cardholder id Bridge provisions, create the card through Stripe Issuing, submit an ERC-20 approve to your Bridge issuer contract, and listen for <code>card_transaction.created</code> and <code>.updated</code>. Nothing here is exotic. The hard parts are all above this line.</p>
+        </div>
+      </li>
+    </ul>
+
+    <p><strong>Recommendation: treat the card as a phase-two bet, not a phase-one feature.</strong> It is the strongest redemption you could attach to XP, which is exactly why it should wait until XP has users worth redeeming for. Building a card programme for two people would be an expensive way to discover the chain and compliance constraints.</p>
+
+    <p>What is worth doing now is cheap: open the Bridge developer conversation to find out the real country list and KYC terms for your actual user geography, and confirm whether a Base funding wallet alongside the Arbitrum one is acceptable to your existing on-ramp. Both are questions, not projects.</p>
+  </section>
+
+  <section>
+    <h2>Open questions I couldn't answer from the code</h2>
+    <p class="section-note">These change the recommendation if the answers differ</p>
+
+    <ul class="plain">
+      <li><strong>Is a token on the table?</strong> If yes, the whole analysis shifts toward Dreamcash's playbook and the XP-only stance becomes a temporary posture rather than a strategy.</li>
+      <li><strong>What's the funding position?</strong> "Cannot outspend Dreamcash" assumes fee revenue is the budget. Venture funding changes what's affordable, though not what's wise.</li>
+      <li><strong>Which jurisdiction are you operating from?</strong> It governs the rebate structure, the card geography, and whether a points-to-value conversion is even discussable.</li>
+      <li><strong>Is your own HIP-3 market a possibility?</strong> Dreamcash's CASH markets are a materially better revenue position than builder fees, and would change the five basis point ceiling this entire note is built on.</li>
+    </ul>
+  </section>
+
+  <footer>
+    <p>Competitive figures from public Dreamcash documentation and coverage, August 2026. Card integration detail from <a href="https://docs.privy.io/recipes/bridge-cards">Privy's Bridge cards recipe</a> and <a href="https://docs.stripe.com/issuing/bridge-stablecoin-cards">Stripe Issuing documentation</a>. Revenue, quest and program figures read directly from this repository at <code>dac71ff</code>.</p>
+  </footer>
+
+</div>

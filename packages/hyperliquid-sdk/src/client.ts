@@ -11,6 +11,7 @@ import type {
   AccountAbstractionMode,
   AssetCtx,
   Fill,
+  HistoricalOrder,
   MarketStats,
   MarketType,
   OpenOrder,
@@ -1849,10 +1850,36 @@ export class HyperliquidClient {
   }
 
   // Get historical orders
-  async getHistoricalOrders() {
+  /**
+   * Past orders with their final status, newest first, up to the exchange's
+   * retention cap. Normalized like getOpenOrders — sides to buy/sell, numeric
+   * strings parsed — and the filled fraction derived from origSz minus the
+   * remaining sz, so a canceled order that partially executed is visible as
+   * such rather than looking untouched.
+   */
+  async getHistoricalOrders(): Promise<HistoricalOrder[]> {
     const client = await this.getPublicClient();
-    return client.historicalOrders({
+    const raw = await client.historicalOrders({
       user: this.walletAddress as `0x${string}`,
+    });
+    return raw.map((entry: any) => {
+      const order = entry.order;
+      const origSz = parseFloat(order.origSz ?? order.sz);
+      const remainingSz = parseFloat(order.sz);
+      return {
+        oid: order.oid,
+        coin: order.coin,
+        side: order.side === "B" ? "buy" : "sell",
+        limitPx: order.limitPx ? parseFloat(order.limitPx) : null,
+        origSz,
+        filledSz: Math.max(0, origSz - remainingSz),
+        timestamp: order.timestamp,
+        isTrigger: Boolean(order.isTrigger),
+        triggerPx: order.triggerPx ? parseFloat(order.triggerPx) : null,
+        reduceOnly: Boolean(order.reduceOnly),
+        status: entry.status,
+        statusTimestamp: entry.statusTimestamp,
+      };
     });
   }
 

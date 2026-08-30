@@ -219,6 +219,28 @@ export interface OpenOrder {
   cloid?: string | null;
 }
 
+/**
+ * A past order with its final status, as the history screen needs it.
+ * `origSz` is what was asked for; `filledSz` is how much of it executed —
+ * the exchange reports remaining size, so a canceled order that partially
+ * filled is visible as such rather than looking untouched.
+ */
+export interface HistoricalOrder {
+  oid: number;
+  coin: string;
+  side: OrderSide;
+  limitPx: number | null;
+  origSz: number;
+  filledSz: number;
+  timestamp: number;
+  isTrigger: boolean;
+  triggerPx: number | null;
+  reduceOnly: boolean;
+  /** The exchange's status word: filled, canceled, rejected, open, triggered, marginCanceled, … */
+  status: string;
+  statusTimestamp: number;
+}
+
 // Position types
 export interface Position {
   coin: string;

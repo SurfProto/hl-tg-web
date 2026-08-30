@@ -7,10 +7,11 @@ import {
   useFills,
   useCancelOrder,
   useClosePosition,
+  useHistoricalOrders,
   useMarketPrice,
   useUpsertPositionProtection,
 } from "@repo/hyperliquid-sdk";
-import type { OpenOrder } from "@repo/types";
+import type { HistoricalOrder, OpenOrder } from "@repo/types";
 import { ProtectionSheet } from "../components/ProtectionSheet";
 import { SegmentedControl } from "../components/SegmentedControl";
 import { TokenIcon } from "../components/TokenIcon";
@@ -37,6 +38,30 @@ function formatPnl(value: number) {
   // loss, leaving color as the only difference between winning and losing.
   const sign = value >= 0 ? "+" : "−";
   return `${sign}$${Math.abs(value).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+}
+
+/** Sizes derived by float subtraction; six decimals covers every szDecimals. */
+function formatSize(value: number): string {
+  return String(parseFloat(value.toFixed(6)));
+}
+
+// The exchange's status words, in the user's language. An unmapped status
+// falls back to the raw word — honest, if unpolished, for the long tail
+// (liquidations, sibling-order cancels).
+const ORDER_STATUS_KEYS: Record<string, string> = {
+  canceled: "positions.orderStatusCanceled",
+  filled: "positions.orderStatusFilled",
+  marginCanceled: "positions.orderStatusMarginCanceled",
+  open: "positions.orderStatusOpen",
+  rejected: "positions.orderStatusRejected",
+  triggered: "positions.orderStatusTriggered",
+};
+
+function orderStatusColor(status: string): string {
+  if (status === "filled") return "text-positive";
+  if (status === "rejected" || status === "marginCanceled") return "text-negative";
+  if (status === "canceled") return "text-muted";
+  return "text-foreground";
 }
 
 /**
@@ -363,6 +388,8 @@ export function PositionsPage() {
     "positions",
   );
   const [visibleFills, setVisibleFills] = useState(20);
+  const [historyView, setHistoryView] = useState<"fills" | "orders">("fills");
+  const [visibleOrders, setVisibleOrders] = useState(20);
   const [editingProtection, setEditingProtection] =
     useState<EditingProtectionState | null>(null);
   const [pendingCloseCoin, setPendingCloseCoin] = useState<string | null>(null);
@@ -371,6 +398,7 @@ export function PositionsPage() {
   const { data: userState } = useUserState();
   const { data: openOrders } = useOpenOrders();
   const { data: fills } = useFills();
+  const { data: historicalOrders } = useHistoricalOrders();
   const cancelOrder = useCancelOrder();
   const closePosition = useClosePosition();
   const upsertPositionProtection = useUpsertPositionProtection();
@@ -542,7 +570,96 @@ export function PositionsPage() {
 
       {activeTab === "fills" && (
         <div className="space-y-3">
-          {!fills || fills.length === 0 ? (
+          {/* Trades first, order statuses one tap away — retail users think
+              in trades, not order lifecycles. */}
+          <div className="flex gap-2">
+            {(["fills", "orders"] as const).map((view) => (
+              <button
+                key={view}
+                type="button"
+                onClick={() => setHistoryView(view)}
+                className={`editorial-chip editorial-chip-compact ${
+                  historyView === view ? "editorial-chip-active" : ""
+                }`}
+              >
+                {view === "fills" ? t("positions.tabFills") : t("positions.tabOrders")}
+              </button>
+            ))}
+          </div>
+
+          {historyView === "orders" ? (
+            !historicalOrders || historicalOrders.length === 0 ? (
+              <PositionsEmptyState />
+            ) : (
+              <>
+                {historicalOrders.slice(0, visibleOrders).map((order: HistoricalOrder) => {
+                  const displayName = order.coin.includes(":")
+                    ? order.coin.split(":")[1]
+                    : order.coin;
+                  const statusKey = ORDER_STATUS_KEYS[order.status];
+                  const partiallyFilled =
+                    order.filledSz > 0 && order.filledSz < order.origSz;
+                  return (
+                    <div
+                      key={order.oid}
+                      className="rounded-[18px] border border-separator bg-white p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <TokenIcon coin={displayName.split("/")[0]} size={32} />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-foreground">{displayName}</span>
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  order.side === "buy"
+                                    ? "bg-primary/10 text-primary"
+                                    : "bg-secondary/10 text-secondary"
+                                }`}
+                              >
+                                {order.side === "buy"
+                                  ? t("coinDetail.buyButton")
+                                  : t("coinDetail.sellButton")}
+                              </span>
+                            </div>
+                            <p className="text-xs text-muted mt-0.5 font-mono">
+                              {partiallyFilled
+                                ? `${formatSize(order.filledSz)}/${formatSize(order.origSz)}`
+                                : formatSize(order.origSz)}{" "}
+                              @{" "}
+                              {order.isTrigger && order.triggerPx
+                                ? formatUsdPrice(order.triggerPx)
+                                : order.limitPx
+                                  ? formatUsdPrice(order.limitPx)
+                                  : t("trade.orderTypeMarket")}
+                            </p>
+                            <p className="text-xs text-muted mt-0.5">
+                              {formatFillTime(order.statusTimestamp, i18n.language)}
+                            </p>
+                          </div>
+                        </div>
+                        <p className={`text-sm font-semibold ${orderStatusColor(order.status)}`}>
+                          {statusKey ? t(statusKey) : order.status}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+                {historicalOrders.length > visibleOrders && (
+                  <button
+                    type="button"
+                    onClick={() => setVisibleOrders((count) => count + 20)}
+                    className="w-full rounded-[18px] border border-separator bg-white px-4 py-3 text-sm font-semibold text-primary transition-colors active:bg-surface"
+                  >
+                    {t("positions.showMore")}
+                  </button>
+                )}
+                <p className="pt-1 text-center text-xs text-muted">
+                  {t("positions.recentActivityNote")}
+                </p>
+              </>
+            )
+          ) : !fills || fills.length === 0 ? (
             <PositionsEmptyState />
           ) : (
             <>

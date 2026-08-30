@@ -87,6 +87,8 @@
     "availShort": "Доступно",
     "liq": "Ликв.",
     "fee": "Комиссия",
+    "feeBuilder": "Комиссия приложения",
+    "feeExchange": "Комиссия биржи",
     "margin": "Маржа",
     "perp": "ПЕРП",
     "orderTypeMarket": "Рынок",
@@ -206,6 +208,8 @@
     "bought": "Куплено",
     "sold": "Продано",
     "fee": "Комиссия",
+    "showMore": "Показать ещё",
+    "recentActivityNote": "Только недавняя активность — биржа хранит ограниченную историю.",
     "tradeMore": "Торговать ещё",
     "protectionUpdated": "Защита обновлена",
     "protectionUpdateFailed": "Не удалось обновить защиту.",
@@ -526,6 +530,7 @@
     "sendTestPending": "Отправляем…",
     "sendTestSent": "Отправлено — проверьте Telegram",
     "sendTestFailed": "Не удалось отправить. Убедитесь, что бот не заблокирован, и попробуйте снова.",
+    "prefsSaveFailed": "Не удалось сохранить настройку. Она возвращена обратно — попробуйте ещё раз.",
     "deliveryUnavailableBody": "Откройте mini app из привязанного Telegram-аккаунта, чтобы получать оповещения.",
     "liquidationAlerts": "Оповещения о ликвидации",
     "orderFills": "Исполнение ордеров",
@@ -658,16 +663,6 @@
     "title": "Unified account отключён",
     "description": "Приложение переключилось на стандартную маршрутизацию баланса. Торговля работает, но для лучшего UX стоит снова включить unified account.",
     "cta": "Проверить режим аккаунта"
-  },
-  "transfer": {
-    "title": "Перевод USDC",
-    "unifiedHint": "Расширенный инструмент для fallback standard mode. В unified account ручные переводы между perp и spot обычно не нужны.",
-    "flipDirection": "Поменять направление перевода",
-    "amount": "Сумма",
-    "availableToTransfer": "Доступно для перевода {{amount}} USDC",
-    "confirm": "Подтвердить перевод",
-    "success": "Перевод успешно отправлен.",
-    "failed": "Не удалось выполнить перевод"
   },
   "agentRecovery": {
     "title": "Требуется повторная авторизация",

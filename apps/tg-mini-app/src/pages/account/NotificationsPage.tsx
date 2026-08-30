@@ -33,6 +33,7 @@ export function NotificationsPage() {
   const [prefs, setPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
   const [deliveryState, setDeliveryState] = useState<DeliveryState>('unavailable');
   const [testState, setTestState] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
+  const [prefsSaveFailed, setPrefsSaveFailed] = useState(false);
 
   const runTest = async () => {
     setTestState('sending');
@@ -76,15 +77,29 @@ export function NotificationsPage() {
   }, [getAccessToken]);
 
   const updatePref = async (key: keyof NotificationPrefs) => {
+    const previous = prefs;
     const next = { ...prefs, [key]: !prefs[key] };
     setPrefs(next);
-    const accessToken = await getAccessToken();
-    if (!accessToken) return;
-    await updateNotificationPreferences(accessToken, {
-      liquidationAlerts: next.liquidation_alerts,
-      orderFills: next.order_fills,
-      usdcDeposits: next.usdc_deposits,
-    });
+    setPrefsSaveFailed(false);
+
+    // The switch must not keep showing a preference the server never saved.
+    // This governs liquidation alerts: an optimistic toggle with no rollback
+    // left a user believing alerts were on while the PATCH had failed as an
+    // unhandled rejection.
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        throw new Error('Missing access token');
+      }
+      await updateNotificationPreferences(accessToken, {
+        liquidationAlerts: next.liquidation_alerts,
+        orderFills: next.order_fills,
+        usdcDeposits: next.usdc_deposits,
+      });
+    } catch {
+      setPrefs(previous);
+      setPrefsSaveFailed(true);
+    }
   };
 
   return (
@@ -134,6 +149,12 @@ export function NotificationsPage() {
           </button>
         ))}
       </div>
+
+      {prefsSaveFailed && (
+        <p role="status" className="text-sm text-negative">
+          {t('notifications.prefsSaveFailed')}
+        </p>
+      )}
 
       {/*
         A pipeline with nothing to report and a broken one look identical from

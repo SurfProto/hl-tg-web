@@ -15,6 +15,7 @@ import {
   completeFillSync,
   getFundedReferralStats,
   getGrantedQuestIds,
+  getLargestTradeUsd,
   getQualifyingDeposits,
   getUserById,
   upsertRewardLedgerEntries,
@@ -355,7 +356,7 @@ export async function buildQuestAndReferralEntries(
   args: { fills: FillSummary[]; seasonStartsAt: string },
 ): Promise<RewardLedgerInsertInput[]> {
   const weekStart = getWeekStartIso(new Date());
-  const [deposits, referralStats, user, grantedQuestIds] = await Promise.all([
+  const [deposits, referralStats, user, grantedQuestIds, largestTradeUsd] = await Promise.all([
     getQualifyingDeposits(config, claim.userId, args.seasonStartsAt),
     getFundedReferralStats(
       config,
@@ -365,6 +366,7 @@ export async function buildQuestAndReferralEntries(
     ),
     getUserById(config, claim.userId),
     getGrantedQuestIds(config, claim.userId, claim.seasonId),
+    getLargestTradeUsd(config, claim.userId, claim.seasonId),
   ]);
 
   const snapshot = buildQuestSnapshot({
@@ -375,6 +377,10 @@ export async function buildQuestAndReferralEntries(
     fundedDepositThresholdUsd: config.fundedDepositThresholdUsd,
     grantedQuestIds,
     hasFundedReferral: referralStats.fundedReferralCount > 0,
+    // The ledger's best so far, plus the window being ingested right now —
+    // which is not in the ledger yet, because these entries are what will put
+    // it there.
+    largestTradeUsd,
     hasJoinedTelegramChannel: await resolveChannelMembership(config, {
       grantedQuestIds,
       telegramId: user?.telegram_id ?? null,

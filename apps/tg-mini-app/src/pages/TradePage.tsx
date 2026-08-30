@@ -3,14 +3,17 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { usePrivy } from "@privy-io/react-auth";
 import { useTranslation } from "react-i18next";
 import {
+  getBuilderFeeTenthsBp,
   getMarketBaseAsset,
   getAvailableCollateralForMarket,
   getMarketDisplayName,
+  truncateToDecimals,
   useMarketData,
   useMarketPrice,
   usePlaceOrder,
   useSetupTrading,
   useUpsertPositionProtection,
+  useUserFees,
   useUserState,
   validateOrderInput,
 } from "@repo/hyperliquid-sdk";
@@ -31,6 +34,22 @@ import {
 } from "../lib/protection";
 import { getAsyncValueState } from "../lib/async-value-state";
 import { formatUsdPrice } from "../utils/format";
+
+/**
+ * Base-tier fallbacks, used only while the account's actual rates load. The
+ * quote used to be a hardcoded `size * 0.0005`: only the builder fee, only at
+ * its default (VITE_BUILDER_FEE configures it), and nothing for the
+ * exchange's own cut — so the number a user weighed before tapping Confirm
+ * read roughly half of what a market order costs. The real rates come from
+ * the exchange per account, volume tier and referral discount applied.
+ */
+const HL_TAKER_FEE_RATE = 0.00045;
+const HL_MAKER_FEE_RATE = 0.00015;
+
+/** "0.045%" — trimmed, for the review screen's fee breakdown. */
+function formatFeeRate(rate: number): string {
+  return `${(rate * 100).toFixed(3).replace(/0+$/u, "").replace(/\.$/u, "")}%`;
+}
 
 function formatUsdInput(value: number): string {
   const truncated = Math.floor(value * 100) / 100;
@@ -98,10 +117,22 @@ export function TradePage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [setupVisible, setSetupVisible] = useState(false);
   const setupWalletRef = useRef<string | null>(null);
+  // Guards the confirm tap synchronously. placeOrder.isPending disables the
+  // button only after React Query's state change re-renders, so two taps
+  // landing in the same frame both reached mutateAsync — two live orders with
+  // two distinct cloids. The fiat checkout solved this class with an
+  // idempotency key; the trade path gets the ref because each tap must mint a
+  // fresh cloid once an order actually settles.
+  const confirmInFlightRef = useRef(false);
 
   const side: "buy" | "sell" = useMemo(() => {
+    // Every in-app link passes ?side, so the default only decides what a
+    // shared or hand-typed link opens with. It used to be sell — a newcomer
+    // following a bare link landed on a short.
     const requestedSide = searchParams.get("side");
-    return requestedSide === "long" || requestedSide === "buy" ? "buy" : "sell";
+    return requestedSide === "short" || requestedSide === "sell"
+      ? "sell"
+      : "buy";
   }, [searchParams]);
 
   const [activeSide, setActiveSide] = useState<"buy" | "sell">(side);
@@ -168,6 +199,17 @@ export function TradePage() {
 
   const amountNum = parseFloat(amount) || 0;
   const limitPriceNum = parseFloat(limitPrice) || 0;
+
+  const { data: userFees } = useUserFees();
+  const builderFeeRate = getBuilderFeeTenthsBp() / 100_000;
+  // Worst-case exchange rate for this order: a market order takes, and a Gtc
+  // limit can cross on entry, so only a post-only (Alo) order is quoted at
+  // the maker rate. The quote must never read lower than the possible cost.
+  const exchangeFeeRate =
+    orderType === "limit" && tif === "Alo"
+      ? (userFees?.makerRate ?? HL_MAKER_FEE_RATE)
+      : (userFees?.takerRate ?? HL_TAKER_FEE_RATE);
+  const totalFeeRate = builderFeeRate + exchangeFeeRate;
   const positionDirection: PositionDirection =
     activeSide === "buy" ? "long" : "short";
   const priceState = getAsyncValueState({
@@ -380,7 +422,15 @@ export function TradePage() {
   const isPending =
     placeOrder.isPending ||
     upsertPositionProtection.isPending;
-  const isSubmitDisabled = amountNum === 0 || isPending || !validation.isValid;
+  // The price step must not review a zero limit: the field is optional in
+  // validateOrderInput (market orders have no limit), so without this gate an
+  // untouched price sailed through to a review row reading "—" and an SDK
+  // error on submit.
+  const isSubmitDisabled =
+    amountNum === 0 ||
+    isPending ||
+    !validation.isValid ||
+    (step === "price" && limitPriceNum <= 0);
 
   const handleAmountChange = (value: string) => {
     setSubmitError(null);
@@ -471,6 +521,16 @@ export function TradePage() {
   };
 
   const handleConfirmOrder = async () => {
+    if (!reviewedTrade || confirmInFlightRef.current) return;
+    confirmInFlightRef.current = true;
+    try {
+      await submitReviewedOrder();
+    } finally {
+      confirmInFlightRef.current = false;
+    }
+  };
+
+  const submitReviewedOrder = async () => {
     if (!reviewedTrade) return;
     setSubmitError(null);
     haptics.medium();
@@ -577,6 +637,12 @@ export function TradePage() {
     const reviewedSide =
       reviewedTrade.order.side === "buy" ? t("common.long") : t("common.short");
     const reviewedLeverage = reviewedTrade.order.leverage ?? 1;
+    const reviewedExchangeRate =
+      reviewedTrade.order.orderType === "limit" &&
+      reviewedTrade.order.tif === "Alo"
+        ? (userFees?.makerRate ?? HL_MAKER_FEE_RATE)
+        : (userFees?.takerRate ?? HL_TAKER_FEE_RATE);
+    const reviewedSizeUsd = reviewedTrade.order.sizeUsd;
 
     return (
       <div className="editorial-page flex min-h-full flex-col">
@@ -592,7 +658,9 @@ export function TradePage() {
               [t("trade.size"), `$${reviewedTrade.order.sizeUsd.toLocaleString()}`],
               [t("trade.leverage"), `${reviewedLeverage}x`],
               [t("trade.margin"), `$${(reviewedTrade.order.sizeUsd / reviewedLeverage).toFixed(2)}`],
-              [t("trade.fee"), `$${(reviewedTrade.order.sizeUsd * 0.0005).toFixed(2)}`],
+              [t("trade.fee"), `$${(reviewedSizeUsd * (builderFeeRate + reviewedExchangeRate)).toFixed(2)}`],
+              [t("trade.feeBuilder"), `$${(reviewedSizeUsd * builderFeeRate).toFixed(2)} · ${formatFeeRate(builderFeeRate)}`],
+              [t("trade.feeExchange"), `$${(reviewedSizeUsd * reviewedExchangeRate).toFixed(2)} · ${formatFeeRate(reviewedExchangeRate)}`],
               [t("trade.liq"), reviewedTrade.liquidationPx != null ? formatUsdPrice(reviewedTrade.liquidationPx) : "-"],
               ...(reviewedTrade.order.orderType === "limit"
                 ? [
@@ -719,46 +787,88 @@ export function TradePage() {
 
       {/* Main Content */}
       <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
-        {/* Size Input */}
+        {/* Size input, or — on a limit order's second step — the limit price.
+            The NumPad below edits whichever field this card shows. The price
+            used to go into a field the screen never rendered: the first
+            Review tap silently flipped the step, the hero kept showing the
+            size, and the typed price was invisible all the way to a review
+            row reading "—". */}
         <div className="editorial-card p-5">
           <div className="flex items-center justify-between mb-2">
             <span className="editorial-kicker">
-              {t("trade.size")} · USD
+              {step === "amount"
+                ? `${t("trade.size")} · USD`
+                : t("trade.limitPrice")}
             </span>
-            <span className="editorial-mono text-xs text-muted">
-              {t("trade.availShort")} {availableMarginUsd.toLocaleString("en-US", { maximumFractionDigits: 2 })}
-            </span>
+            {step === "amount" ? (
+              <span className="editorial-mono text-xs text-muted">
+                {t("trade.availShort")} {availableMarginUsd.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setStep("amount")}
+                className="editorial-mono text-xs font-semibold text-primary"
+              >
+                {t("trade.size")} ${amountParts.integer}.{amountParts.decimal}
+              </button>
+            )}
           </div>
-          <div className="flex items-baseline gap-0.5">
-            <span className="editorial-display text-foreground">
-              ${amountParts.integer}
-            </span>
-            <span className="editorial-display-xs text-foreground">
-              .{amountParts.decimal}
-            </span>
-          </div>
+          {step === "amount" ? (
+            <div className="flex items-baseline gap-0.5">
+              <span className="editorial-display text-foreground">
+                ${amountParts.integer}
+              </span>
+              <span className="editorial-display-xs text-foreground">
+                .{amountParts.decimal}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-baseline gap-0.5">
+              <span className="editorial-display text-foreground">
+                ${limitPrice || "0"}
+              </span>
+            </div>
+          )}
           <div className="editorial-mono mt-1 text-sm text-muted">
-            ≈ {btcEquivalent} {baseToken}
+            {step === "amount"
+              ? `≈ ${btcEquivalent} ${baseToken}`
+              : `${t("trade.market")} ${formatUsdPrice(currentPrice ?? 0)}`}
           </div>
 
-          {/* Quick Amount Buttons */}
-          <div className="flex gap-2 mt-4">
-            {[
-              { label: "$100", value: 100 },
-              { label: "$500", value: 500 },
-              { label: "$1k", value: 1000 },
-              { label: "$5k", value: 5000 },
-            ].map(({ label, value }) => (
+          {step === "amount" ? (
+            /* Quick Amount Buttons */
+            <div className="flex gap-2 mt-4">
+              {[
+                { label: "$100", value: 100 },
+                { label: "$500", value: 500 },
+                { label: "$1k", value: 1000 },
+                { label: "$5k", value: 5000 },
+              ].map(({ label, value }) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => handleQuickFill(value)}
+                  className="flex-1 rounded-[18px] border border-border bg-[var(--color-primary-soft)] py-2.5 text-sm font-semibold text-foreground transition-colors active:bg-[var(--color-primary-soft-strong)]"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="flex gap-2 mt-4">
               <button
-                key={label}
                 type="button"
-                onClick={() => handleQuickFill(value)}
+                onClick={() =>
+                  currentPrice != null &&
+                  handleLimitPriceChange(truncateToDecimals(currentPrice, 8))
+                }
                 className="flex-1 rounded-[18px] border border-border bg-[var(--color-primary-soft)] py-2.5 text-sm font-semibold text-foreground transition-colors active:bg-[var(--color-primary-soft-strong)]"
               >
-                {label}
+                {t("trade.market")}
               </button>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Leverage Section */}
@@ -820,7 +930,7 @@ export function TradePage() {
           <div className="flex items-center justify-between text-sm">
             <span className="editorial-kicker">{t("trade.fee")}</span>
             <span className="editorial-mono font-semibold text-foreground">
-              ${(amountNum * 0.0005).toFixed(2)}
+              ${(amountNum * totalFeeRate).toFixed(2)}
             </span>
           </div>
           <div className="flex items-center justify-between text-sm">

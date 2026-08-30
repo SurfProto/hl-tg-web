@@ -13,6 +13,7 @@ const supabaseAdmin = vi.hoisted(() => ({
   getSeasonLeaderboard: vi.fn(),
   getSeasonUserStanding: vi.fn(),
   getCheckInStreak: vi.fn(),
+  getLargestTradeUsd: vi.fn(),
   getLifetimeXp: vi.fn(),
   getSeasonXpTotals: vi.fn(),
   getActiveSeason: vi.fn(),
@@ -182,6 +183,7 @@ describe("getRewardsDashboard", () => {
       referredCount: 0,
     });
     supabaseAdmin.getExistingVolumeXpFillKeys.mockResolvedValue(new Set());
+    supabaseAdmin.getLargestTradeUsd.mockResolvedValue(0);
     supabaseAdmin.upsertRewardLedgerEntries.mockResolvedValue([]);
     supabaseAdmin.getRewardLedgerEntries.mockResolvedValue([]);
     supabaseAdmin.getSeasonXpTotals.mockResolvedValue({

@@ -51,6 +51,7 @@ import {
 } from "./agent";
 import { reportAgentRecoveryIncident } from "./agent-recovery";
 import {
+  TRIGGER_ORDER_SLIPPAGE,
   formatPrice,
   getAggressiveMarketPrice,
   orderbookMidpoint,
@@ -876,8 +877,12 @@ export class HyperliquidClient {
       return this.builderApprovalCache.result;
     }
 
+    // The approval must cover the fee every order will actually carry, not
+    // merely exist: an account approved below the configured rate passed the
+    // old `> 0` check and then had every single order rejected upstream with
+    // a raw exchange error, instead of being asked to re-approve once.
     const maxFee = await this.getMaxBuilderFee(getBuilderAddress());
-    if (maxFee <= 0) {
+    if (maxFee < (getBuilderConfig()?.f ?? 0)) {
       throw new Error("Builder fee approval is required before trading.");
     }
 
@@ -1091,7 +1096,19 @@ export class HyperliquidClient {
     return {
       cloid: (order.cloid as `0x${string}` | undefined) ?? this.generateCloid(),
       market,
-      price: this.formatPrice(order.triggerPx, market),
+      // The limit the triggered market order carries, not the trigger itself.
+      // Priced at exactly the trigger it gives the matcher no room: a stop
+      // fires because the market reached the trigger, so the book is already
+      // at or past it, and after a gap an IOC sell limited to the trigger can
+      // die unfilled while the position rides toward liquidation.
+      price: this.formatPrice(
+        getAggressiveMarketPrice(
+          order.triggerPx,
+          order.side,
+          TRIGGER_ORDER_SLIPPAGE,
+        ),
+        market,
+      ),
       side: order.side,
       size: this.formatSize(order.size, market),
       triggerKind: order.triggerKind,
@@ -1168,7 +1185,16 @@ export class HyperliquidClient {
   }
 
   subscribeToUserEvents(callback: (data: WsMessage) => void): () => void {
-    return this.wsManager.subscribe("userEvents", callback);
+    // The exchange requires the account on this subscription — sent bare it
+    // was rejected, so the fast balance-refresh path never saw an event and
+    // the account connection carried no traffic at all.
+    if (!this.walletAddress) {
+      return () => {};
+    }
+    return this.wsManager.subscribe(
+      `userEvents:${this.walletAddress}`,
+      callback,
+    );
   }
 
   subscribeToAllMids(callback: (data: WsMessage) => void): () => void {
@@ -1303,7 +1329,13 @@ export class HyperliquidClient {
     ) {
       return this.userStateCache.data;
     }
-    const cache = await this.ensureMarketCache();
+    await this.ensureMarketCache();
+    // Loaded dexes only, like getMids and refreshAssetCtxs: this runs before
+    // every leveraged order via ensurePerpLeverage, where fanning out to every
+    // named dex (247 on testnet) is what rate-limited the order in the first
+    // place. Positions on HIP-3 dexes still surface, because enumerating
+    // markets — which the app does at startup — loads every dex.
+    const perpDexs = this.getLoadedPerpDexs();
     const [
       baseState,
       spotState,
@@ -1321,7 +1353,7 @@ export class HyperliquidClient {
       }).catch(() => null),
       this.getUserAbstraction(),
       this.getUserDexAbstraction(),
-      ...cache.perpDexs.map(({ dex }) =>
+      ...perpDexs.map(({ dex }) =>
         this.postInfo<any>({
           type: "clearinghouseState",
           dex,
@@ -1335,7 +1367,7 @@ export class HyperliquidClient {
       spotState,
       abstraction,
       hip3DexAbstractionEnabled: hip3DexAbstraction,
-      perpDexs: cache.perpDexs,
+      perpDexs,
       dexStates,
     });
     this.userStateCache = { data: result, expiresAt: Date.now() + 2000 };
@@ -1983,6 +2015,32 @@ export class HyperliquidClient {
       configured: isBuilderConfigured(),
       feeTenthsBp: isBuilderConfigured() ? (getBuilderConfig()?.f ?? 0) : 0,
     };
+  }
+
+  /**
+   * The account's actual exchange fee rates, as decimals of notional.
+   *
+   * userCrossRate/userAddRate are the taker and maker rates the exchange will
+   * actually charge this account — volume tier and referral discount already
+   * applied — which is what a fee quote in the UI should be built from,
+   * rather than a hardcoded base tier.
+   */
+  async getUserFees(): Promise<{ takerRate: number; makerRate: number } | null> {
+    if (!this.walletAddress) return null;
+    const response = await this.postInfo<{
+      userCrossRate?: string;
+      userAddRate?: string;
+    }>({
+      type: "userFees",
+      user: this.walletAddress as `0x${string}`,
+    });
+
+    const takerRate = parseFloat(response?.userCrossRate ?? "");
+    const makerRate = parseFloat(response?.userAddRate ?? "");
+    if (!Number.isFinite(takerRate) || !Number.isFinite(makerRate)) {
+      return null;
+    }
+    return { makerRate, takerRate };
   }
 
   // Refresh asset contexts cache (30-second TTL, independent of market metadata)

@@ -13,6 +13,7 @@ const user: EligibleUser = {
     usdc_deposits: true,
   },
   channelStatus: "active",
+  channelTarget: "123",
 };
 
 function makeOrder(

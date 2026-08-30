@@ -24,23 +24,14 @@ describe("buildQuestSnapshot", () => {
     expect(snapshot.quests.find((quest) => quest.id === "second_deposit_7d")?.status).toBe("completed");
   });
 
-  it("completes the first trade quest only after a qualifying funded deposit", () => {
-    const fundedSnapshot = buildQuestSnapshot({
-      currentTime: "2026-04-14T10:00:00.000Z",
-      deposits: [{ amountUsd: 80, occurredAt: "2026-04-01T10:00:00.000Z" }],
-      fills: [
-        {
-          builderFeeUsd: 0.01,
-          cloid: `${APP_TRADE_CLOID_PREFIX}aa01`,
-          occurredAt: "2026-04-02T10:00:00.000Z",
-          price: 2,
-          size: 20,
-        },
-      ],
-      hasFundedReferral: false,
-    });
-
-    const lockedSnapshot = buildQuestSnapshot({
+  /**
+   * The funding gate is gone. It used to lock this quest for anyone below the
+   * funding bar — an account with twenty-two qualifying trades showed it as
+   * locked over a $25 deposit against a $50 bar. A fill that paid a builder
+   * fee is stronger evidence of funding than the deposit quest's threshold.
+   */
+  it("completes the first trade quest on a qualifying trade, deposits or not", () => {
+    const snapshot = buildQuestSnapshot({
       currentTime: "2026-04-14T10:00:00.000Z",
       deposits: [],
       fills: [
@@ -55,8 +46,30 @@ describe("buildQuestSnapshot", () => {
       hasFundedReferral: false,
     });
 
-    expect(fundedSnapshot.quests.find((quest) => quest.id === "first_trade")?.status).toBe("completed");
-    expect(lockedSnapshot.quests.find((quest) => quest.id === "first_trade")?.status).toBe("locked");
+    const quest = snapshot.quests.find((entry) => entry.id === "first_trade")!;
+    expect(quest.status).toBe("completed");
+    expect(quest.completedAt).toBe("2026-04-02T10:00:00.000Z");
+  });
+
+  /**
+   * The read path performs no exchange I/O, so a dashboard request has no
+   * fills — the caller passes what the ledger already recorded. Without that
+   * input the bar read $0 however much the user had traded.
+   */
+  it("completes the trade quest from the ledger's largest trade when fills are absent", () => {
+    const snapshot = buildQuestSnapshot({
+      currentTime: "2026-04-14T10:00:00.000Z",
+      deposits: [],
+      fills: [],
+      hasFundedReferral: false,
+      largestTradeUsd: 40,
+    });
+
+    const quest = snapshot.quests.find((entry) => entry.id === "first_trade")!;
+    expect(quest.status).toBe("completed");
+    // The bar has to agree with the badge.
+    expect(quest.progressCurrent).toBe(quest.progressTarget);
+    expect(quest.progressLabel).toBe("$10 / $10");
   });
 
   it("completes the funded referral quest when a referred friend funds", () => {

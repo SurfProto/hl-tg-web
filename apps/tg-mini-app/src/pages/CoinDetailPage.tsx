@@ -38,18 +38,20 @@ function formatFunding(rate: number): string {
   return `${rate >= 0 ? '+' : ''}${(rate * 100).toFixed(4)}%`;
 }
 
-function formatTooltipTimestamp(candle: Candle, interval: string): string {
+// Locale comes from i18n, like ApprovalsPage — this was hardcoded to en-US,
+// so the Russian UI dated its chart tooltips in English.
+function formatTooltipTimestamp(candle: Candle, interval: string, locale: string): string {
   const date = new Date(candle.T || candle.t);
 
   if (interval === '1d') {
-    return new Intl.DateTimeFormat('en-US', {
+    return new Intl.DateTimeFormat(locale, {
       month: 'short',
       day: 'numeric',
       year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric',
     }).format(date);
   }
 
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat(locale, {
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
@@ -61,7 +63,7 @@ export function CoinDetailPage() {
   const { symbol: rawSymbol = '' } = useParams<{ symbol: string }>();
   const symbol = decodeURIComponent(rawSymbol);
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const [interval, setInterval] = useState('1h');
   const [activeInspection, setActiveInspection] = useState<LiteCandleInspection | null>(null);
@@ -249,7 +251,7 @@ export function CoinDetailPage() {
                 }}
               >
                 <div className="editorial-kicker">
-                  {formatTooltipTimestamp(inspectionTooltip.candle, interval)}
+                  {formatTooltipTimestamp(inspectionTooltip.candle, interval, i18n.language)}
                 </div>
                 <div className="editorial-mono mt-1 text-lg font-semibold tracking-tight text-foreground">
                   {formatUsdPrice(inspectionTooltip.candle.c)}
@@ -355,43 +357,27 @@ export function CoinDetailPage() {
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 flex gap-3 border-t border-separator bg-white px-4 py-3 bottom-dock-safe">
-        {isPerp ? (
-          <>
-            <button
-              type="button"
-              onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=short`)}
-              className="editorial-button-negative flex-1"
-            >
-              {t('coinDetail.shortButton')}
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=long`)}
-              className="editorial-button-positive flex-1"
-            >
-              {t('coinDetail.longButton')}
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=sell`)}
-              className="editorial-button-negative flex-1"
-            >
-              {t('coinDetail.sellButton')}
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=buy`)}
-              className="editorial-button-positive flex-1"
-            >
-              {t('coinDetail.buyButton')}
-            </button>
-          </>
-        )}
-      </div>
+      {/* Trading is perps-only: TradePage resolves perp markets exclusively,
+          so the Buy/Sell pair this dock rendered for spot symbols led straight
+          to a dead "market metadata unavailable" screen. No dock for spot. */}
+      {isPerp ? (
+        <div className="fixed bottom-0 left-0 right-0 flex gap-3 border-t border-separator bg-white px-4 py-3 bottom-dock-safe">
+          <button
+            type="button"
+            onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=short`)}
+            className="editorial-button-negative flex-1"
+          >
+            {t('coinDetail.shortButton')}
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(`/trade/${encodeURIComponent(symbol)}?side=long`)}
+            className="editorial-button-positive flex-1"
+          >
+            {t('coinDetail.longButton')}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

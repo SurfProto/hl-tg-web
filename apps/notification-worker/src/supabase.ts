@@ -109,19 +109,34 @@ class SupabaseNotificationRepository implements NotificationRepository {
           language: row.language ?? "en",
           preferences: prefs,
           channelStatus: channel?.status ?? null,
+          channelTarget: channel?.target ?? null,
         } satisfies EligibleUser;
       })
-      .filter(
-        (user) =>
-          user.channelStatus !== "blocked" &&
-          user.channelStatus !== "invalid" &&
+      .filter((user) => {
+        // A blocked or invalid verdict belongs to the chat it was recorded
+        // against. When the user has since linked a different Telegram
+        // account, the old chat's block must not keep the new one ineligible
+        // forever — let them through so the channel row gets re-pointed.
+        const verdictIsForCurrentChat = user.channelTarget === user.telegramId;
+        const unreachable =
+          verdictIsForCurrentChat &&
+          (user.channelStatus === "blocked" || user.channelStatus === "invalid");
+        return (
+          !unreachable &&
           (user.preferences.liquidation_alerts ||
             user.preferences.order_fills ||
-            user.preferences.usdc_deposits),
-      );
+            user.preferences.usdc_deposits)
+        );
+      });
   }
 
   async ensureTelegramChannel(userId: string, telegramId: string): Promise<void> {
+    // A real merge, not ignoreDuplicates: written once and never updated, the
+    // row kept delivering fills and liquidation alerts to a chat the user had
+    // re-linked away from. Status and errors reset with the target, because a
+    // block recorded against the old chat says nothing about the new one.
+    // Callers gate on channelTarget !== telegramId, so an unchanged channel
+    // never takes this write.
     const { error } = await this.supabase
       .from("notification_channels")
       .upsert(
@@ -129,10 +144,13 @@ class SupabaseNotificationRepository implements NotificationRepository {
           user_id: userId,
           channel: "telegram",
           target: telegramId,
+          status: "active",
+          last_error_code: null,
+          last_error_message: null,
+          updated_at: new Date().toISOString(),
         },
         {
           onConflict: "user_id,channel",
-          ignoreDuplicates: true,
         },
       );
 
@@ -204,15 +222,35 @@ class SupabaseNotificationRepository implements NotificationRepository {
     if (error) throw error;
   }
 
-  async listPendingTelegramEvents(limit: number, now: Date): Promise<PendingNotificationEvent[]> {
-    const { data: events, error: eventsError } = await this.supabase
+  async claimPendingTelegramEvents(limit: number, now: Date): Promise<PendingNotificationEvent[]> {
+    const { data: candidates, error: candidatesError } = await this.supabase
       .from("notification_events")
-      .select("id, user_id, channel, topic, attempts, payload")
+      .select("id")
       .eq("channel", "telegram")
       .in("status", ["pending", "retry"])
       .lte("next_attempt_at", now.toISOString())
       .order("created_at", { ascending: true })
       .limit(limit);
+
+    if (candidatesError) throw candidatesError;
+    if (!candidates || candidates.length === 0) {
+      return [];
+    }
+
+    // Claim by leasing next_attempt_at into the future. The conditional
+    // UPDATE is atomic per row, so of two workers running at once — the
+    // deploy overlap this file already documents — exactly one wins each
+    // event, where both used to read the same pending batch and double-send
+    // it. A crash after the claim needs no recovery sweep: the lease expires
+    // and the row is due again. markEventSent/Retry/Failed override the lease.
+    const leaseUntil = new Date(now.getTime() + 2 * 60 * 1000).toISOString();
+    const { data: events, error: eventsError } = await this.supabase
+      .from("notification_events")
+      .update({ next_attempt_at: leaseUntil, updated_at: now.toISOString() })
+      .in("id", candidates.map((candidate) => candidate.id))
+      .in("status", ["pending", "retry"])
+      .lte("next_attempt_at", now.toISOString())
+      .select("id, user_id, channel, topic, attempts, payload");
 
     if (eventsError) throw eventsError;
 
@@ -231,7 +269,14 @@ class SupabaseNotificationRepository implements NotificationRepository {
 
     const channelsByUser = new Map((channels ?? []).map((row) => [row.user_id, row]));
 
+    // The claiming UPDATE returns rows in no particular order; restore the
+    // oldest-first order the candidate query established.
+    const candidateOrder = new Map(candidates.map((candidate, index) => [candidate.id, index]));
+
     return (events ?? [])
+      .sort(
+        (a, b) => (candidateOrder.get(a.id) ?? 0) - (candidateOrder.get(b.id) ?? 0),
+      )
       .map((event) => {
         const channel = channelsByUser.get(event.user_id);
         if (!channel?.target || channel.status !== "active") {

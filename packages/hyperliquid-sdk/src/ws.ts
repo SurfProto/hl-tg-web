@@ -8,9 +8,12 @@ export class WebSocketManager {
   private subscriptions: Map<string, Set<WsCallback>> = new Map();
   private statusListeners: Set<StatusCallback> = new Set();
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 10;
   private reconnectDelay = 1000;
-  private isConnecting = false;
+  /** The exponential back-off stops climbing here; retries continue forever. */
+  private maxReconnectDelay = 30_000;
+  /** The one in-flight connection attempt, shared by every concurrent caller. */
+  private pendingConnect: Promise<void> | null = null;
+  private pingTimer: ReturnType<typeof setInterval> | null = null;
   private testnet: boolean;
   /** Timestamp of the last successful open — used to guard the reconnect counter reset. */
   private connectionOpenedAt: number | null = null;
@@ -30,20 +33,15 @@ export class WebSocketManager {
       return Promise.resolve();
     }
 
-    if (this.isConnecting) {
-      return new Promise((resolve) => {
-        const checkConnection = setInterval(() => {
-          if (this.ws?.readyState === WebSocket.OPEN) {
-            clearInterval(checkConnection);
-            resolve();
-          }
-        }, 100);
-      });
+    // Every concurrent caller shares the one in-flight attempt and settles
+    // with it. The old path handed late callers a polling interval that could
+    // only ever resolve — when the attempt errored instead, they hung forever,
+    // their subscriptions never registered, and the interval kept running.
+    if (this.pendingConnect) {
+      return this.pendingConnect;
     }
 
-    this.isConnecting = true;
-
-    return new Promise((resolve, reject) => {
+    this.pendingConnect = new Promise<void>((resolve, reject) => {
       try {
         const socket = new WebSocket(this.getWsUrl());
         this.ws = socket;
@@ -53,12 +51,13 @@ export class WebSocketManager {
           // disconnect(); it must not resubscribe or report the manager online.
           if (this.ws !== socket) return;
           console.log('[WS] Connected');
-          this.isConnecting = false;
+          this.pendingConnect = null;
           this.connectionOpenedAt = Date.now();
           // The back-off counter is reset in handleReconnect, and only for a
           // connection that lasted. Resetting it here would clear it for a
           // socket that opens and drops immediately, which is the flapping
           // server the back-off is meant to slow down.
+          this.startPing();
           this.resubscribeAll();
           this.notifyStatus(true);
           resolve();
@@ -78,21 +77,49 @@ export class WebSocketManager {
           // disconnect() clears this.ws before closing, so an explicit
           // disconnect lands here with a stale socket and must not reconnect.
           if (this.ws !== socket) return;
-          this.isConnecting = false;
+          this.pendingConnect = null;
+          this.stopPing();
           this.notifyStatus(false);
           this.handleReconnect();
+          // A close before open settles the waiters; after open this is a
+          // no-op on an already-resolved promise.
+          reject(new Error(`WebSocket closed before opening (${event.code})`));
         };
 
         socket.onerror = (error) => {
           console.error('[WS] Error:', error);
-          this.isConnecting = false;
+          this.pendingConnect = null;
           reject(error);
         };
       } catch (error) {
-        this.isConnecting = false;
+        this.pendingConnect = null;
         reject(error);
       }
     });
+
+    return this.pendingConnect;
+  }
+
+  /**
+   * The exchange culls a connection with no traffic in about a minute. A
+   * connection whose subscriptions happen to be quiet — an account with no
+   * events, an off-hours market — was dropped and reopened every minute,
+   * paying the reconnect churn and a data gap without ever being offline.
+   */
+  private startPing(): void {
+    this.stopPing();
+    this.pingTimer = setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ method: 'ping' }));
+      }
+    }, 30_000);
+  }
+
+  private stopPing(): void {
+    if (this.pingTimer !== null) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
   }
 
   private handleReconnect(): void {
@@ -109,13 +136,15 @@ export class WebSocketManager {
     }
     this.connectionOpenedAt = null;
 
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('[WS] Max reconnection attempts reached');
-      return;
-    }
-
     this.reconnectAttempts++;
-    const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
+    // Climb to the cap and keep trying. The old version gave up for good
+    // after ten attempts (~17 minutes of backoff), so a phone that lost the
+    // network for a while came back to a UI whose socket silently never
+    // reconnected until a full reload.
+    const delay = Math.min(
+      this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
+      this.maxReconnectDelay,
+    );
 
     console.log(`[WS] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
 
@@ -142,6 +171,23 @@ export class WebSocketManager {
   }
 
   private handleMessage(data: WsMessage): void {
+    // userEvents subscriptions are answered on the `user` channel, and the
+    // payload does not echo which account it is for — deliver to every
+    // userEvents subscriber (one manager serves one account in practice).
+    if (data.channel === 'user') {
+      this.subscriptions.forEach((callbacks, key) => {
+        if (!key.startsWith('userEvents')) return;
+        callbacks.forEach((callback) => {
+          try {
+            callback(data);
+          } catch (error) {
+            console.error('[WS] Callback error:', error);
+          }
+        });
+      });
+      return;
+    }
+
     let channelKey: string = data.channel;
 
     if (data.channel === 'l2Book') {
@@ -187,6 +233,11 @@ export class WebSocketManager {
     } else if (type === 'candle' && params[0] && params[1]) {
       subscription.coin = params[0];
       subscription.interval = params[1];
+    } else if (type === 'userEvents' && params[0]) {
+      // The exchange requires the account on this subscription. Sent bare it
+      // was rejected, which left the fast balance-refresh path dead and the
+      // account connection with zero traffic.
+      subscription.user = params[0];
     }
 
     this.ws.send(JSON.stringify({
@@ -233,6 +284,8 @@ export class WebSocketManager {
     } else if (type === 'candle' && params[0] && params[1]) {
       subscription.coin = params[0];
       subscription.interval = params[1];
+    } else if (type === 'userEvents' && params[0]) {
+      subscription.user = params[0];
     }
 
     this.ws.send(JSON.stringify({
@@ -249,7 +302,8 @@ export class WebSocketManager {
     this.subscriptions.clear();
     this.reconnectAttempts = 0;
     this.connectionOpenedAt = null;
-    this.isConnecting = false;
+    this.pendingConnect = null;
+    this.stopPing();
 
     if (!socket) return;
     const wasOpen = socket.readyState === WebSocket.OPEN;

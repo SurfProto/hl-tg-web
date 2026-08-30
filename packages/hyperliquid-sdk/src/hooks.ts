@@ -521,13 +521,19 @@ export function useMids() {
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
-    client.connectWs().then(() => {
-      unsubscribe = client.subscribeToAllMids((data: WsMessage) => {
-        if (data.channel === "allMids") {
-          queryClient.setQueryData(["mids"], data.data);
-        }
-      });
-    });
+    client
+      .connectWs()
+      .then(() => {
+        unsubscribe = client.subscribeToAllMids((data: WsMessage) => {
+          if (data.channel === "allMids") {
+            queryClient.setQueryData(["mids"], data.data);
+          }
+        });
+      })
+      // connect() can reject; the manager keeps retrying and logs on its own,
+      // and the polling fallback covers the gap — this only stops the
+      // rejection surfacing as an unhandled one.
+      .catch(() => {});
     return () => {
       unsubscribe?.();
     };
@@ -637,11 +643,17 @@ export function useUserState() {
   useEffect(() => {
     if (!client) return;
     let unsubscribe: (() => void) | undefined;
-    client.connectWs().then(() => {
-      unsubscribe = client.subscribeToUserEvents(() => {
-        queryClient.invalidateQueries({ queryKey: ["userState"] });
-      });
-    });
+    client
+      .connectWs()
+      .then(() => {
+        unsubscribe = client.subscribeToUserEvents(() => {
+          queryClient.invalidateQueries({ queryKey: ["userState"] });
+        });
+      })
+      // connect() can reject; the manager keeps retrying and logs on its own,
+      // and the snapshot poll covers the gap — this only stops the rejection
+      // surfacing as an unhandled one.
+      .catch(() => {});
     return () => {
       unsubscribe?.();
     };
@@ -918,11 +930,14 @@ export function useFills() {
  */
 export function useHistoricalOrders() {
   const { client } = useHyperliquid();
+  const scope = useAccountScope();
 
   return useQuery({
-    queryKey: ["historicalOrders"],
+    // Account data, so the account belongs in the key — without it a login as
+    // someone else served the previous user's order history from cache.
+    queryKey: ["historicalOrders", scope],
     queryFn: () => client?.getHistoricalOrders(),
-    enabled: !!client,
+    enabled: !!client && Boolean(scope),
     staleTime: 1000 * 60, // 1 minute
   });
 }
@@ -1002,13 +1017,32 @@ export function useUpdateIsolatedMargin() {
 /**
  * Hook to fetch portfolio
  */
-export function usePortfolio() {
+/**
+ * The account's actual exchange fee rates, for quoting order costs in the UI.
+ * Rates move with 14-day volume, so an hour of staleness is immaterial;
+ * consumers fall back to the base tier while this loads or errors.
+ */
+export function useUserFees() {
   const { client } = useHyperliquid();
+  const scope = useAccountScope();
 
   return useQuery({
-    queryKey: ["portfolio"],
+    queryKey: ["userFees", scope],
+    queryFn: () => client?.getUserFees(),
+    enabled: !!client && Boolean(scope),
+    staleTime: 1000 * 60 * 60,
+  });
+}
+
+export function usePortfolio() {
+  const { client } = useHyperliquid();
+  const scope = useAccountScope();
+
+  return useQuery({
+    // Account data, so the account belongs in the key — see useAccountScope.
+    queryKey: ["portfolio", scope],
     queryFn: () => client?.getPortfolio(),
-    enabled: !!client,
+    enabled: !!client && Boolean(scope),
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 }
@@ -2000,7 +2034,10 @@ export function useOrderbookWs(coin: string) {
       });
     };
 
-    setupSubscription();
+    setupSubscription().catch(() => {
+      // The manager retries and logs on its own; this only stops the
+      // rejection surfacing as an unhandled one.
+    });
 
     return () => {
       if (unsubscribe) {
@@ -2033,7 +2070,10 @@ export function useTradesWs(coin: string) {
       });
     };
 
-    setupSubscription();
+    setupSubscription().catch(() => {
+      // The manager retries and logs on its own; this only stops the
+      // rejection surfacing as an unhandled one.
+    });
 
     return () => {
       if (unsubscribe) {
@@ -2070,7 +2110,10 @@ export function useCandlesWs(coin: string, interval: string = "1m") {
       );
     };
 
-    setupSubscription();
+    setupSubscription().catch(() => {
+      // The manager retries and logs on its own; this only stops the
+      // rejection surfacing as an unhandled one.
+    });
 
     return () => {
       if (unsubscribe) {
@@ -2101,7 +2144,10 @@ export function useUserEventsWs() {
       });
     };
 
-    setupSubscription();
+    setupSubscription().catch(() => {
+      // The manager retries and logs on its own; this only stops the
+      // rejection surfacing as an unhandled one.
+    });
 
     return () => {
       if (unsubscribe) {
@@ -2132,7 +2178,10 @@ export function useMidsWs() {
       });
     };
 
-    setupSubscription();
+    setupSubscription().catch(() => {
+      // The manager retries and logs on its own; this only stops the
+      // rejection surfacing as an unhandled one.
+    });
 
     return () => {
       if (unsubscribe) {

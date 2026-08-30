@@ -5,6 +5,7 @@ const supabaseAdmin = vi.hoisted(() => ({
   completeFillSync: vi.fn(),
   getFundedReferralStats: vi.fn(),
   getGrantedQuestIds: vi.fn(),
+  getLargestTradeUsd: vi.fn(),
   getQualifyingDeposits: vi.fn(),
   getUserById: vi.fn(),
   upsertRewardLedgerEntries: vi.fn(),
@@ -64,6 +65,7 @@ beforeEach(() => {
     referredCount: 0,
   });
   supabaseAdmin.getUserById.mockResolvedValue({ id: "user-1", referred_by: null });
+  supabaseAdmin.getLargestTradeUsd.mockResolvedValue(0);
   supabaseAdmin.upsertRewardLedgerEntries.mockResolvedValue([]);
   supabaseAdmin.completeFillSync.mockResolvedValue(undefined);
 });
@@ -83,11 +85,18 @@ describe("account fill sync", () => {
     expect(supabaseAdmin.upsertRewardLedgerEntries).toHaveBeenCalledTimes(1);
 
     const [, entries] = supabaseAdmin.upsertRewardLedgerEntries.mock.calls[0]!;
-    expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({
+    // Two rows: the volume XP for the fill, and — the funding gate on
+    // first_trade being gone — the quest grant the same fill completes.
+    expect(entries).toHaveLength(2);
+    expect(entries.find((e: { source: string }) => e.source === "volume_xp")).toMatchObject({
       idempotencyKey: "volume_xp:season-1:user-1:1:0xhash1:1",
       rewardKind: "xp",
       source: "volume_xp",
+      status: "posted",
+    });
+    expect(entries.find((e: { source: string }) => e.source === "quest")).toMatchObject({
+      idempotencyKey: "quest:season-1:user-1:first_trade:xp",
+      rewardKind: "xp",
       status: "posted",
     });
 

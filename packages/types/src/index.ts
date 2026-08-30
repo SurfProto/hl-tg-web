@@ -351,6 +351,12 @@ export type WsMessage =
       }>;
     }
   | { channel: "userFills"; data: Fill[] }
+  // userEvents subscriptions are answered on the `user` channel. The payload
+  // shape varies by event (fills, funding, liquidation); consumers today only
+  // use it as a "something changed" signal.
+  | { channel: "user"; data: unknown }
+  // Reply to the keepalive ping.
+  | { channel: "pong" }
   | {
       channel: "userFundings";
       data: Array<{

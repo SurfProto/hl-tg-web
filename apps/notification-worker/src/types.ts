@@ -19,6 +19,13 @@ export interface EligibleUser {
   language: string;
   preferences: NotificationPreferences;
   channelStatus: NotificationChannelStatus | null;
+  /**
+   * The chat id the notification channel currently points at, null when no
+   * channel row exists yet. Compared against telegramId to catch a re-linked
+   * Telegram account: deliveries kept going to the previous chat because the
+   * channel row was written once and never updated.
+   */
+  channelTarget: string | null;
 }
 
 export interface FillRecord {
@@ -93,7 +100,7 @@ export interface NotificationRepository {
   setRuntimeState(userId: string, stateKey: string, state: unknown): Promise<void>;
   listSuccessfulDepositOrders(userId: string): Promise<SuccessfulDepositOrder[]>;
   enqueueEvent(event: QueuedNotificationEvent): Promise<void>;
-  listPendingTelegramEvents(limit: number, now: Date): Promise<PendingNotificationEvent[]>;
+  claimPendingTelegramEvents(limit: number, now: Date): Promise<PendingNotificationEvent[]>;
   markEventSent(eventId: string): Promise<void>;
   recordChannelDelivery(userId: string): Promise<void>;
   markEventRetry(

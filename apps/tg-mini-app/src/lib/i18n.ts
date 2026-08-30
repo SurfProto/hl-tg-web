@@ -7,8 +7,17 @@ export const LANGUAGE_KEY = 'hl-tma-language';
 export const SUPPORTED_LANGUAGES = ['en', 'ru'] as const;
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 
-function getInitialLanguage(): SupportedLanguage {
-  const stored = localStorage.getItem(LANGUAGE_KEY);
+export function getInitialLanguage(): SupportedLanguage {
+  // This runs at module load, before the ErrorBoundary exists. A WebView
+  // with storage blocked throws on the accessor itself, and unguarded that
+  // took the whole app down with a blank screen; English is the right
+  // fallback for a preference that cannot be read.
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem(LANGUAGE_KEY);
+  } catch {
+    stored = null;
+  }
   return SUPPORTED_LANGUAGES.includes(stored as SupportedLanguage)
     ? (stored as SupportedLanguage)
     : 'en';

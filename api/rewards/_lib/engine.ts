@@ -59,6 +59,14 @@ interface BuildQuestSnapshotInput {
    * restored by `grantedQuestIds` regardless.
    */
   hasJoinedTelegramChannel?: boolean | null;
+  /**
+   * The largest single attributed trade the ledger has recorded this season.
+   *
+   * The read path performs no exchange I/O, so it has no fills and cannot
+   * derive this. Without it the trade quest's bar reads $0 however much the
+   * user has traded.
+   */
+  largestTradeUsd?: number;
   currentTime: string;
   fundedDepositThresholdUsd?: number;
   firstTradeThresholdUsd?: number;
@@ -146,15 +154,33 @@ function createQuest(args: {
   completedAt: string | null;
   progressCurrent: number;
   progressTarget: number;
+  /** Renders the two numbers when they are dollars rather than a count. */
+  progressFormat?: (current: number, target: number) => string;
   rewards: QuestProgress["rewards"];
   granted?: Set<QuestId>;
 }): QuestProgress {
-  const { granted, ...quest } = args;
+  const { granted, progressFormat, ...quest } = args;
 
   // A granted quest is completed even where the recomputed status disagrees:
   // the ledger row is the record of it having happened, and the inputs the read
   // path has available are a weaker source than the payment itself.
-  return granted?.has(quest.id) ? { ...quest, status: "completed" } : quest;
+  //
+  // The bar has to agree with the badge. Overriding the status alone left a
+  // quest rendering as complete above a bar sitting at zero, because the
+  // progress numbers still came from inputs the read path cannot see.
+  const completed = granted?.has(quest.id) === true || quest.status === "completed";
+  const progressCurrent = completed ? quest.progressTarget : quest.progressCurrent;
+
+  return {
+    ...quest,
+    progressCurrent,
+    // Formatted after the override, so a quest completed from the ledger reads
+    // "$50 / $50" rather than keeping the caption built from partial inputs.
+    ...(progressFormat
+      ? { progressLabel: progressFormat(progressCurrent, quest.progressTarget) }
+      : {}),
+    status: completed ? "completed" : quest.status,
+  };
 }
 
 export function buildQuestSnapshot(input: BuildQuestSnapshotInput) {
@@ -208,20 +234,46 @@ export function buildQuestSnapshot(input: BuildQuestSnapshotInput) {
   const secondDepositWithinWindow = secondCrossing.at
     ? { amountUsd: secondCrossing.total, occurredAt: secondCrossing.at }
     : null;
+  /**
+   * The biggest single trade so far.
+   *
+   * `first_trade` needs one trade over the threshold, so the nearest miss is
+   * the honest measure of progress — not the running total, which would promise
+   * a completion that never arrives.
+   *
+   * Taken from the caller as well as from the fills in hand, because the read
+   * path has no fills at all: ingestion is scheduled, so a dashboard request
+   * cannot see a single trade and computing this from `input.fills` alone left
+   * the bar reading $0 forever, whatever the user had traded. The caller
+   * supplies what the ledger already recorded; the fills cover the window being
+   * ingested right now, which is not in the ledger yet.
+   */
+  const largestTradeUsd = Math.max(
+    input.largestTradeUsd ?? 0,
+    input.fills
+      .filter((fill) => isAppAttributedFill(fill))
+      .reduce((largest, fill) => Math.max(largest, getFillNotional(fill)), 0),
+  );
+
+  /**
+   * The first trade over the threshold.
+   *
+   * No longer gated on the deposit quest. It used to require funding first,
+   * which locked it for anyone below the funding bar — and produced the case
+   * that exposed it: an account with twenty-two trades over the threshold, and
+   * $1,609 of volume, showing the quest as locked because it had deposited $25
+   * against a $50 bar.
+   *
+   * The gate never earned its keep. A fill that paid us a builder fee is proof
+   * the account held collateral, which is stronger evidence of funding than the
+   * deposit quest's own threshold. Sequencing two quests that describe the same
+   * prerequisite only hid one of them.
+   */
   const qualifyingTrade =
-    firstDeposit == null
-      ? null
-      : sortByOccurredAt(input.fills).find((fill) => {
-          if (!isAppAttributedFill(fill)) {
-            return false;
-          }
-
-          if (new Date(fill.occurredAt).getTime() < new Date(firstDeposit.occurredAt).getTime()) {
-            return false;
-          }
-
-          return getFillNotional(fill) >= tradeThreshold;
-        }) ?? null;
+    sortByOccurredAt(input.fills).find(
+      (fill) => isAppAttributedFill(fill) && getFillNotional(fill) >= tradeThreshold,
+    ) ??
+    (largestTradeUsd >= tradeThreshold ? { occurredAt: null } : null);
 
   /**
    * Progress against a dollar threshold, for the bar and its caption.
@@ -232,27 +284,14 @@ export function buildQuestSnapshot(input: BuildQuestSnapshotInput) {
    * because it is.
    */
   function usdProgress(current: number, target: number) {
-    const clamped = Math.max(0, Math.min(current, target));
     return {
-      progressCurrent: clamped,
-      progressLabel: `${formatUsd(clamped)} / ${formatUsd(target)}`,
+      progressCurrent: Math.max(0, Math.min(current, target)),
+      progressFormat: (shown: number, of: number) => `${formatUsd(shown)} / ${formatUsd(of)}`,
       progressTarget: target,
     };
   }
 
-  // The biggest single trade so far. `first_trade` needs one trade over the
-  // threshold, so the nearest miss is the honest measure of progress — not the
-  // running total, which would promise a completion that never arrives.
-  const largestTradeUsd = firstDeposit
-    ? input.fills
-        .filter(
-          (fill) =>
-            isAppAttributedFill(fill) &&
-            new Date(fill.occurredAt).getTime() >=
-              new Date(firstDeposit.occurredAt).getTime(),
-        )
-        .reduce((largest, fill) => Math.max(largest, getFillNotional(fill)), 0)
-    : 0;
+
 
   // When membership could not be checked, the channel quest is dropped unless
   // it has already been paid — in which case the ledger, not a live lookup, is
@@ -278,15 +317,11 @@ export function buildQuestSnapshot(input: BuildQuestSnapshotInput) {
     createQuest({
       granted,
       completedAt: qualifyingTrade?.occurredAt ?? null,
-      description: `Place your first app trade over ${formatUsd(tradeThreshold)} after funding.`,
+      description: `Place a trade over ${formatUsd(tradeThreshold)}.`,
       id: "first_trade",
-      ...usdProgress(qualifyingTrade ? tradeThreshold : largestTradeUsd, tradeThreshold),
+      ...usdProgress(largestTradeUsd, tradeThreshold),
       rewards: [{ amount: 300, kind: "xp", label: "300 XP" }],
-      status: qualifyingTrade
-        ? "completed"
-        : firstDeposit
-          ? "in_progress"
-          : "locked",
+      status: qualifyingTrade ? "completed" : "in_progress",
       title: "First trade",
     }),
     createQuest({

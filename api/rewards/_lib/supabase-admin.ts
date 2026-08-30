@@ -1136,6 +1136,35 @@ export async function upsertDepositEvents(
   });
 }
 
+/**
+ * The largest single attributed trade this season, in USD.
+ *
+ * Read from the ledger rather than from the exchange, because the dashboard
+ * performs no exchange I/O — and the quest that needs it was showing $0 of $10
+ * to an account that had traded $1,609 across twenty-three fills.
+ *
+ * Sorted and truncated by the database. The alternative is loading every volume
+ * grant for the season into the function to take one maximum, which is
+ * unbounded work on a request path for a single number.
+ */
+export async function getLargestTradeUsd(
+  config: RewardsConfig,
+  userId: string,
+  seasonId: string,
+): Promise<number> {
+  const rows = await supabaseRequest<Array<{ largest_trade_usd: string | number | null }>>(
+    config,
+    "rpc/rewards_largest_trade_usd",
+    {
+      body: JSON.stringify({ p_season_id: seasonId, p_user_id: userId }),
+      headers: buildHeaders(config),
+      method: "POST",
+    },
+  );
+
+  return Number(rows[0]?.largest_trade_usd ?? 0);
+}
+
 // ---------------------------------------------------------------------------
 // Builder-fill verification
 // ---------------------------------------------------------------------------

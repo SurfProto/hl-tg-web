@@ -17,8 +17,8 @@ export interface PriceMarket {
 }
 
 /**
- * Hyperliquid caps a price at five significant figures. Sent more, it rejects
- * the order.
+ * Hyperliquid caps a price at five significant figures — sent more, it rejects
+ * the order — but exempts integer prices: 123456 is valid at six figures.
  */
 export const MAX_PRICE_SIGNIFICANT_FIGURES = 5;
 
@@ -30,8 +30,25 @@ export const MAX_PRICE_SIGNIFICANT_FIGURES = 5;
 export const MARKET_ORDER_SLIPPAGE = 0.03;
 
 /**
+ * How far past the trigger a TP/SL market order may chase, as a fraction of
+ * the trigger price. Wider than MARKET_ORDER_SLIPPAGE because by the time a
+ * stop fires the market is already moving away from it — a stop-loss limited
+ * to exactly its trigger can sit unfilled through a gap while the position
+ * rides on. Matches the 10% Hyperliquid's own frontend allows TP/SL orders.
+ */
+export const TRIGGER_ORDER_SLIPPAGE = 0.1;
+
+/**
  * Keep at most `maxSignificant` significant digits, cutting rather than
  * rounding — the same direction as truncateToDecimals, for the same reason.
+ *
+ * Only fractional digits are ever cut. Integer digits all stay: the exchange
+ * exempts integer prices from the significant-figure cap, and dropping one
+ * would not shorten the price, it would divide it — "104256" cut to five
+ * digits reads 10,425, a tenth of what the caller asked. This function used
+ * to do exactly that, and the market-order path fed it every BTC-scale price:
+ * buys capped a decade below the book could never fill, sells lost their
+ * slippage floor, and a trigger at 110,000 was placed at 11,000.
  *
  * Leading zeros are not significant, so "0.00012345" keeps five digits after
  * them. A value with no integer part gains one: ".5" would not parse.
@@ -40,32 +57,32 @@ export function limitSignificantFigures(
   value: string,
   maxSignificant: number,
 ): string {
-  let result = "";
-  let significantDigits = 0;
-  let seenNonZero = false;
+  const [rawInteger = "", rawFraction = ""] = value.split(".");
+  const integer = rawInteger.replace(/^0+(?=\d)/u, "") || "0";
+  let significantDigits = integer === "0" ? 0 : integer.length;
 
-  for (const char of value) {
-    if (char === ".") {
-      if (!result.includes(".")) {
-        result += result === "" ? "0." : ".";
-      }
-      continue;
-    }
-
-    if (!seenNonZero) {
-      if (char === "0") {
-        result += char;
-        continue;
-      }
-      seenNonZero = true;
-    }
-
-    if (significantDigits >= maxSignificant) continue;
-    significantDigits += 1;
-    result += char;
+  if (significantDigits >= maxSignificant) {
+    return integer;
   }
 
-  return stripTrailingZeros(result || "0");
+  let fraction = "";
+  let seenNonZero = significantDigits > 0;
+
+  for (const char of rawFraction) {
+    if (!seenNonZero && char === "0") {
+      fraction += char;
+      continue;
+    }
+    seenNonZero = true;
+
+    if (significantDigits >= maxSignificant) break;
+    significantDigits += 1;
+    fraction += char;
+  }
+
+  return stripTrailingZeros(
+    fraction === "" ? integer : `${integer}.${fraction}`,
+  );
 }
 
 /**
@@ -97,16 +114,18 @@ export function formatPrice(rawPrice: number, market: PriceMarket): string {
 /**
  * The limit price that makes a "market" order cross the book.
  *
- * Buy above the mid, sell below it, by MARKET_ORDER_SLIPPAGE either way, so the
- * order takes any depth within that band and IOC cancels the rest.
+ * Buy above the reference, sell below it, by `slippage` either way, so the
+ * order takes any depth within that band and IOC cancels the rest. Triggered
+ * orders pass TRIGGER_ORDER_SLIPPAGE with the trigger as the reference.
  */
 export function getAggressiveMarketPrice(
   midPrice: number,
   side: OrderSide,
+  slippage: number = MARKET_ORDER_SLIPPAGE,
 ): number {
   return side === "buy"
-    ? midPrice * (1 + MARKET_ORDER_SLIPPAGE)
-    : midPrice * (1 - MARKET_ORDER_SLIPPAGE);
+    ? midPrice * (1 + slippage)
+    : midPrice * (1 - slippage);
 }
 
 /**

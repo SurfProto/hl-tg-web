@@ -92,6 +92,8 @@
     "availShort": "AVAIL",
     "liq": "Liq",
     "fee": "Fee",
+    "feeBuilder": "Builder fee",
+    "feeExchange": "Exchange fee",
     "margin": "Margin",
     "setPrice": "Set Price →",
     "editAmount": "← Edit amount",
@@ -206,6 +208,8 @@
     "bought": "Bought",
     "sold": "Sold",
     "fee": "Fee",
+    "showMore": "Show more",
+    "recentActivityNote": "Recent activity only — the exchange keeps a limited history.",
     "tradeMore": "Trade more",
     "protectionUpdated": "Protection updated",
     "protectionUpdateFailed": "Protection update failed.",
@@ -524,6 +528,7 @@
     "sendTestPending": "Sending…",
     "sendTestSent": "Sent — check Telegram",
     "sendTestFailed": "Couldn't send. Make sure you haven't blocked the bot, then try again.",
+    "prefsSaveFailed": "Couldn't save that setting. It has been switched back — try again.",
     "liquidationAlerts": "Liquidation alerts",
     "orderFills": "Order fills",
     "usdcDeposits": "USDC deposits"
@@ -655,16 +660,6 @@
     "title": "Unified account is off",
     "description": "The app has fallen back to standard balance routing. Trading still works, but re-enabling unified account restores the preferred UX.",
     "cta": "Review account mode"
-  },
-  "transfer": {
-    "title": "Transfer USDC",
-    "unifiedHint": "Advanced tool for standard-mode fallback. Unified accounts usually do not need manual perp/spot transfers.",
-    "flipDirection": "Swap transfer direction",
-    "amount": "Amount",
-    "availableToTransfer": "Available to transfer {{amount}} USDC",
-    "confirm": "Confirm transfer",
-    "success": "Transfer submitted successfully.",
-    "failed": "Transfer failed"
   },
   "agentRecovery": {
     "title": "Trading needs reauthorization",

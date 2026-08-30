@@ -33,8 +33,26 @@ function formatUsd(value: number) {
 }
 
 function formatPnl(value: number) {
-  const sign = value >= 0 ? "+" : "";
+  // The explicit minus matters: this used to return "$5" for a five-dollar
+  // loss, leaving color as the only difference between winning and losing.
+  const sign = value >= 0 ? "+" : "−";
   return `${sign}$${Math.abs(value).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+}
+
+/**
+ * A fill's moment, in the viewer's locale: time of day for today, date and
+ * time otherwise. The history rows carried no timestamp at all.
+ */
+function formatFillTime(timeMs: number, locale: string): string {
+  const date = new Date(timeMs);
+  const time = date.toLocaleTimeString(locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  if (date.toDateString() === new Date().toDateString()) {
+    return time;
+  }
+  return `${date.toLocaleDateString(locale, { day: "numeric", month: "short" })} ${time}`;
 }
 
 function formatPercent(value: number) {
@@ -340,10 +358,11 @@ export function PositionsPage() {
   const navigate = useNavigate();
   const haptics = useHaptics();
   const toast = useToast();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [activeTab, setActiveTab] = useState<"positions" | "orders" | "fills">(
     "positions",
   );
+  const [visibleFills, setVisibleFills] = useState(20);
   const [editingProtection, setEditingProtection] =
     useState<EditingProtectionState | null>(null);
   const [pendingCloseCoin, setPendingCloseCoin] = useState<string | null>(null);
@@ -526,40 +545,71 @@ export function PositionsPage() {
           {!fills || fills.length === 0 ? (
             <PositionsEmptyState />
           ) : (
-            fills.slice(0, 20).map((fill: any, index: number) => {
-              const isPositive = fill.closedPnl >= 0;
-              return (
-                <div
-                  key={`${fill.hash}-${index}`}
-                  className="rounded-[18px] border border-separator bg-white p-4"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <TokenIcon coin={fill.coin.split("/")[0]} size={32} />
-                      <div>
-                        <p className="font-bold text-foreground">
-                          {fill.coin}
-                        </p>
-                        <p className="text-xs text-muted mt-0.5 font-mono">
-                          {fill.side === "buy" ? t("positions.bought") : t("positions.sold")} {fill.sz} @ $
-                          {fill.px}
+            <>
+              {fills.slice(0, visibleFills).map((fill: any) => {
+                // Realized PnL exists only where something was closed. An
+                // opening fill used to render "+$0.00" in green — a fabricated
+                // win; it shows the trade's notional instead.
+                const isClose = fill.dir !== "Open";
+                const displayName = fill.coin.includes(":")
+                  ? fill.coin.split(":")[1]
+                  : fill.coin;
+                return (
+                  <div
+                    key={fill.tid}
+                    className="rounded-[18px] border border-separator bg-white p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <TokenIcon coin={displayName.split("/")[0]} size={32} />
+                        <div>
+                          <p className="font-bold text-foreground">
+                            {displayName}
+                          </p>
+                          <p className="text-xs text-muted mt-0.5 font-mono">
+                            {fill.side === "buy" ? t("positions.bought") : t("positions.sold")} {fill.sz} @{" "}
+                            {formatUsdPrice(fill.px)}
+                          </p>
+                          <p className="text-xs text-muted mt-0.5">
+                            {formatFillTime(fill.time, i18n.language)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        {isClose ? (
+                          <p
+                            className={`text-sm font-bold font-mono ${fill.closedPnl >= 0 ? "text-positive" : "text-negative"}`}
+                          >
+                            {formatPnl(fill.closedPnl)}
+                          </p>
+                        ) : (
+                          <p className="text-sm font-bold font-mono text-foreground">
+                            {formatUsd(fill.px * fill.sz)}
+                          </p>
+                        )}
+                        <p className="text-xs text-muted mt-0.5">
+                          {t("positions.fee")} ${fill.fee.toFixed(4)}
                         </p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p
-                        className={`text-sm font-bold font-mono ${isPositive ? "text-positive" : "text-negative"}`}
-                      >
-                        {isPositive ? "+" : ""}${fill.closedPnl.toFixed(2)}
-                      </p>
-                      <p className="text-xs text-muted mt-0.5">
-                        {t("positions.fee")} ${fill.fee.toFixed(4)}
-                      </p>
-                    </div>
                   </div>
-                </div>
-              );
-            })
+                );
+              })}
+              {fills.length > visibleFills && (
+                <button
+                  type="button"
+                  onClick={() => setVisibleFills((count) => count + 20)}
+                  className="w-full rounded-[18px] border border-separator bg-white px-4 py-3 text-sm font-semibold text-primary transition-colors active:bg-surface"
+                >
+                  {t("positions.showMore")}
+                </button>
+              )}
+              {/* The exchange retains a bounded history; pretending this list
+                  is a complete ledger would be a lie of omission. */}
+              <p className="pt-1 text-center text-xs text-muted">
+                {t("positions.recentActivityNote")}
+              </p>
+            </>
           )}
         </div>
       )}

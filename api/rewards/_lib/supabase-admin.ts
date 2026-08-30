@@ -166,14 +166,6 @@ export async function getSeasonUserStanding(
 }
 
 
-function truncateAddress(value: string | null | undefined) {
-  if (!value) {
-    return null;
-  }
-
-  return `${value.slice(0, 6)}...${value.slice(-4)}`;
-}
-
 function mapRewardLedgerRow(row: SupabaseRewardLedgerRow): RewardLedgerEntry {
   return {
     amount: Number(row.amount ?? 0),

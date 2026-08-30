@@ -5,9 +5,13 @@
   "type": "module",
   "scripts": {
     "start": "node src/server.mjs",
-    "test": "vitest run src/proxy.test.mjs"
+    "test": "vitest run src/proxy.test.mjs",
+    "lint": "eslint . --report-unused-disable-directives --max-warnings 0"
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*"
   }
 }

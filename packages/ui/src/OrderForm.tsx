@@ -64,11 +64,6 @@ export function OrderForm({
     return currentPrice * (1 + (1 / leverage) - maintenanceMarginRate);
   }, [currentPrice, isSpot, leverage, side]);
 
-  const baseSize = useMemo(() => {
-    if (!currentPrice || orderValue <= 0) return 0;
-    return orderValue / currentPrice;
-  }, [currentPrice, orderValue]);
-
   const resolvedSzDecimals = useMemo(
     () => szDecimals ?? inferSzDecimalsFromMinBaseSize(minBaseSize),
     [minBaseSize, szDecimals],

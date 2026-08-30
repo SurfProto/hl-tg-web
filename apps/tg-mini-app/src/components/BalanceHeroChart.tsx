@@ -8,7 +8,12 @@ export function BalanceHeroChart() {
   const { t } = useTranslation();
   const { period, setPeriod } = usePortfolioRange();
   const { data: portfolioPeriod, isError, isLoading } = usePortfolioPeriod(period);
-  const historyPoints = portfolioPeriod?.accountValueHistory ?? [];
+  // Memoized because `?? []` mints a fresh array every render, which made
+  // every memo depending on it recompute every render.
+  const historyPoints = useMemo(
+    () => portfolioPeriod?.accountValueHistory ?? [],
+    [portfolioPeriod?.accountValueHistory],
+  );
 
   const performance = useMemo(() => {
     const changePct = getPortfolioChangePct(historyPoints);

@@ -1,4 +1,4 @@
-import type { WsMessage, OrderbookLevel, Candle } from '@repo/types';
+import type { WsMessage } from '@repo/types';
 
 type WsCallback = (data: WsMessage) => void;
 type StatusCallback = (connected: boolean) => void;

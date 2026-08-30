@@ -484,6 +484,7 @@ export function Chart({
       chart.remove();
       chartRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only: the chart is created once; option changes are applied by the effect below, and re-running this would destroy and rebuild the chart
   }, []);
 
   useEffect(() => {
@@ -572,6 +573,7 @@ export function Chart({
   useEffect(() => {
     activeTouchInspectRef.current = false;
     publishLiteCandleInspect(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fires on data/interval changes only, to clear a stale inspection; the publish callback is a stable ref wrapper
   }, [candles, interval, liteCandleInspectEnabled]);
 
   useEffect(() => {
@@ -714,6 +716,7 @@ export function Chart({
       container.removeEventListener("touchend", clearInspection);
       container.removeEventListener("touchcancel", clearInspection);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- listener wiring keyed to data/mode changes; the publish callbacks are stable ref wrappers, and re-subscribing on their identities would churn chart listeners every render
   }, [candles, liteCandleInspectEnabled, seriesKind]);
 
   const rangeSelector =

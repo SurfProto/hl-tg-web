@@ -9,34 +9,6 @@ import type {
   SuccessfulDepositOrder,
 } from "./types";
 
-interface UserRow {
-  id: string;
-  wallet_address: string | null;
-  telegram_id: string | null;
-  language: string | null;
-}
-
-interface PreferenceRow {
-  user_id: string;
-  liquidation_alerts: boolean | null;
-  order_fills: boolean | null;
-  usdc_deposits: boolean | null;
-}
-
-interface ChannelRow {
-  user_id: string;
-  target: string;
-  status: NotificationChannelStatus;
-}
-
-interface EventRow {
-  id: string;
-  user_id: string;
-  channel: "telegram";
-  topic: "liquidation_risk" | "order_fill" | "usdc_deposit";
-  attempts: number;
-  payload: Record<string, unknown>;
-}
 
 const DEFAULT_PREFERENCES: NotificationPreferences = {
   liquidation_alerts: true,

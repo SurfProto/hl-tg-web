@@ -8,6 +8,24 @@ arithmetic it asserts and the market it describes. Read it before acting on that
 document: the unit its budget, CPA and success criteria are all denominated in
 does not survive contact with the code.
 
+## Decisions
+
+[`2026-08-31-telegram-mini-app-risk-decision.md`](2026-08-31-telegram-mini-app-risk-decision.md)
+records the choice to accept Telegram's Mini App policy exposure for now, what
+the guidelines actually say, which three signatures are exposed, and the
+triggers that should force a revisit. It was a deliberate decision, not an
+oversight — read it before anyone spends on paid Mini App traffic.
+
+## Integration research
+
+[`2026-08-30-ton-trc20-ramp-research.md`](2026-08-30-ton-trc20-ramp-research.md)
+covers the Hyperliquid deposit and withdrawal constraints, the boundary of what
+Privy does natively for TON and TRON, TRON's compliance surface, and what in
+this repository to extend rather than rebuild. Trimmed after the on-ramp
+provider was confirmed to settle Arbitrum USDC, which deleted most of its
+original recommendations; the superseded parts are listed at the end so they are
+not acted on by mistake.
+
 ## Notes recovered 2026-08-29
 
 Four strategy documents written on 2026-08-26, published as Claude artifacts,

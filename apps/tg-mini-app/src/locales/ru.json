@@ -475,8 +475,6 @@
     "amountBelowMinimum": "Минимальная сумма {{amount}} {{currency}}.",
     "amountAboveMaximum": "Максимальная сумма {{amount}} {{currency}}.",
     "authRequired": "Нужно войти, чтобы продолжить.",
-    "usePrivyWallet": "Privy кошелёк",
-    "useExternalTrc20": "Внешний TRC20",
     "trc20AddressLabel": "Ваш адрес USDT (TRC20)",
     "trc20AddressHint": "Введите адрес Tron-кошелька для получения USDT",
     "trc20AddressPlaceholder": "T...",

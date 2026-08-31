@@ -365,13 +365,20 @@ function App() {
             accentColor: "#3b82f6",
           },
           embeddedWallets: {
-            createOnLogin: "users-without-wallets",
-          },
-          externalWallets: {
-            coinbaseWallet: {
-              connectionOptions: "smartWalletOnly",
+            // v3 nests wallet creation per chain family rather than declaring
+            // it once. The policy is unchanged: a wallet is created only for a
+            // user who does not already have one, so nobody gains a second
+            // address — which is the address their whole Hyperliquid account,
+            // agent approval and reward history are keyed to.
+            ethereum: {
+              createOnLogin: "users-without-wallets",
             },
           },
+          // `externalWallets.coinbaseWallet` went with the upgrade rather than
+          // being ported. Its shape changed, and `loginMethods` above offers
+          // email, sms and telegram only — there is no path in this app that
+          // connects an external wallet, so the block was configuring a screen
+          // nobody can reach.
         }}
       >
         <QueryClientProvider client={queryClient}>

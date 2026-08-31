@@ -33,7 +33,10 @@ if (!appId) {
             accentColor: '#6366f1',
           },
           embeddedWallets: {
-            createOnLogin: 'users-without-wallets',
+            // v3 nests creation per chain family. Same policy as before.
+            ethereum: {
+              createOnLogin: 'users-without-wallets',
+            },
           },
         }}
       >

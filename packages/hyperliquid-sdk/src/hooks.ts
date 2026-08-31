@@ -1139,6 +1139,25 @@ export function useFundArbitrumUsdc() {
 }
 
 /**
+ * Whether we pay the gas on the Arbitrum leg of a deposit.
+ *
+ * False, and it has to stay false until something actually pays. This transfer
+ * is the only on-chain Arbitrum transaction in the product, and the wallet
+ * signing it is an embedded wallet holding the USDC it was just sent and no
+ * ETH — so today the user pays it, or cannot send at all.
+ *
+ * The review sheet claimed sponsorship unconditionally, which was untrue in
+ * every case it was ever shown. Telling somebody their gas is covered while
+ * they pay it is the kind of copy that costs trust exactly once. Flip this in
+ * the same change that introduces a paymaster or a 7702 delegation, and not a
+ * commit earlier.
+ *
+ * Typed as `boolean` rather than inferred as `false` so the branches below stay
+ * live code to the compiler and to anyone reading them.
+ */
+export const DEPOSIT_GAS_SPONSORED: boolean = false;
+
+/**
  * Hook to bridge USDC from Arbitrum to Hyperliquid L1
  * Sends USDC directly to the bridge address — Hyperliquid credits the sender on HyperCore.
  * Minimum deposit: 5 USDC
@@ -1199,7 +1218,9 @@ export function useBridgeToHyperliquid() {
         },
         {
           header: "Review Hyperliquid deposit",
-          description: `Bridge ${amount.toFixed(2)} USDC from Arbitrum into your Hyperliquid trading balance. Sponsored by Tsunami with love.`,
+          description: `Bridge ${amount.toFixed(2)} USDC from Arbitrum into your Hyperliquid trading balance.${
+            DEPOSIT_GAS_SPONSORED ? " Sponsored by P34k with love." : ""
+          }`,
           buttonText: "Confirm deposit",
           successHeader: "Deposit submitted",
           successDescription:
@@ -1207,8 +1228,12 @@ export function useBridgeToHyperliquid() {
           transactionInfo: {
             title: "Deposit details",
             action: "Bridge USDC",
+            // Names the contract being called, which is what this field is for
+            // and what the url below already points at. It previously carried
+            // the sponsorship slogan instead, so the sheet told the user the
+            // counterparty was a marketing line.
             contractInfo: {
-              name: "Sponsored by Tsunami with love",
+              name: "USD Coin (USDC)",
               url: "https://arbiscan.io/token/0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
             },
           },

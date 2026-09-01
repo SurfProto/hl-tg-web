@@ -1329,13 +1329,22 @@ export class HyperliquidClient {
     ) {
       return this.userStateCache.data;
     }
-    await this.ensureMarketCache();
-    // Loaded dexes only, like getMids and refreshAssetCtxs: this runs before
-    // every leveraged order via ensurePerpLeverage, where fanning out to every
-    // named dex (247 on testnet) is what rate-limited the order in the first
-    // place. Positions on HIP-3 dexes still surface, because enumerating
-    // markets — which the app does at startup — loads every dex.
-    const perpDexs = this.getLoadedPerpDexs();
+    const cache = await this.ensureMarketCache();
+    // Every named dex, not only the loaded ones.
+    //
+    // This used to read getLoadedPerpDexs(), on the reasoning that enumerating
+    // markets at startup loads every dex anyway. The app does not: it reads
+    // markets from the edge endpoint, and the account snapshot builds a fresh
+    // client per request (api/account/_lib/upstream.ts), so the loaded set was
+    // empty on every single call. HIP-3 positions were never returned — not
+    // intermittently, never — and a user holding all of their collateral on a
+    // HIP-3 dex saw an account worth $0.00 with no position in it.
+    //
+    // The old comment's fear was fanning out to 247 dexes on testnet. Mainnet
+    // lists ten. Asking ten dexes whether this user holds anything is the
+    // cheap half; loading a dex's universe is the expensive half, and that is
+    // still deferred below to the dexes that actually came back with holdings.
+    const perpDexs = cache.perpDexs;
     const [
       baseState,
       spotState,
@@ -1361,6 +1370,24 @@ export class HyperliquidClient {
         }),
       ),
     ]);
+
+    // A dex's collateral asset is inferred from its universe, and without it
+    // buildAccountState drops that dex's balance from the stable totals — so a
+    // position would show while the equity backing it did not. Load the
+    // universe only where there is something to attribute, which is normally
+    // no dexes and rarely more than one, rather than all ten.
+    await Promise.all(
+      perpDexs
+        .filter((entry, index) => {
+          if (entry.collateralAsset) return false;
+          const state = dexStates[index];
+          return (
+            (state?.assetPositions?.length ?? 0) > 0 ||
+            Number(state?.marginSummary?.accountValue ?? 0) > 0
+          );
+        })
+        .map(({ dex }) => this.ensureHip3Dex(dex)),
+    );
 
     const result = buildAccountState({
       baseState,

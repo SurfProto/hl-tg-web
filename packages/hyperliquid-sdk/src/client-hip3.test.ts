@@ -276,3 +276,100 @@ describe("per-dex fan-out", () => {
     expect(dexRequests()).toEqual([]);
   });
 });
+
+// The bug this pins: getUserState used to fan clearinghouseState out over
+// getLoadedPerpDexs() only. The app reads markets from the edge endpoint and
+// the account snapshot builds a fresh client per request, so nothing had ever
+// loaded a dex universe by the time state was read — the loaded set was empty
+// on every call, and a HIP-3 position was never returned. A user holding all
+// of their collateral on one HIP-3 dex saw an empty account.
+describe("getUserState across HIP-3 dexes", () => {
+  const EMPTY = { marginSummary: { accountValue: "0" }, assetPositions: [] };
+
+  function createStateClient() {
+    const { client, requests, dexRequests } = createClient();
+    const inner = (client as any).postInfo;
+
+    (client as any).walletAddress = "0xuser";
+    (client as any).postInfo = async (request: any) => {
+      // The inner mock records what it handles; anything answered here has to
+      // record itself or it never appears in `requests`.
+      if (request.type !== "metaAndAssetCtxs" && request.type !== "perpDexs") {
+        requests.push(request);
+      }
+      if (request.type === "clearinghouseState") {
+        if (request.dex === "xyz") {
+          return {
+            marginSummary: { accountValue: "8.96", totalRawUsd: "8.96", totalMarginUsed: "1.00" },
+            assetPositions: [
+              {
+                type: "oneWay",
+                position: {
+                  // The dex reports its own bare symbol.
+                  coin: "GOLD-USDC",
+                  szi: "3.084",
+                  leverage: { type: "isolated", value: "10" },
+                  entryPx: "32.482",
+                  liquidationPx: "30.72",
+                  marginUsed: "1.00",
+                  maxLeverage: "10",
+                  positionValue: "8.96",
+                  returnOnEquity: "-0.1",
+                  unrealizedPnl: "-1.21",
+                },
+              },
+            ],
+          };
+        }
+        return EMPTY;
+      }
+      if (request.type === "spotClearinghouseState") return { balances: [] };
+      if (request.type === "userAbstraction") return null;
+      if (request.type === "userDexAbstraction") return null;
+      return inner(request);
+    };
+
+    const stateDexes = () =>
+      requests.filter((r: any) => r.type === "clearinghouseState").map((r: any) => r.dex ?? "main");
+
+    return { client, requests, stateDexes, dexRequests };
+  }
+
+  it("asks every named dex, not only the ones already loaded", async () => {
+    const { client, stateDexes } = createStateClient();
+
+    await client.getUserState({ fresh: true });
+
+    // No symbol was resolved first, so under the old behaviour this was ["main"].
+    expect(stateDexes().sort()).toEqual(["abc", "main", "xyz"]);
+  });
+
+  it("returns the position, qualified with its dex", async () => {
+    const { client } = createStateClient();
+
+    const state = await client.getUserState({ fresh: true });
+    const coins = state.assetPositions.map((p: any) => p.position.coin);
+
+    expect(coins).toContain("xyz:GOLD-USDC");
+    expect(state.assetPositions).toHaveLength(1);
+  });
+
+  it("loads the universe only for the dex holding something", async () => {
+    const { client, dexRequests } = createStateClient();
+
+    await client.getUserState({ fresh: true });
+
+    // "abc" answered empty, so its universe is never fetched — the cheap half
+    // is asking, the expensive half is loading.
+    expect(dexRequests().map((r: any) => r.dex)).toEqual(["xyz"]);
+  });
+
+  it("counts the HIP-3 collateral toward equity", async () => {
+    const { client } = createStateClient();
+
+    const state = await client.getUserState({ fresh: true });
+
+    // Was $0.00 while the user held a leveraged position.
+    expect(state.marginSummary.accountValue).toBeGreaterThan(0);
+  });
+});

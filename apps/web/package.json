@@ -13,7 +13,7 @@
     "test:coverage": "vitest run --coverage --passWithNoTests"
   },
   "dependencies": {
-    "@privy-io/react-auth": "^1.80.0",
+    "@privy-io/react-auth": "^3.38.0",
     "@repo/hyperliquid-sdk": "workspace:*",
     "@repo/types": "workspace:*",
     "@repo/ui": "workspace:*",

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { useUserState } from "@repo/hyperliquid-sdk";
+import { useArbitrumUsdcBalance, useUserState } from "@repo/hyperliquid-sdk";
 import { useTranslation } from "react-i18next";
 import { useHaptics } from "../hooks/useHaptics";
 import { getAccountOverviewStats } from "./account-page-state";
@@ -76,6 +76,11 @@ export function AccountPage() {
     availableBalance,
     withdrawableBalance,
   } = getAccountOverviewStats(userState);
+  // The fifth pot, and the only one that is not on Hyperliquid. A withdrawal
+  // lands here, which is why it has to be visible: the four figures above all
+  // correctly read zero afterwards, and without this the money looks gone.
+  const { data: walletUsdc, isLoading: walletLoading } =
+    useArbitrumUsdcBalance(walletAddress);
   const visibleStableBalances = userState?.visibleStableBalances ?? [];
   const shellLoading = userStateLoading;
 
@@ -157,6 +162,24 @@ export function AccountPage() {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Outside the grid on purpose. The four figures above are all slices
+              of the Hyperliquid account; this one is not on Hyperliquid at all,
+              and showing it as a fifth cell would imply it is spendable
+              collateral. It is where a withdrawal arrives. */}
+          <div className="mt-4 border-t border-separator pt-3">
+            <div className="flex items-baseline justify-between gap-3">
+              <div className="editorial-kicker">{t("account.walletBalance")}</div>
+              {shellLoading || walletLoading ? (
+                <SkeletonBar className="h-5 w-20" />
+              ) : (
+                <div className="editorial-mono text-lg font-semibold text-foreground">
+                  {formatUsd(walletUsdc ?? 0)}
+                </div>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-muted">{t("account.walletBalanceHint")}</p>
           </div>
         </div>
 

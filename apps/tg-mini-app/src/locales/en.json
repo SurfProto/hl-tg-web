@@ -347,7 +347,9 @@
     "accountValue": "Account value",
     "readyToTrade": "Ready to trade",
     "openSettings": "Open account settings",
-    "traderFallback": "Trader"
+    "traderFallback": "Trader",
+    "walletBalance": "In your wallet",
+    "walletBalanceHint": "USDC on Arbitrum, held outside your trading account. Withdrawals arrive here. Deposit it to trade with it."
   },
   "accountSettings": {
     "title": "Account settings",
@@ -513,9 +515,12 @@
     "available": "Available {{amount}} USDC",
     "withdrawButton": "Withdraw to Arbitrum",
     "submitting": "Submitting...",
-    "withdrawSubmitted": "Withdrawal submitted. Arrival is usually within 5 minutes.",
+    "withdrawSubmitted": "Withdrawal submitted. Your USDC lands in the wallet above, usually within 5 minutes.",
     "withdrawFee": "A 1 USDC fee is deducted from each withdrawal.",
-    "withdrawFailed": "Withdrawal failed"
+    "withdrawFailed": "Withdrawal failed",
+    "destinationHint": "This is your own P34k wallet on Arbitrum. Withdrawing moves USDC out of your trading account and into that wallet, so it stops counting toward your trading balance.",
+    "walletBalance": "In your wallet now",
+    "walletBalanceAmount": "{{amount}} USDC"
   },
   "notifications": {
     "title": "Notifications",

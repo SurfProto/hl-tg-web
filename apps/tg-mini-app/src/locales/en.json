@@ -189,7 +189,6 @@
     "tabFills": "Fills",
     "unrealizedPnl": "UNREALIZED PNL",
     "margin": "MARGIN",
-    "addMargin": "Add margin",
     "markPrice": "Mark",
     "loadingMarkPrice": "Loading...",
     "positionValue": "Position value",
@@ -224,7 +223,8 @@
     "closeFailed": "Close failed. Please try again.",
     "orderCancelled": "Order cancelled",
     "cancelFailed": "Cancel failed. Please try again.",
-    "positionLabel": "Position"
+    "positionLabel": "Position",
+    "addToPosition": "Add to position"
   },
   "points": {
     "loadFailed": "We couldn't load your points. Check your connection and try again.",

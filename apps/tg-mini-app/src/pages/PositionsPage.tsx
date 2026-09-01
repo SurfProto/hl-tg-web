@@ -136,8 +136,10 @@ function PositionCard({
           <div>
             <div className="flex items-center gap-2">
               <span className="font-bold text-foreground">{displayName}</span>
+              {/* Never wraps. "LONG · 10×" broke across two lines inside the
+                  pill on a narrow screen, which read as a rendering fault. */}
               <span
-                className={`editorial-kicker rounded-full px-2 py-1 ${
+                className={`editorial-kicker whitespace-nowrap rounded-full px-2 py-1 ${
                   isLong
                     ? "bg-primary/10 text-primary"
                     : "bg-secondary/10 text-secondary"
@@ -154,7 +156,9 @@ function PositionCard({
         
         {/* PnL */}
         <div className="text-right">
-          <div className={`editorial-mono text-lg font-bold ${isPositive ? "text-positive" : "text-negative"}`}>
+          {/* The minus sign was breaking onto its own line above the number,
+              so a loss rendered as a stray "−" with "$2.11" beneath it. */}
+          <div className={`editorial-mono whitespace-nowrap text-lg font-bold ${isPositive ? "text-positive" : "text-negative"}`}>
             {formatPnl(pnl)}
           </div>
           <div className={`text-xs font-medium ${isPositive ? "text-positive" : "text-negative"}`}>

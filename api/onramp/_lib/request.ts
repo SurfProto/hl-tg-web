@@ -64,11 +64,49 @@ function isValidTronAddress(address: string) {
   return expectedChecksum.equals(decoded.subarray(21));
 }
 
-export function parsePayoutAddress(value: unknown, network: string): string {
+const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+
+/**
+ * Where the provider will send the money.
+ *
+ * On TRC20 the destination is a Tron address the user types, and the most we
+ * can say is that it is well formed: base58check, 25 bytes, Tron prefix.
+ *
+ * Every other network settles to an EVM address, and there is exactly one we
+ * are ever willing to pay — the embedded wallet on the caller's own session.
+ * The previous rule off TRC20 was `address.length > 0`, which was survivable
+ * only while the provider settled in USDT on Tron and a bad address failed the
+ * base58 check anyway. Now that it settles Arbitrum USDC, a non-empty string
+ * was the whole validation standing between a mistyped destination and money
+ * that does not come back. Bind it to the session instead, so the client cannot
+ * name an address the server did not already hold.
+ */
+export function parsePayoutAddress(
+  value: unknown,
+  network: string,
+  walletAddress: string,
+): string {
   const address = typeof value === "string" ? value.trim() : "";
-  const valid = network.toUpperCase() === "TRC20" ? isValidTronAddress(address) : address.length > 0;
-  if (!valid) {
+
+  if (network.toUpperCase() === "TRC20") {
+    if (!isValidTronAddress(address)) {
+      throw new HttpError(400, "INVALID_PAYOUT_ADDRESS", `Invalid payout address for ${network}`);
+    }
+    return address;
+  }
+
+  if (!EVM_ADDRESS.test(address)) {
     throw new HttpError(400, "INVALID_PAYOUT_ADDRESS", `Invalid payout address for ${network}`);
+  }
+
+  // Case-insensitive: EIP-55 checksums differ by capitalisation only, and a
+  // client that lower-cases the address is not making a different request.
+  if (address.toLowerCase() !== walletAddress.trim().toLowerCase()) {
+    throw new HttpError(
+      400,
+      "PAYOUT_ADDRESS_MISMATCH",
+      "Payout address must be the wallet on this account",
+    );
   }
 
   return address;

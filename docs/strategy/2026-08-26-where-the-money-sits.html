@@ -1,0 +1,298 @@
+<title>Where The Money Sits</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --ground: #f7f8fa; --surface: #ffffff; --surface-sunk: #eef1f5;
+    --ink: #16202b; --ink-soft: #33414f; --muted: #5c6b7a; --hairline: #dde3e9;
+    --accent: #1f5f4b; --accent-soft: #e4efea; --flag: #a8452b; --flag-soft: #f6e7e2;
+    --display: "Newsreader", Georgia, "Times New Roman", serif;
+    --body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --measure: 68ch;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0f151b; --surface: #161e26; --surface-sunk: #1c262f;
+      --ink: #e6ecf2; --ink-soft: #c3cedb; --muted: #8a9aa8; --hairline: #263039;
+      --accent: #4fa88a; --accent-soft: #16302a; --flag: #d4785e; --flag-soft: #33201a;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0f151b; --surface: #161e26; --surface-sunk: #1c262f;
+    --ink: #e6ecf2; --ink-soft: #c3cedb; --muted: #8a9aa8; --hairline: #263039;
+    --accent: #4fa88a; --accent-soft: #16302a; --flag: #d4785e; --flag-soft: #33201a;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground); color: var(--ink); font-family: var(--body);
+    font-size: 16.5px; line-height: 1.65; margin: 0; padding: 0 5vw 8rem;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: var(--measure); margin: 0 auto; }
+  .wide { max-width: 88ch; margin: 0 auto; }
+
+  header.masthead { padding: 5rem 0 2.5rem; border-bottom: 1px solid var(--hairline); margin-bottom: 3rem; }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 1.5rem;
+  }
+
+  h1 {
+    font-family: var(--display); font-weight: 500; font-size: clamp(2.4rem, 6vw, 3.7rem);
+    line-height: 1.08; letter-spacing: -0.02em; text-wrap: balance; margin: 0 0 1.25rem;
+  }
+
+  .standfirst { font-size: 1.14rem; color: var(--ink-soft); margin: 0; text-wrap: pretty; }
+
+  section { margin: 4.5rem auto 0; }
+
+  h2 {
+    font-family: var(--display); font-weight: 500; font-size: clamp(1.7rem, 3.5vw, 2.15rem);
+    line-height: 1.2; letter-spacing: -0.015em; text-wrap: balance; margin: 0 0 0.4rem;
+    padding-top: 1.75rem; border-top: 2px solid var(--ink);
+  }
+
+  .section-note {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 1.75rem;
+  }
+
+  h3 { font-family: var(--body); font-weight: 600; font-size: 1.03rem; margin: 2.4rem 0 0.6rem; }
+
+  p { margin: 0 0 1.1rem; text-wrap: pretty; }
+  strong { font-weight: 600; color: var(--ink); }
+
+  code {
+    font-family: var(--mono); font-size: 0.87em; background: var(--surface-sunk);
+    padding: 0.1em 0.36em; border-radius: 2px;
+  }
+
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  .thesis {
+    font-family: var(--display); font-size: 1.28rem; line-height: 1.42; color: var(--ink);
+    border-left: 3px solid var(--accent); padding: 0.15rem 0 0.15rem 1.4rem;
+    margin: 2rem 0; text-wrap: pretty;
+  }
+
+  .scroll { overflow-x: auto; margin: 1.75rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+  th, td { text-align: left; padding: 0.7rem 0.9rem 0.7rem 0; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+  thead th {
+    font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--ink); white-space: nowrap;
+  }
+  td.num, th.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+
+  .callout {
+    background: var(--surface); border: 1px solid var(--hairline); border-left: 3px solid var(--flag);
+    padding: 1.3rem 1.4rem; margin: 2rem 0;
+  }
+  .callout.good { border-left-color: var(--accent); }
+  .callout h3 { margin: 0 0 0.5rem; }
+  .callout p:last-child { margin: 0; }
+
+  ul.plain { padding-left: 1.15rem; margin: 0 0 1.1rem; }
+  ul.plain li { margin-bottom: 0.5rem; }
+
+  .stack { display: flex; flex-direction: column; gap: 1px; background: var(--hairline); border: 1px solid var(--hairline); margin: 1.75rem 0; }
+  .row { background: var(--surface); padding: 1.15rem 1.25rem; }
+  .row strong { display: block; margin-bottom: 0.25rem; }
+  .row p { margin: 0; font-size: 0.93rem; color: var(--ink-soft); }
+  .row p + p { margin-top: 0.5rem; }
+  .row .why { color: var(--muted); font-size: 0.87rem; }
+
+  /* layered balance diagram */
+  .layers { margin: 2rem 0; display: flex; flex-direction: column; gap: 0.5rem; }
+  .layer {
+    border: 1px solid var(--hairline); background: var(--surface);
+    padding: 1rem 1.15rem; display: grid; grid-template-columns: 1fr auto; gap: 1rem; align-items: baseline;
+  }
+  .layer .name { font-weight: 600; font-size: 0.97rem; }
+  .layer .src { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); white-space: nowrap; }
+  .layer p { margin: 0.35rem 0 0; grid-column: 1 / -1; font-size: 0.9rem; color: var(--ink-soft); }
+  .layer.locked { border-left: 3px solid var(--flag); }
+  .layer.free { border-left: 3px solid var(--accent); }
+  .arrow { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); text-align: center; margin: 0; }
+
+  footer { margin-top: 5rem; padding-top: 2rem; border-top: 1px solid var(--hairline); font-size: 0.88rem; color: var(--muted); }
+  footer a { color: var(--muted); }
+</style>
+
+<header class="masthead">
+  <div class="wrap">
+    <p class="eyebrow">Balance architecture · Card settlement · August 2026</p>
+    <h1>Where The Money Sits</h1>
+    <p class="standfirst">Hyperbeat has already built the thing you're describing, and their card is a loan rather than a debit. That choice is not a preference — it falls out of the same constraint that should decide how you model balances, and who carries the float when a card is swiped.</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section>
+    <h2>Hyperbeat, and what they figured out</h2>
+    <p class="section-note">Closer to your direction than Dreamcash is</p>
+
+    <p>Hyperbeat calls itself Liquid Banking: a self-custodial smart wallet on HyperEVM bundling savings, spending, trading and fiat ramps. Save, spend, trade, ramp — the same four verbs you'd end up with. Worth studying properly, because they've resolved problems you're about to hit.</p>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Product</th><th>Mechanic</th></tr></thead>
+        <tbody>
+          <tr><td>Visa card</td><td>Swiping borrows stablecoin against collateral via Morpho Blue. Collateral never sold, keeps earning.</td></tr>
+          <tr><td>Credit Mode</td><td>Six isolated markets. Collateral includes HYPE, UBTC, UETH, USOL and XAUT.</td></tr>
+          <tr><td>beHYPE</td><td>Liquid staking token for HYPE. Stays productive while serving as card collateral.</td></tr>
+          <tr><td>Savings</td><td>Up to 8% APY, auto-compounding, on-chain sources.</td></tr>
+          <tr><td>Trading</td><td>Stocks, crypto, commodities, indices to 40×, on-chain order book, TradingView.</td></tr>
+          <tr><td>Chat &amp; Pay</td><td>Messaging with payment requests and bill splitting.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="thesis">The user never opens a lending interface. The swipe <em>is</em> the loan.</p>
+
+    <p>That is the insight worth taking. A debit card forces a sale — the user liquidates a position to buy coffee, which is both a tax event and an emotional one, and it is why crypto debit cards get funded once and then forgotten. A credit line against collateral means spending costs you nothing you were holding on purpose.</p>
+
+    <h3>Where you are better positioned than they are</h3>
+    <p>They built Chat &amp; Pay: messaging with payments bolted on. You do not need to build that, because <strong>you are already inside the messenger</strong>. Their hardest distribution problem — getting people to move their conversations into a finance app — is one you never have to solve. That asymmetry is worth more than any single feature on their list.</p>
+
+    <h3>Where you should not follow</h3>
+    <p>They lend against <em>spot</em> collateral — HYPE, wrapped BTC, gold. Your users' capital is in a <em>perpetuals margin account</em>, already leveraged, already subject to liquidation. Lending against that is stacking leverage on leverage, and the first violent move liquidates the position and the credit line together. If you ever build a credit card, it must sit on segregated spot collateral, not on margin equity.</p>
+  </section>
+
+  <section>
+    <h2>You have every number and no model</h2>
+    <p class="section-note">The data exists — the taxonomy doesn't</p>
+
+    <p><code>account-state.ts</code> already parses everything needed: <code>marginSummary</code> with <code>accountValue</code>, <code>totalMarginUsed</code>, <code>totalNtlPos</code> and <code>totalRawUsd</code>, plus <code>crossMaintenanceMarginUsed</code>, <code>withdrawable</code>, spot balances per asset, and Arbitrum USDC in the wallet. Nothing needs fetching that isn't fetched.</p>
+
+    <p>What's missing is the thing users actually need: a statement of <strong>where their money is, and what each pot can do.</strong> "Balance" is not one number here and presenting it as one is what makes people distrust the app — they deposit $100, open a position, and the headline figure moves for reasons they cannot reconstruct.</p>
+
+    <div class="layers">
+      <div class="layer free">
+        <span class="name">Wallet</span><span class="src">Arbitrum USDC</span>
+        <p>Outside Hyperliquid entirely. The only balance a debit card can spend, and the only one that leaves without unwinding anything.</p>
+      </div>
+      <p class="arrow">↓ bridge · minutes</p>
+      <div class="layer free">
+        <span class="name">On venue, idle</span><span class="src">spot balances</span>
+        <p>On Hyperliquid but not backing a position. Instantly movable to margin; still a bridge away from spendable.</p>
+      </div>
+      <p class="arrow">↓ transfer · instant</p>
+      <div class="layer locked">
+        <span class="name">Margin in use</span><span class="src">totalMarginUsed</span>
+        <p>Collateral behind open positions. Not yours to spend until you close something.</p>
+      </div>
+      <div class="layer locked">
+        <span class="name">Unrealised P&amp;L</span><span class="src">accountValue − totalRawUsd</span>
+        <p>Real enough to change your account value, not real enough to spend. The number that confuses everyone.</p>
+      </div>
+      <div class="layer free">
+        <span class="name">Withdrawable</span><span class="src">withdrawable</span>
+        <p>What Hyperliquid will actually release right now. The honest ceiling on "how much can I take out".</p>
+      </div>
+    </div>
+
+    <p>Name these in the interface and most support questions disappear. The specific one worth surfacing hardest is the gap between <strong>account value</strong> and <strong>withdrawable</strong> — that difference is margin plus unrealised P&amp;L, and not explaining it is the single biggest source of "the app stole my money" reports in every leveraged product.</p>
+
+    <div class="callout good">
+      <h3>Add a distance-to-liquidation reading while you're here</h3>
+      <p>You already parse <code>crossMaintenanceMarginUsed</code>. Account value against maintenance margin is the number that tells a user how close they are to losing the position — and it is far more useful than any balance. Nothing else in the product does more for retention than a user not getting liquidated by surprise.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Spendable is the hard one</h2>
+    <p class="section-note">And the reason Hyperbeat chose credit</p>
+
+    <p>Under a debit model, <strong>spendable equals the wallet layer and nothing else.</strong> Money on the venue is not spendable; margin is not spendable; unrealised profit is definitely not spendable. A user with $10,000 traded on Hyperliquid and $0 in their Arbitrum wallet has a card that declines.</p>
+
+    <p>Getting from the bottom of that stack to the top means: close a position, wait for settlement, withdraw from HyperCore to Arbitrum, then spend. Minutes at best, and a decision at every step. That is the entire reason crypto debit cards see one funding event and then silence.</p>
+
+    <p>The credit model inverts it — collateral stays where it is, the swipe borrows against it, spendable becomes a function of what you hold rather than what you've liquidated. Strictly better product, materially harder to build, and dangerous on margin collateral as noted above.</p>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Model</th><th>Spendable =</th><th>Cost to user</th><th>You build</th></tr></thead>
+        <tbody>
+          <tr><td>Debit from wallet</td><td>Arbitrum USDC only</td><td>Must unwind first</td><td>Segregation + locking</td></tr>
+          <tr><td>Debit with auto-top-up</td><td>Wallet, refilled from withdrawable</td><td>Delay, still unwinds</td><td>Above + a sweep job</td></tr>
+          <tr><td>Credit on collateral</td><td>LTV × spot collateral</td><td>Interest</td><td>Lending market + liquidation</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>The middle row is the pragmatic one: a debit card over the wallet, plus a rule that tops the wallet up from <code>withdrawable</code> when it runs low. It doesn't dodge the unwind, but it moves the unwind off the checkout counter, which is where it hurts.</p>
+  </section>
+
+  <section>
+    <h2>How settlement actually works</h2>
+    <p class="section-note">The part that decides whether you can afford a card at all</p>
+
+    <p>A card payment is three events, not one. <strong>Authorisation</strong> happens at the terminal in under a second — the network reads the BIN, routes to the issuer, the issuer checks funds and approves. <strong>Capture</strong> follows, often the same day. <strong>Settlement</strong> — actual money reaching the merchant's bank — lands one to three business days later.</p>
+
+    <p class="thesis">Somebody has to pay the merchant on day one and get paid back on day three. Whoever that is, is carrying float — and float is the real cost of a card programme.</p>
+
+    <p>At $100M of monthly card volume, that gap represents somewhere between $3M and $10M outstanding at any moment. Stablecoin settlement shrinks the window, because a transfer that confirms in under a second collapses the time between user intent and funded authorisation, but it does not remove it.</p>
+
+    <h3>Three ways to settle, by who carries the float</h3>
+
+    <div class="stack">
+      <div class="row">
+        <strong>You refer out — nobody's float is yours</strong>
+        <p>The user gets a card from an Arbitrum-native issuer and funds it from the wallet they already have. No settlement relationship, no prefunding, no chargeback exposure, no KYC liability.</p>
+        <p class="why">The correct first move. It tests whether your users want a card before you find out what a card costs.</p>
+      </div>
+      <div class="row">
+        <strong>Embedded through an issuer — their float, your fees</strong>
+        <p>Bridge and Stripe, or an equivalent. Funds pull from the user's wallet by on-chain approval at authorisation; the provider converts and meets the network's settlement obligation. You pay interchange economics and programme fees, and you owe them a compliant cardholder.</p>
+        <p class="why">Where you should land if the card matters. You get the brand and the tier mechanic without running a treasury.</p>
+      </div>
+      <div class="row">
+        <strong>Your own programme — your float, your problem</strong>
+        <p>Prefunded fiat sitting in an FBO account at a sponsor bank, drawn at authorisation, replenished continuously. Full-stack issuers become Visa or Mastercard principal members and settle entirely in stablecoins, removing the sponsor bank — an outcome, not a starting point.</p>
+        <p class="why">Real treasury operations, real capital, real regulatory surface. Not a decision for a team of your size this year.</p>
+      </div>
+    </div>
+
+    <div class="callout">
+      <h3>The liability nobody mentions until it bites</h3>
+      <p>In a non-custodial pull model, authorisation and settlement are separated by hours or days, but the wallet is live the whole time. If a user spends $200, then moves their balance into Hyperliquid before the pull settles, the approval finds nothing — and the merchant has already been paid.</p>
+      <p>Privy's own integration notes list double-spend prevention as <em>your</em> responsibility, via policy, on-chain ledger tracking, or token verification. It is also why Bridge ties one card to one wallet.</p>
+      <p><strong>This is the requirement that should shape your balance model.</strong> The card wallet cannot be the same pot as trading collateral, because you need to hold funds against pending authorisations — and a user who can sweep that balance into a perp position at will is a user who can hand you the loss.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>What this means for the build</h2>
+    <p class="section-note">The two questions turn out to be one question</p>
+
+    <p>You asked about balance modelling and about card settlement as separate items. They resolve together: <strong>settlement mechanics dictate that card funds live in a segregated, lockable balance, and that requirement is exactly the balance model users have been missing anyway.</strong></p>
+
+    <ul class="plain">
+      <li><strong>Ship the balance taxonomy now, card or no card.</strong> Wallet, on-venue, margin, unrealised, withdrawable — five named things with the numbers you already parse. It costs a UI pass and removes your worst class of confusion.</li>
+      <li><strong>Add distance-to-liquidation in the same pass.</strong> Same data, larger effect.</li>
+      <li><strong>Design the wallet layer as segregable from the start.</strong> Even before a card exists, treat Arbitrum wallet balance as a distinct account rather than an implementation detail of depositing. Retrofitting segregation after a card is live is far worse than building it now.</li>
+      <li><strong>Refer out for the card, and watch the funding behaviour.</strong> If users fund a third-party card once and never again, you have learned that the unwind problem is fatal — for a few weeks of work rather than a card programme.</li>
+      <li><strong>Only consider credit once collateral is spot, not margin.</strong> Hyperbeat can lend against beHYPE because it isn't backing a leveraged position. You have no equivalent today.</li>
+    </ul>
+
+    <p>The honest summary on Hyperbeat: they are ahead of you on product surface and behind you on distribution. They have to convince people to move their money and their conversations into a new app. You already have the conversation.</p>
+  </section>
+
+  <footer>
+    <p>Hyperbeat product detail from <a href="https://hyperbeat.org/">hyperbeat.org</a>, <a href="https://docs.hyperbeat.org/hyperbeat-staking/behype">their beHYPE docs</a> and launch coverage. Settlement and float mechanics from <a href="https://www.lithic.com/blog/what-are-stablecoin-backed-cards">Lithic</a>, <a href="https://www.spark.money/research/crypto-debit-cards-market-overview">Spark</a> and <a href="https://docs.privy.io/recipes/bridge-cards">Privy's Bridge recipe</a>. Balance fields read from <code>packages/hyperliquid-sdk/src/account-state.ts</code> at <code>dac71ff</code>.</p>
+  </footer>
+
+</div>

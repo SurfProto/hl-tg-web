@@ -1,0 +1,446 @@
+<title>What XP Is For</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --ground: #f7f8fa;
+    --surface: #ffffff;
+    --surface-sunk: #eef1f5;
+    --ink: #16202b;
+    --ink-soft: #33414f;
+    --muted: #5c6b7a;
+    --hairline: #dde3e9;
+    --accent: #1f5f4b;
+    --accent-soft: #e4efea;
+    --flag: #a8452b;
+    --flag-soft: #f6e7e2;
+    --display: "Newsreader", Georgia, "Times New Roman", serif;
+    --body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --measure: 68ch;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0f151b; --surface: #161e26; --surface-sunk: #1c262f;
+      --ink: #e6ecf2; --ink-soft: #c3cedb; --muted: #8a9aa8; --hairline: #263039;
+      --accent: #4fa88a; --accent-soft: #16302a; --flag: #d4785e; --flag-soft: #33201a;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0f151b; --surface: #161e26; --surface-sunk: #1c262f;
+    --ink: #e6ecf2; --ink-soft: #c3cedb; --muted: #8a9aa8; --hairline: #263039;
+    --accent: #4fa88a; --accent-soft: #16302a; --flag: #d4785e; --flag-soft: #33201a;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground); color: var(--ink); font-family: var(--body);
+    font-size: 16.5px; line-height: 1.65; margin: 0; padding: 0 5vw 8rem;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: var(--measure); margin: 0 auto; }
+  .wide { max-width: 88ch; margin: 0 auto; }
+
+  header.masthead { padding: 5rem 0 2.5rem; border-bottom: 1px solid var(--hairline); margin-bottom: 3rem; }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 1.5rem;
+  }
+
+  h1 {
+    font-family: var(--display); font-weight: 500; font-size: clamp(2.4rem, 6vw, 3.7rem);
+    line-height: 1.08; letter-spacing: -0.02em; text-wrap: balance; margin: 0 0 1.25rem;
+  }
+
+  .standfirst { font-size: 1.14rem; color: var(--ink-soft); margin: 0; text-wrap: pretty; }
+
+  section { margin: 4.5rem auto 0; }
+
+  h2 {
+    font-family: var(--display); font-weight: 500; font-size: clamp(1.7rem, 3.5vw, 2.15rem);
+    line-height: 1.2; letter-spacing: -0.015em; text-wrap: balance; margin: 0 0 0.4rem;
+    padding-top: 1.75rem; border-top: 2px solid var(--ink);
+  }
+
+  .section-note {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 1.75rem;
+  }
+
+  h3 { font-family: var(--body); font-weight: 600; font-size: 1.03rem; margin: 2.4rem 0 0.6rem; }
+
+  p { margin: 0 0 1.1rem; text-wrap: pretty; }
+  strong { font-weight: 600; color: var(--ink); }
+
+  code {
+    font-family: var(--mono); font-size: 0.87em; background: var(--surface-sunk);
+    padding: 0.1em 0.36em; border-radius: 2px;
+  }
+
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  .thesis {
+    font-family: var(--display); font-size: 1.28rem; line-height: 1.42; color: var(--ink);
+    border-left: 3px solid var(--accent); padding: 0.15rem 0 0.15rem 1.4rem;
+    margin: 2rem 0; text-wrap: pretty;
+  }
+
+  .scroll { overflow-x: auto; margin: 1.75rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+  th, td { text-align: left; padding: 0.7rem 0.9rem 0.7rem 0; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+  thead th {
+    font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--ink); white-space: nowrap;
+  }
+  td.num, th.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+
+  .callout {
+    background: var(--surface); border: 1px solid var(--hairline); border-left: 3px solid var(--flag);
+    padding: 1.3rem 1.4rem; margin: 2rem 0;
+  }
+  .callout.good { border-left-color: var(--accent); }
+  .callout h3 { margin: 0 0 0.5rem; }
+  .callout p:last-child { margin: 0; }
+
+  ul.plain { padding-left: 1.15rem; margin: 0 0 1.1rem; }
+  ul.plain li { margin-bottom: 0.5rem; }
+
+  .stack { display: flex; flex-direction: column; gap: 1px; background: var(--hairline); border: 1px solid var(--hairline); margin: 1.75rem 0; }
+  .row { background: var(--surface); padding: 1.15rem 1.25rem; }
+  .row strong { display: block; margin-bottom: 0.25rem; }
+  .row p { margin: 0; font-size: 0.93rem; color: var(--ink-soft); }
+  .row p + p { margin-top: 0.5rem; }
+  .row .why { color: var(--muted); font-size: 0.87rem; }
+
+  .tag {
+    font-family: var(--mono); font-size: 0.61rem; letter-spacing: 0.09em; text-transform: uppercase;
+    font-weight: 600; padding: 0.24rem 0.45rem; border-radius: 2px; margin-left: 0.5rem;
+    background: var(--accent-soft); color: var(--accent); vertical-align: 0.12em;
+  }
+  .tag.warn { background: var(--flag-soft); color: var(--flag); }
+
+  footer { margin-top: 5rem; padding-top: 2rem; border-top: 1px solid var(--hairline); font-size: 0.88rem; color: var(--muted); }
+  footer a { color: var(--muted); }
+</style>
+
+<header class="masthead">
+  <div class="wrap">
+    <p class="eyebrow">Points program · Build spec &amp; research · August 2026</p>
+    <h1>What XP Is For</h1>
+    <p class="standfirst">A token being on the table changes the answer. Ranks, redemptions, a referral ladder that resists farming, and the two research questions — cards and HIP-3 — where the facts landed differently than expected.</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section>
+    <h2>What the token changes</h2>
+    <p class="section-note">Read before the design — it moves the constraint</p>
+
+    <p>The previous note argued that five basis points caps what you can pay out, so XP had to buy something self-funding. That still holds for <em>cash</em> — but if a token is genuinely possible, XP gains a second job: it becomes the <strong>allocation record</strong> for a future distribution. That is the engine Dreamcash is running on, and it costs you nothing today.</p>
+
+    <p>Two things follow, and the second is the one people get wrong.</p>
+
+    <p><strong>Design XP now as though it will be the allocation basis</strong>, because it probably will be. Every farmable hole you leave open is a hole in your future cap table. The hardening work already done is what makes this credible — an append-only ledger you can reconstruct is exactly what you want to be holding when someone disputes their allocation.</p>
+
+    <p><strong>Do not say so.</strong> There is a wide gap between designing for a possible token and implying one, and that gap is where the securities exposure lives. Dreamcash's users are farming an airdrop nobody promised them; the expectation does the work without the promise. Your spec's existing non-goal — no promise of retroactive conversion — remains exactly right and should stay in place.</p>
+
+    <p class="thesis">Build the program so a token could settle on it. Ship the program so it stands up without one.</p>
+
+    <p>That resolves the tension in the earlier note. Redemptions are what make XP worth farming <em>today</em>, so users have a reason to be here before any token exists. The allocation record is upside you never have to underwrite.</p>
+  </section>
+
+  <section>
+    <h2>Ranks</h2>
+    <p class="section-note">The leaderboard already exists — tiers do not</p>
+
+    <p>Worth being precise about what's built: you have a season leaderboard, ranked in SQL, bounded, and returning opaque <code>Trader-XXXXXXXX</code> aliases with each caller's own row flagged. What you don't have is a <strong>tier system</strong>, and the <code>multiplier</code> column on <code>user_points</code> has been sitting at <code>1.0</code>, unused, since the schema was written.</p>
+
+    <h3>Tier from XP, status from rank</h3>
+    <p>Dreamcash derives its multiplier from leaderboard rank. Don't copy that. Rank is zero-sum — as the cohort grows, most users watch their position fall while doing nothing wrong, which is demoralising precisely when you're trying to retain new people.</p>
+
+    <p>Split the two. <strong>Tiers come from cumulative season XP</strong>, so they are achievable and never taken away by someone else's activity. <strong>The leaderboard stays competitive</strong>, for status and for the top of the funnel. Both already have the data behind them.</p>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Rank</th><th class="num">Season XP</th><th class="num">Multiplier</th><th>Unlocks</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Basecamp</td><td class="num">0</td><td class="num">1.00×</td><td>Baseline</td></tr>
+          <tr><td>Climber</td><td class="num">2,500</td><td class="num">1.10×</td><td>Sponsored deposit</td></tr>
+          <tr><td>Ridge</td><td class="num">10,000</td><td class="num">1.25×</td><td>Fee rebate · premium alerts</td></tr>
+          <tr><td>Summit</td><td class="num">40,000</td><td class="num">1.50×</td><td>Deeper rebate · analytics · beta access</td></tr>
+          <tr><td>Peak</td><td class="num">150,000</td><td class="num">2.00×</td><td>Max rebate · card benefits · support priority</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>I had proposed wave naming, after the agent. Mountain naming is better and it isn't close — the product is called P34K, the top rank is Peak, and the ladder explains itself to someone who has never opened the app.</p>
+
+    <h3>Rank the leaderboard by Season XP, not by volume</h3>
+    <p>The current implementation ranks on <code>total_volume</code>. That rewards churn — wash trading, round trips, size for the sake of size — and it is the metric a farmer optimises first. Ranking on Season XP at least means you are ranking on a number whose definition you control.</p>
+
+    <p>Three additions worth making at the same time: show the user's <strong>neighbourhood</strong> as well as the top 100, because rank 4,000 of 5,000 is demoralising and "you are 60 XP behind the person above you" is not; group ranks into <strong>leagues</strong> so competition happens between peers; and keep <strong>referral standings separate</strong>, so inviting and trading are different contests rather than one contest a well-connected user always wins.</p>
+
+    <p>And a rule about what never earns: <strong>do not reward PnL or leverage.</strong> Paying for profit pays for luck and encourages martingale behaviour; paying for leverage pays people to get liquidated. Neither is a business you want.</p>
+
+    <div class="callout good">
+      <h3>One architectural rule: never multiply in the aggregate</h3>
+      <p>It is tempting to apply the multiplier inside <code>rewards_season_xp_totals</code>. Don't. That makes every historical total a function of today's tier, so promoting a user silently rewrites what they earned last week and the ledger stops being the source of truth you just spent a release making it.</p>
+      <p>Emit the bonus as its own append-only ledger row — <code>source = 'tier_bonus'</code>, keyed by the grant it derives from. The aggregate stays a plain sum, reconciliation still works, and the user can see the bonus as a line item rather than an unexplained inflation of their number.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Don't let XP be the currency</h2>
+    <p class="section-note">A correction to what I proposed — this version is better</p>
+
+    <p>I had XP doing two jobs: accumulating as status, and being spent on redemptions. That is a mistake, and a well-known one. If spending XP lowers your number then <strong>redeeming feels like losing rank</strong>, so the users who earned the most are precisely the ones who never spend. Airlines separate status miles from award miles for exactly this reason.</p>
+
+    <p>Split it three ways instead.</p>
+
+    <div class="stack">
+      <div class="row">
+        <strong>Lifetime XP</strong>
+        <p>Never resets, never spent. Permanent reputation, and the natural basis for any future allocation snapshot.</p>
+      </div>
+      <div class="row">
+        <strong>Season XP</strong>
+        <p>Resets each season. Drives ranks, leagues and the leaderboard. What the multiplier acts on.</p>
+      </div>
+      <div class="row">
+        <strong>Reward Credits</strong>
+        <p>A budgeted, spendable balance funded from <em>realised</em> builder-fee revenue and partner campaigns. This is what pays for rebates and perks.</p>
+      </div>
+    </div>
+
+    <p><strong>XP unlocks the catalogue; Credits pay for the item.</strong> Rank gates what you may redeem, Credits are consumed when you do, and your status is untouched either way.</p>
+
+    <p>It also fixes a budgeting problem I had only waved at. XP issuance is uncapped by design — you want people earning it. Credits are issued against revenue actually collected, so the redemption budget can never exceed the five basis points funding it. The constraint becomes structural rather than something you have to remember.</p>
+
+    <p>Ledger-wise this is cheap: Credits are another <code>reward_kind</code> in the same append-only table, with the same idempotency and reconciliation. Lifetime XP is the same aggregate without the season filter — a query you already have.</p>
+  </section>
+
+  <section>
+    <h2>What Credits redeem into</h2>
+    <p class="section-note">Ordered by how ready you already are to ship it</p>
+
+    <div class="stack">
+      <div class="row">
+        <strong>Sponsored deposits <span class="tag">table already exists</span></strong>
+        <p>You have a <code>bridge_sponsorship_events</code> table — privy user, wallet, amount, chain, authorised or rejected with a reason code — and nothing in the codebase reads or writes it. It is scaffolding for gas and bridge sponsorship that was never wired up.</p>
+        <p class="why">The cheapest real redemption you can ship: XP buys a sponsored deposit. The data model is designed, it costs you the gas rather than the notional, and it removes the single biggest drop-off in onboarding.</p>
+      </div>
+      <div class="row">
+        <strong>Fee rebates</strong>
+        <p>Tiered reduction against the builder fee. Self-funding by construction — the user must trade to earn it, and the rebate is a fraction of the fee that trading produced.</p>
+        <p class="why">The honest anchor for the whole program. "Trade more, pay less" is verifiable on the day, which matters when you have no track record yet.</p>
+      </div>
+      <div class="row">
+        <strong>Withdrawal cost coverage</strong>
+        <p>Cover the Arbitrum withdrawal for higher tiers. Small absolute cost, disproportionate psychological weight — the exit being free is what makes people comfortable entering.</p>
+      </div>
+      <div class="row">
+        <strong>Early access to new markets</strong>
+        <p>Costs nothing and becomes genuinely valuable the moment you have markets of your own to gate. Pairs directly with the HIP-3 section below.</p>
+      </div>
+      <div class="row">
+        <strong>Custom display name</strong>
+        <p>The leaderboard shows aliases by design. Letting a top tier claim a real name is a status good you already have the column shape for — with the moderation, impersonation and rename policy your own spec flagged.</p>
+      </div>
+      <div class="row">
+        <strong>Card tier <span class="tag warn">phase two</span></strong>
+        <p>Cashback rate or metal card by tier. Strongest redemption on the list and the furthest away — see the card section.</p>
+      </div>
+      <div class="row">
+        <strong>Allocation weight <span class="tag warn">unstated</span></strong>
+        <p>If a token happens, XP is the natural basis. Design for it; do not advertise it.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The referral ladder</h2>
+    <p class="section-note">Where the growth is, and where the fraud is</p>
+
+    <p>Currently a referred friend's funded deposit pays the referrer 500 XP, and the referee 500 XP. One event, one payment, no gradation. You asked for a dry-invite rung and a funded-and-traded rung — both are right, but the dry rung needs handling carefully or it becomes the whole problem.</p>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Rung</th><th>Trigger</th><th>Pays referrer</th><th>Anti-farm</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Dry invite</td><td>Wallet created, $0 traded</td><td class="num">Multiplier progress</td><td>Capped, delayed</td></tr>
+          <tr><td>Funded</td><td>Net deposit held for a period</td><td class="num">250 XP</td><td>Holding period</td></tr>
+          <tr><td>Funded + traded</td><td>Verified volume, &gt;1 session</td><td class="num">750 XP</td><td>Multi-session</td></tr>
+          <tr><td>Retained</td><td>Returns in week two</td><td class="num">500 XP</td><td>Time cannot be faked</td></tr>
+          <tr><td>Volume share</td><td>Ongoing referee volume</td><td class="num">5–10% of their volume XP</td><td>Self-limiting</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Three refinements worth taking, all of which close holes in what I first proposed. <strong>A holding period on "funded"</strong> — otherwise deposit, trigger, withdraw is a free reward. <strong>Volume across more than one session</strong> for the traded rung, since a single round trip is trivially manufactured. And a <strong>retained rung</strong> at week two, because returning is the behaviour you actually want and the one nobody can fake.</p>
+
+    <p>Deliberately <strong>no multi-level referral tree.</strong> Dreamcash pays 20% / 4% / 1% across three levels; that shape recruits recruiters rather than traders, and it carries both sybil and MLM-adjacent regulatory risk you do not want attached to a program that may later back an allocation. Pay creators and affiliates properly in cash or Credits out of realised builder fees instead — that is a commercial arrangement with accountable counterparties, not a pyramid.</p>
+
+    <div class="callout">
+      <h3>Do not pay XP for dry invites</h3>
+      <p>A wallet with no deposit costs an attacker nothing. Paying XP for one means paying for an unbounded supply of empty accounts — and if XP later becomes an allocation basis, you have paid out cap table for nothing. You have no sybil defence today that survives a determined farmer with a Telegram account generator.</p>
+      <p><strong>Pay the dry rung in multiplier progress instead.</strong> It is worthless on its own — it only converts into XP when the referrer trades their own volume through it, and it caps at their tier. A farmer with a thousand fake invites and no capital gets a big multiplier on nothing.</p>
+    </div>
+
+    <p>The volume share is the rung that actually compounds, and it's the one Dreamcash's 54,000-per-invite is a crude proxy for. Paying the referrer a slice of the referee's <em>ongoing</em> volume XP aligns the incentive with quality rather than count: inviting one real trader beats inviting a hundred tourists. It is also naturally self-limiting, because it only pays when someone genuinely trades.</p>
+  </section>
+
+  <section>
+    <h2>Five defects to repair before any of this launches</h2>
+    <p class="section-note">All five verified against the codebase at <code>dac71ff</code> — two are mine</p>
+
+    <p>A program built on a broken referral funnel just distributes the brokenness faster. Every item below was checked in the code, not assumed.</p>
+
+    <div class="stack">
+      <div class="row">
+        <strong>Telegram referral links do nothing <span class="tag warn">regression</span></strong>
+        <p><code>PointsPage</code> reads <code>startParam</code> and passes it to the dashboard endpoint, which deliberately discards it. <code>applyReferralCode</code> is only ever called from the manual entry box in <code>ReferralCard</code>. So a user who clicks an invite link is never linked to their referrer.</p>
+        <p class="why">Introduced when the dashboard became read-only. Removing the write from the read path was right; not moving it to an explicit client call was not. The referral graph — the whole distribution advantage — is currently disconnected.</p>
+      </div>
+      <div class="row">
+        <strong>Nothing writes the leaderboard projections <span class="tag warn">regression</span></strong>
+        <p><code>upsertUserPoints</code> and <code>upsertWeeklyReward</code> are defined and called by nothing. The dashboard stopped writing them and the ingestion worker never started. <code>user_points.total_volume</code> — which the leaderboard ranks on — is frozen at whatever the old code last wrote.</p>
+        <p class="why">Same cause. The XP column happens to be recoverable because <code>rewards_rebuild_xp_projection</code> exists; volume is not derivable from the ledger and has no rebuild path.</p>
+      </div>
+      <div class="row">
+        <strong>A referrer is paid for one friend per season</strong>
+        <p>The quest key is <code>quest:{season}:{referrer}:referral_funded_friend:xp</code> — one row per referrer per season. Fund ten friends, get paid once. Correct idempotency, wrong grain.</p>
+        <p class="why">Pre-existing. The key needs the referred user in it.</p>
+      </div>
+      <div class="row">
+        <strong>Trade attribution is forgeable</strong>
+        <p><code>isAppAttributedFill</code> tests whether the order's <code>cloid</code> starts with <code>0x1a17</code>. Anyone can set that prefix on their own order placed anywhere and mint volume XP without ever paying you a builder fee.</p>
+        <p class="why">Pre-existing, and the most serious of the five if XP ever backs an allocation. XP should become final only when the fill carries P34K's confirmed builder fee — Hyperliquid publishes builder-fill data precisely so this can be verified.</p>
+      </div>
+      <div class="row">
+        <strong>"Funded" means your on-ramp only</strong>
+        <p><code>getSuccessfulOnrampDeposits</code> reads <code>onramp_orders</code>. A user who deposits to Hyperliquid directly from an external wallet — the way most experienced traders will — has not funded anything as far as the program is concerned.</p>
+        <p class="why">Pre-existing. Excludes exactly the cohort with capital.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quests worth adding</h2>
+    <p class="section-note">Verifiability first — a quest you cannot check is a quest you are paying for nothing</p>
+
+    <h3>Social, and the one you can actually verify</h3>
+    <p>X follows and posts are the standard ask and the standard mistake: verification needs a paid API, breaks constantly, and is trivially undone the moment the reward lands. Telegram is different, and it is your home turf.</p>
+
+    <p class="thesis">You already hold a bot token. Channel membership is a server-side call you can make yourself, for free, repeatedly — and re-check before paying anything else.</p>
+
+    <p>That makes "join the announcement channel" a genuinely verifiable quest, and it puts users somewhere you can reach them again. It is worth more than an X follow you cannot confirm.</p>
+
+    <h3>Behavioural quests that improve retention rather than just paying for it</h3>
+    <ul class="plain">
+      <li><strong>First withdrawal.</strong> Counter-intuitive to reward, and the single strongest trust signal you can give a new user — most people never believe the money comes back out until it does.</li>
+      <li><strong>Set a stop-loss.</strong> Teaches the habit that stops new traders blowing up in week one. Retention disguised as a quest.</li>
+      <li><strong>Trade three distinct markets.</strong> Breadth correlates with staying.</li>
+      <li><strong>Hold a position overnight.</strong> Moves users from tourist to participant.</li>
+      <li><strong>Verify email.</strong> You have <code>verified_emails</code> already; it gives you a channel Telegram doesn't.</li>
+      <li><strong>Return after seven days.</strong> Directly targets the drop-off that matters most.</li>
+    </ul>
+
+    <h3>Daily check-in and streaks</h3>
+    <p>The largest single gap against Dreamcash. A date-scoped idempotency key on a ledger row is all it takes, and your append-only writer already handles the replay correctly. Add a streak multiplier that resets on a miss — the asymmetry between building and losing a streak is what makes people open the app on a day they weren't going to trade.</p>
+
+    <p>Calibrate deliberately rather than copying 20,000. Decide what ratio you want between showing up and trading, and set the number to produce it. Dreamcash's ratio implies a month of check-ins is worth $600,000 of volume; that is a choice, not a law.</p>
+  </section>
+
+  <section>
+    <h2>Cards: what the research actually found</h2>
+    <p class="section-note">Two of three assumptions were wrong</p>
+
+    <h3>There is no Hyperliquid-native card</h3>
+    <p>Nothing in the ecosystem issues a card that spends directly from a HyperCore balance. Hyperliquid is a trading venue with USDC as universal collateral; the spending layer does not exist. Anything card-shaped means getting value out to a chain first — which is the same structural problem regardless of issuer.</p>
+
+    <h3>Arbitrum-native cards do exist — and Bridge is the wrong door</h3>
+    <p>The earlier note flagged that Bridge cards fund from Tempo, Solana, Base, World Chain and Linea, but not Arbitrum. That is still true, and it made Bridge look like the only option. It isn't. <strong>Kast, Banqa and Plasma One all fund from Arbitrum USDC non-custodially</strong>, from a wallet the user controls.</p>
+
+    <p>The distinction that matters: those are consumer products, not issuing APIs. So there are two different projects hiding under "add a card".</p>
+
+    <div class="stack">
+      <div class="row">
+        <strong>Refer out <span class="tag">weeks</span></strong>
+        <p>Point users at an Arbitrum-native card they fund from the wallet they already have. No issuing relationship, no KYC liability, no card programme. You can make it an XP redemption — cover the card fee at higher tiers.</p>
+        <p class="why">Tests whether anyone actually wants this before you build a card programme for them.</p>
+      </div>
+      <div class="row">
+        <strong>Embed your own <span class="tag warn">quarters</span></strong>
+        <p>Stripe Issuing plus Bridge, with the Privy wallet as funding source. Requires a Bridge developer account and merchant ID, KYC completed within 24 hours per customer, one wallet per card, and a second funding wallet on a supported chain because Arbitrum isn't one.</p>
+        <p class="why">Only worth it once card spend is a proven behaviour and you want the economics and the brand.</p>
+      </div>
+    </div>
+
+    <p>The unavoidable friction in both is the same and it is not an integration problem: <strong>the money is in Hyperliquid, not in the wallet.</strong> Spending means withdrawing from HyperCore to Arbitrum, then spending from there. Any card story you tell has to make that feel like one action, or people will fund the card once and never again.</p>
+
+    <p>The geography question is the one to settle before anything else. Your strongest localisation is Russian; card issuing sits behind KYC and sanctions screening. Establish the real eligible-country list for your actual audience before scoping a single sprint — it may turn out the card is for a different user than the one you have.</p>
+  </section>
+
+  <section>
+    <h2>HIP-3: the door is money, not merit</h2>
+    <p class="section-note">The first-mover framing is wrong in a useful way</p>
+
+    <p>Deploying a HIP-3 market requires staking <strong>500,000 HYPE — roughly $25 million</strong>. It is a security bond, slashable for misbehaviour. A qualified deployer gets their first three markets free and <strong>50% of trading fees</strong> on their markets, against the 5 basis points of builder fee you earn today.</p>
+
+    <p>So the barrier is not that someone got there first. It is capital, and no amount of product insight substitutes for it.</p>
+
+    <div class="callout good">
+      <h3>The route that exists: rent the bond</h3>
+      <p>Hyperion DeFi deployed 500,000 HYPE to Skew Technologies so Skew could launch HIP-3 markets — Hyperion took equity and a revenue share, Skew got the bond without owning it. That is a repeatable structure, and it is the realistic path for a team your size: <strong>find a HYPE treasury that wants market exposure and hasn't got an operator.</strong></p>
+      <p>What you bring to that conversation is not capital. It is a distribution channel they don't have — a Telegram-native front end, already localised, already shipping.</p>
+    </div>
+
+    <h3>Where the first-mover advantage is genuinely gone</h3>
+    <p>Tokenised US equities and commodities are 23 of the top 30 pairs on Hyperliquid. FX went live in May 2026 via trade.xyz, which now runs 70+ markets across equities, commodities, indices and FX. NVDA, TSLA, gold, WTI, S&amp;P, pre-IPO names — all taken, by operators with more capital than you.</p>
+
+    <h3>Where it is not</h3>
+    <p>The FX lineup launched with <strong>EUR, JPY, KRW and the dollar index</strong>. Majors. Nobody is serving the currencies people actually need to hedge, and your instinct about local markets is pointed straight at the gap.</p>
+
+    <p class="thesis">A trader in São Paulo, Istanbul or Lagos does not need leveraged EUR. They need a hedge against their own currency — and the venue that offers it reaches them through Telegram, in their language, without an app store.</p>
+
+    <p>That reframes the product from speculation to utility, which is a far better fit for a consumer messenger app than another leverage venue. "Protect your salary from your own currency" is a proposition that needs no crypto literacy at all.</p>
+
+    <p>Local equities are the harder version of the same idea — the constraint is a reliable, disputable-free price feed, which is much easier for a liquid FX pair than for a mid-cap on a regional exchange. Start with currency.</p>
+
+    <div class="callout">
+      <h3>One market to think very carefully about</h3>
+      <p>The obvious pairing with your Russian localisation is RUB, and it carries sanctions exposure that is a legal question rather than a product one. Do not let the localisation pull the market selection there by default. TRY, BRL, ARS, NGN, EGP, ZAR and INR all have genuine hedging demand, large diaspora populations on Telegram, and none of the same problem.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>What I'd sequence</h2>
+    <p class="section-note">Cheapest proof first; capital conversations run in parallel</p>
+
+    <ul class="plain">
+      <li><strong>Now, and small:</strong> daily check-in with streak, tier table with the multiplier as its own ledger source, referral ladder with dry invites paying multiplier rather than XP, Telegram channel quest. All of this sits on infrastructure that already exists and none of it needs a partner.</li>
+      <li><strong>Next:</strong> the first redemption. Sponsored deposits, because the table is already designed and it removes your worst drop-off. Then fee rebates, because that's the honest anchor for what XP is.</li>
+      <li><strong>In parallel, free:</strong> two conversations. One with an Arbitrum-native card issuer about a referral or embedded arrangement and the real country list. One with a HYPE treasury about backing a HIP-3 bond, where your pitch is distribution rather than capital.</li>
+      <li><strong>Deliberately not yet:</strong> your own card programme, and any statement about a token.</li>
+    </ul>
+  </section>
+
+  <footer>
+    <p>HIP-3 mechanics from <a href="https://hyperliquid.gitbook.io/hyperliquid-docs/hyperliquid-improvement-proposals-hips/hip-3-builder-deployed-perpetuals">Hyperliquid documentation</a> and <a href="https://www.falconx.io/newsroom/the-transformational-potential-of-hyperliquids-hip-3">FalconX</a>; the Hyperion/Skew bond structure from <a href="https://www.tradingview.com/news/cointelegraph:c6b90a058094b:0-hyperion-defi-to-deploy-500k-hype-for-hyperliquid-hip-3-markets/">Cointelegraph</a>. FX market coverage from <a href="https://hyperliquidguide.com/ecosystem/hyperliquid-fx-perpetuals">Hyperliquid Guide</a>. Card options from <a href="https://www.bleap.finance/en-us/blog/crypto-wallets-with-cards">non-custodial card comparisons</a> and <a href="https://docs.privy.io/recipes/bridge-cards">Privy's Bridge recipe</a>. Program figures read from this repository at <code>dac71ff</code>.</p>
+  </footer>
+
+</div>

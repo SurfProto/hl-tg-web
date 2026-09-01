@@ -452,3 +452,137 @@ describe("a dex that will not answer", () => {
     expect(state.marginSummary.accountValue).toBeGreaterThan(400);
   });
 });
+
+// frontendOpenOrders is dex-scoped and defaults to the base dex, so a bare call
+// never returned a HIP-3 order. That was worse than invisibility:
+// upsertPositionProtection diffs against this list, so an empty one meant no
+// existing stop was found, nothing was cancelled, and a second full-size
+// trigger was rested on top of the live one.
+describe("getOpenOrders across HIP-3 dexes", () => {
+  function createOrderClient(options: { failDex?: string } = {}) {
+    const { client, requests } = createClient();
+    const inner = (client as any).postInfo;
+
+    (client as any).walletAddress = "0xuser";
+    (client as any).getPublicClient = async () => ({
+      spotMeta: async () => SPOT_META,
+      frontendOpenOrders: async () => [
+        {
+          oid: 1,
+          coin: "BTC",
+          side: "B",
+          limitPx: "50000",
+          sz: "0.1",
+          timestamp: 1,
+          orderType: "Limit",
+        },
+      ],
+    });
+
+    (client as any).postInfo = async (request: any) => {
+      if (request.type === "frontendOpenOrders") {
+        requests.push(request);
+        if (request.dex === options.failDex) {
+          throw new Error("Info request failed with status 503");
+        }
+        if (request.dex === "xyz") {
+          // Bare, the way a dex-scoped clearinghouseState reports positions.
+          return [
+            {
+              oid: 99,
+              coin: "GOLD-USDC",
+              side: "A",
+              limitPx: "0",
+              sz: "3.084",
+              timestamp: 2,
+              orderType: "Stop Market",
+              isTrigger: true,
+              triggerPx: "30.72",
+              reduceOnly: true,
+              isPositionTpsl: true,
+            },
+          ];
+        }
+        if (request.dex === "abc") {
+          // Already qualified, in case HL reports it that way.
+          return [
+            {
+              oid: 100,
+              coin: "abc:OIL-USDC",
+              side: "B",
+              limitPx: "70",
+              sz: "1",
+              timestamp: 3,
+              orderType: "Limit",
+            },
+          ];
+        }
+        return [];
+      }
+      return inner(request);
+    };
+
+    const orderDexes = () =>
+      requests
+        .filter((r: any) => r.type === "frontendOpenOrders")
+        .map((r: any) => r.dex);
+
+    return { client, orderDexes };
+  }
+
+  it("asks every named dex, not only the base one", async () => {
+    const { client, orderDexes } = createOrderClient();
+
+    await client.getOpenOrders();
+
+    expect(orderDexes().sort()).toEqual(["abc", "xyz"]);
+  });
+
+  it("returns HIP-3 orders alongside base ones", async () => {
+    const { client } = createOrderClient();
+
+    const coins = (await client.getOpenOrders()).map((o) => o.coin);
+
+    expect(coins).toContain("BTC");
+    expect(coins).toContain("xyz:GOLD-USDC");
+  });
+
+  it("qualifies a bare coin without double-prefixing one already qualified", async () => {
+    const { client } = createOrderClient();
+
+    const coins = (await client.getOpenOrders()).map((o) => o.coin);
+
+    // Both spellings land on the same form the positions list uses, which is
+    // what every order.coin === position.coin comparison depends on.
+    expect(coins).toContain("xyz:GOLD-USDC");
+    expect(coins).toContain("abc:OIL-USDC");
+    expect(coins).not.toContain("abc:abc:OIL-USDC");
+  });
+
+  it("keeps the trigger fields the protection planner diffs on", async () => {
+    const { client } = createOrderClient();
+
+    const stop = (await client.getOpenOrders()).find(
+      (o) => o.coin === "xyz:GOLD-USDC",
+    );
+
+    expect(stop).toMatchObject({
+      oid: 99,
+      isTrigger: true,
+      triggerPx: 30.72,
+      reduceOnly: true,
+      isPositionTpsl: true,
+    });
+  });
+
+  // An unreachable dex must not empty a list the planner treats as the full
+  // set of existing orders -- that is how the duplicate stop got rested.
+  it("does not lose every order because one dex is down", async () => {
+    const { client } = createOrderClient({ failDex: "abc" });
+
+    const coins = (await client.getOpenOrders()).map((o) => o.coin);
+
+    expect(coins).toContain("BTC");
+    expect(coins).toContain("xyz:GOLD-USDC");
+  });
+});

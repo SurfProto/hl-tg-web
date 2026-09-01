@@ -1411,11 +1411,55 @@ export class HyperliquidClient {
   }
 
   // Get open orders
+  /**
+   * Open orders across the base perp dex and every HIP-3 dex.
+   *
+   * `frontendOpenOrders` is dex-scoped and defaults to the base dex, so a
+   * bare call returned no HIP-3 order, ever. That was worse than invisibility,
+   * because `upsertPositionProtection` feeds this list in as the set of orders
+   * to diff against: with none of a HIP-3 market's orders in it, the planner
+   * saw no existing stop, cancelled nothing, and rested a second full-size
+   * trigger on top of the live one. Removing protection was impossible for the
+   * same reason — no diff, so it refused with "no changes to apply" while the
+   * stop stayed on the exchange.
+   *
+   * The vendored SDK's `frontendOpenOrders` type takes no `dex`, so the
+   * per-dex calls go through `postInfo`, and each catches for the reason the
+   * clearinghouse fan-out does: one unreachable builder dex must not empty a
+   * list the protection planner then treats as authoritative. An order that
+   * fails to load is strictly better absent than the whole list being.
+   */
   async getOpenOrders(): Promise<OpenOrder[]> {
     const client = await this.getPublicClient();
-    const rawOrders = await client.frontendOpenOrders({
-      user: this.walletAddress as `0x${string}`,
-    });
+    const cache = await this.ensureMarketCache();
+
+    const [baseOrders, ...dexOrders] = await Promise.all([
+      client.frontendOpenOrders({ user: this.walletAddress as `0x${string}` }),
+      ...cache.perpDexs.map(({ dex }) =>
+        this.postInfo<any[]>({
+          type: "frontendOpenOrders",
+          dex,
+          user: this.walletAddress as `0x${string}`,
+        })
+          // Qualify here rather than at the call site. Positions arrive bare
+          // from a dex-scoped clearinghouseState and buildAccountState adds the
+          // prefix; whether orders do the same is undocumented, so this holds
+          // under either answer and every `order.coin === position.coin`
+          // comparison keeps matching.
+          .then((orders) =>
+            (orders ?? []).map((order: any) => ({
+              ...order,
+              coin:
+                typeof order?.coin === "string" && !order.coin.includes(":")
+                  ? `${dex}:${order.coin}`
+                  : order?.coin,
+            })),
+          )
+          .catch(() => []),
+      ),
+    ]);
+
+    const rawOrders = [...baseOrders, ...dexOrders.flat()];
     return rawOrders.map((order: any) => ({
       oid: order.oid,
       coin: order.coin,

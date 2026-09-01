@@ -349,7 +349,9 @@
     "accountValue": "Стоимость аккаунта",
     "readyToTrade": "Готово к торговле",
     "openSettings": "Открыть настройки аккаунта",
-    "traderFallback": "Трейдер"
+    "traderFallback": "Трейдер",
+    "walletBalance": "В кошельке",
+    "walletBalanceHint": "USDC в сети Arbitrum, вне торгового счёта. Сюда приходят выводы. Пополните счёт, чтобы торговать этими средствами."
   },
   "accountSettings": {
     "title": "Настройки аккаунта",
@@ -516,9 +518,12 @@
     "available": "Доступно {{amount}} USDC",
     "withdrawButton": "Вывести на Arbitrum",
     "submitting": "Отправка...",
-    "withdrawSubmitted": "Запрос на вывод отправлен. Обычно поступает в течение 5 минут.",
+    "withdrawSubmitted": "Запрос на вывод отправлен. USDC поступит в кошелёк выше, обычно в течение 5 минут.",
     "withdrawFee": "Комиссия 1 USDC взимается за каждый вывод.",
-    "withdrawFailed": "Не удалось вывести средства"
+    "withdrawFailed": "Не удалось вывести средства",
+    "destinationHint": "Это ваш собственный кошелёк P34k в сети Arbitrum. При выводе USDC уходит с торгового счёта в этот кошелёк и перестаёт учитываться в торговом балансе.",
+    "walletBalance": "Сейчас в кошельке",
+    "walletBalanceAmount": "{{amount}} USDC"
   },
   "notifications": {
     "title": "Уведомления",

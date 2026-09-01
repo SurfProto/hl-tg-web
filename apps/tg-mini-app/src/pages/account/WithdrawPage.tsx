@@ -1,7 +1,12 @@
 import { useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useTranslation } from 'react-i18next';
-import { truncateToDecimals, useUserState, useWithdraw } from '@repo/hyperliquid-sdk';
+import {
+  truncateToDecimals,
+  useArbitrumUsdcBalance,
+  useUserState,
+  useWithdraw,
+} from '@repo/hyperliquid-sdk';
 import { StableBalanceList } from '../../components/StableBalanceList';
 
 export function WithdrawPage() {
@@ -21,6 +26,10 @@ export function WithdrawPage() {
     userState?.withdrawableBalance ??
     0;
   const destination = user?.wallet?.address;
+  // Polls every 10s, which is what makes the arrival visible: the balance
+  // ticks up on this screen a few minutes after submitting, on the same screen
+  // the user is already looking at.
+  const { data: walletUsdc } = useArbitrumUsdcBalance(destination);
   // Cut, never round: toFixed turned 10.996 into "11.00", and the exchange
   // rejects a withdrawal of more than the account holds. The label uses the
   // same cut so "Available" never promises what Max cannot set.
@@ -47,6 +56,19 @@ export function WithdrawPage() {
         <div className="flex items-center justify-between gap-4">
           <span className="min-w-0 truncate text-sm text-muted">{t('withdraw.destination')}</span>
           <span className="flex-shrink-0 text-right font-mono text-xs text-foreground">{destination ? `${destination.slice(0, 6)}...${destination.slice(-4)}` : t('withdraw.noWallet')}</span>
+        </div>
+        {/* The address alone told the user nothing. A withdrawal leaves the
+            trading account entirely and lands in their own wallet, so every
+            balance on the account screen correctly reads zero afterwards --
+            which reads as the money having disappeared unless we say this. */}
+        <p className="text-xs text-muted">{t('withdraw.destinationHint')}</p>
+        <div className="flex items-center justify-between border-t border-separator pt-3">
+          <span className="text-sm text-muted">{t('withdraw.walletBalance')}</span>
+          <span className="font-semibold text-foreground">
+            {t('withdraw.walletBalanceAmount', {
+              amount: truncateToDecimals(walletUsdc ?? 0, 2),
+            })}
+          </span>
         </div>
         {isUnifiedLike && (
           <p className="text-xs text-muted">{t('withdraw.unifiedHint')}</p>

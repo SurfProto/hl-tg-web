@@ -523,7 +523,8 @@
     "withdrawFailed": "Не удалось вывести средства",
     "destinationHint": "Это ваш собственный кошелёк P34k в сети Arbitrum. При выводе USDC уходит с торгового счёта в этот кошелёк и перестаёт учитываться в торговом балансе.",
     "walletBalance": "Сейчас в кошельке",
-    "walletBalanceAmount": "{{amount}} USDC"
+    "walletBalanceAmount": "{{amount}} USDC",
+    "exceedsBalance": "Максимальная сумма вывода — {{amount}} USDC."
   },
   "notifications": {
     "title": "Уведомления",

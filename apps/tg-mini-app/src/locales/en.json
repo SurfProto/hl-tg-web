@@ -520,7 +520,8 @@
     "withdrawFailed": "Withdrawal failed",
     "destinationHint": "This is your own P34k wallet on Arbitrum. Withdrawing moves USDC out of your trading account and into that wallet, so it stops counting toward your trading balance.",
     "walletBalance": "In your wallet now",
-    "walletBalanceAmount": "{{amount}} USDC"
+    "walletBalanceAmount": "{{amount}} USDC",
+    "exceedsBalance": "You can withdraw at most {{amount}} USDC."
   },
   "notifications": {
     "title": "Notifications",

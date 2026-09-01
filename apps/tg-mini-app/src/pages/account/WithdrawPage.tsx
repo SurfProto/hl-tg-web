@@ -9,6 +9,30 @@ import {
 } from '@repo/hyperliquid-sdk';
 import { StableBalanceList } from '../../components/StableBalanceList';
 
+/** USDC is quoted to cents here, and Max already offers no more than that. */
+const AMOUNT_MAX_DECIMALS = 2;
+
+/**
+ * Reject the keystroke rather than reshaping the number.
+ *
+ * Deliberately identical in behaviour to the guard on the trade screen, so the
+ * two can become one helper once both have landed. Truncating or rounding what
+ * somebody typed into an amount field is the failure this file already carries
+ * a comment about: `toFixed` turned 10.996 into "11.00", which is more than the
+ * account held, and the exchange refused it.
+ */
+function acceptDecimalInput(
+  next: string,
+  previous: string,
+  maxDecimals: number,
+): string {
+  if (next === '') return '';
+  if (!/^\d*\.?\d*$/u.test(next)) return previous;
+  const decimals = next.split('.')[1] ?? '';
+  if (decimals.length > maxDecimals) return previous;
+  return next.replace(/^0+(?=\d)/u, '');
+}
+
 export function WithdrawPage() {
   const { user } = usePrivy();
   const { t } = useTranslation();
@@ -33,7 +57,16 @@ export function WithdrawPage() {
   // Cut, never round: toFixed turned 10.996 into "11.00", and the exchange
   // rejects a withdrawal of more than the account holds. The label uses the
   // same cut so "Available" never promises what Max cannot set.
-  const withdrawableCut = truncateToDecimals(withdrawable, 2);
+  const withdrawableCut = truncateToDecimals(withdrawable, AMOUNT_MAX_DECIMALS);
+
+  // Max was guarded and typing was not. Nothing sat between this field and
+  // `withdraw3` — no decimal limit, and no upper bound at all, so any number
+  // could be submitted and the exchange was left to refuse it.
+  const amountNum = parseFloat(amount);
+  const hasAmount = amount !== '' && Number.isFinite(amountNum) && amountNum > 0;
+  // Against the untruncated balance: Max offers the cut value, but a user who
+  // types the extra fractional cents is asking for something they do hold.
+  const exceedsBalance = hasAmount && amountNum > withdrawable;
 
   return (
     <div className="editorial-page px-4 py-5 space-y-4">
@@ -88,7 +121,11 @@ export function WithdrawPage() {
             inputMode="decimal"
             autoComplete="off"
             value={amount}
-            onChange={(event) => setAmount(event.target.value)}
+            onChange={(event) =>
+              setAmount((previous) =>
+                acceptDecimalInput(event.target.value, previous, AMOUNT_MAX_DECIMALS),
+              )
+            }
             placeholder="0.00"
             className="flex-1 rounded-xl border border-separator bg-surface px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
           />
@@ -99,11 +136,18 @@ export function WithdrawPage() {
         <button
           type="button"
           onClick={() => withdraw.mutate({ destination: destination ?? '', amount })}
-          disabled={!destination || !amount || parseFloat(amount) <= 0 || withdraw.isPending}
+          disabled={!destination || !hasAmount || exceedsBalance || withdraw.isPending}
           className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
         >
           {withdraw.isPending ? t('common.submitting') : t('withdraw.withdrawButton')}
         </button>
+        {/* Says why the button is dead. A disabled control with no explanation
+            reads as the app being broken rather than the amount being wrong. */}
+        {exceedsBalance && (
+          <p className="text-sm text-negative">
+            {t('withdraw.exceedsBalance', { amount: withdrawableCut })}
+          </p>
+        )}
         {withdraw.isSuccess && <p className="text-sm text-positive">{t('withdraw.withdrawSubmitted')}</p>}
         {withdraw.isError && <p className="text-sm text-negative">{withdraw.error instanceof Error ? withdraw.error.message : t('withdraw.withdrawFailed')}</p>}
         <p className="text-xs text-muted">{t('withdraw.withdrawFee')}</p>

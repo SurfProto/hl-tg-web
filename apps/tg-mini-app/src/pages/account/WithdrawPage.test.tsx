@@ -81,4 +81,51 @@ describe("WithdrawPage", () => {
     // Truncated, not rounded, for the same reason Max is.
     expect(screen.getByText("withdraw.walletBalanceAmount")).toBeInTheDocument();
   });
+
+  // Max was guarded and typing was not: the raw string went to withdraw3 with
+  // no decimal limit and no upper bound.
+  describe("what the amount field accepts", () => {
+    function typeAmount(value: string) {
+      const input = screen.getByLabelText<HTMLInputElement>("withdraw.amount");
+      fireEvent.change(input, { target: { value } });
+      return input;
+    }
+
+    it("takes cents", () => {
+      render(<WithdrawPage />);
+      expect(typeAmount("10.99")).toHaveValue(10.99);
+    });
+
+    it("refuses a third decimal rather than reshaping it", () => {
+      render(<WithdrawPage />);
+      typeAmount("10.99");
+      // Not 10.99 rounded up, not 11 — the keystroke simply does not land.
+      expect(typeAmount("10.996")).toHaveValue(10.99);
+    });
+
+    it("keeps Withdraw shut on more than the account holds, and says why", () => {
+      render(<WithdrawPage />);
+      typeAmount("11");
+
+      expect(screen.getByText("withdraw.exceedsBalance")).toBeInTheDocument();
+      expect(screen.getByText("withdraw.withdrawButton")).toBeDisabled();
+    });
+
+    it("allows the fractional cents Max leaves behind", () => {
+      render(<WithdrawPage />);
+      // Max offers 10.99; the account actually holds 10.996843.
+      typeAmount("10.99");
+
+      expect(screen.queryByText("withdraw.exceedsBalance")).not.toBeInTheDocument();
+      expect(screen.getByText("withdraw.withdrawButton")).not.toBeDisabled();
+    });
+
+    it("keeps Withdraw shut on an empty or zero amount", () => {
+      render(<WithdrawPage />);
+      expect(screen.getByText("withdraw.withdrawButton")).toBeDisabled();
+
+      typeAmount("0");
+      expect(screen.getByText("withdraw.withdrawButton")).toBeDisabled();
+    });
+  });
 });

@@ -13,6 +13,7 @@ import {
   approveBuilderFee as approveBuilderFeeAction,
   isBuilderConfigured,
 } from "./builder";
+import { isDepositGasSponsored } from "./gas-sponsorship";
 import {
   TSUNAMI_AGENT_NAME,
   clearStoredAgentKey,
@@ -1142,25 +1143,6 @@ export function useFundArbitrumUsdc() {
 }
 
 /**
- * Whether we pay the gas on the Arbitrum leg of a deposit.
- *
- * False, and it has to stay false until something actually pays. This transfer
- * is the only on-chain Arbitrum transaction in the product, and the wallet
- * signing it is an embedded wallet holding the USDC it was just sent and no
- * ETH — so today the user pays it, or cannot send at all.
- *
- * The review sheet claimed sponsorship unconditionally, which was untrue in
- * every case it was ever shown. Telling somebody their gas is covered while
- * they pay it is the kind of copy that costs trust exactly once. Flip this in
- * the same change that introduces a paymaster or a 7702 delegation, and not a
- * commit earlier.
- *
- * Typed as `boolean` rather than inferred as `false` so the branches below stay
- * live code to the compiler and to anyone reading them.
- */
-export const DEPOSIT_GAS_SPONSORED: boolean = false;
-
-/**
  * Hook to bridge USDC from Arbitrum to Hyperliquid L1
  * Sends USDC directly to the bridge address — Hyperliquid credits the sender on HyperCore.
  * Minimum deposit: 5 USDC
@@ -1212,6 +1194,9 @@ export function useBridgeToHyperliquid() {
         args: [HL_BRIDGE_ARBITRUM, amountRaw],
       });
 
+      // Read once: the request and the sentence describing it must agree.
+      const sponsored = isDepositGasSponsored();
+
       await sendTransaction(
         {
           to: USDC_ARBITRUM,
@@ -1228,12 +1213,12 @@ export function useBridgeToHyperliquid() {
           // account is keyed to does not change — but it is gated on TEE
           // execution, which is off. False here means the user pays, and the
           // sentence about sponsorship stays unwritten.
-          sponsor: DEPOSIT_GAS_SPONSORED,
+          sponsor: sponsored,
           uiOptions: {
             // No `header` in v3 — the sheet titles itself now. The description
             // already said what the header did.
             description: `Bridge ${amount.toFixed(2)} USDC from Arbitrum into your Hyperliquid trading balance.${
-              DEPOSIT_GAS_SPONSORED ? " Sponsored by P34k with love." : ""
+              sponsored ? " Sponsored by P34k with love." : ""
             }`,
             buttonText: "Confirm deposit",
             successHeader: "Deposit submitted",

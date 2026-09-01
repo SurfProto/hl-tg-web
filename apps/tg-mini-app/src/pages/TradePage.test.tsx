@@ -21,6 +21,7 @@ vi.mock("react-i18next", () => ({
         "trade.or": "Or",
         "trade.profitWhenPriceRises": "Profit when price rises",
         "trade.size": "Size",
+        "trade.limitPrice": "Limit price",
         "trade.availShort": "Avail.",
         "trade.leverage": "Leverage",
         "trade.liq": "Liq.",
@@ -74,12 +75,6 @@ vi.mock("@repo/hyperliquid-sdk", () => ({
   validateOrderInput: () => ({ isValid: true, minMarginUsd: 1, minSizeUsd: 10 }),
 }));
 
-vi.mock("../components/NumPad", () => ({
-  NumPad: ({ onChange }: { onChange: (value: string) => void }) => (
-    <button type="button" onClick={() => onChange("100")}>Enter amount</button>
-  ),
-}));
-
 vi.mock("../components/ProtectionSheet", () => ({ ProtectionSheet: () => null }));
 vi.mock("../components/TokenIcon", () => ({ TokenIcon: () => <span>BTC icon</span> }));
 vi.mock("../components/TradingSetupSheet", () => ({
@@ -109,6 +104,14 @@ function renderTrade() {
   );
 }
 
+const sizeInput = () => screen.getByLabelText("Size · USD") as HTMLInputElement;
+const priceInput = () =>
+  screen.getByLabelText("Limit price") as HTMLInputElement;
+
+function typeInto(input: HTMLInputElement, value: string) {
+  fireEvent.change(input, { target: { value } });
+}
+
 describe("TradePage", () => {
   afterEach(() => {
     cleanup();
@@ -124,7 +127,7 @@ describe("TradePage", () => {
   it("advances to review without placing an order", () => {
     renderTrade();
 
-    fireEvent.click(screen.getByRole("button", { name: "Enter amount" }));
+    typeInto(sizeInput(), "100");
     fireEvent.click(screen.getByRole("button", { name: "Review order" }));
 
     expect(screen.getByRole("heading", { name: "Review order" })).toBeInTheDocument();
@@ -158,7 +161,7 @@ describe("TradePage", () => {
     expect(setupReset).toHaveBeenCalledTimes(1);
 
     // Each of these re-renders the page.
-    fireEvent.click(screen.getByRole("button", { name: "Enter amount" }));
+    typeInto(sizeInput(), "100");
     fireEvent.click(screen.getByRole("button", { name: /Sell/ }));
 
     expect(setupReset).toHaveBeenCalledTimes(1);
@@ -187,7 +190,7 @@ describe("TradePage", () => {
   it("submits only after confirmation and presents result actions", async () => {
     renderTrade();
 
-    fireEvent.click(screen.getByRole("button", { name: "Enter amount" }));
+    typeInto(sizeInput(), "100");
     fireEvent.click(screen.getByRole("button", { name: "Review order" }));
     fireEvent.click(screen.getByRole("button", { name: "Confirm order" }));
 
@@ -197,35 +200,133 @@ describe("TradePage", () => {
   });
 
   /**
-   * The limit flow's second step used to edit an invisible field: the first
-   * Review tap silently flipped the NumPad to the limit price while the hero
-   * kept showing the size, nothing gated an untouched price, and the review
-   * screen rendered "—" before the SDK errored on submit.
+   * The limit price used to be edited on a second step that shared the number
+   * pad with the size: the first Review tap silently repointed the pad at the
+   * price while the card kept showing the size, nothing gated an untouched
+   * price, and the review screen rendered "—" before the SDK errored on
+   * submit. Both fields are now on screen together, and the gate stays.
    */
-  it("shows the limit price it is editing, and blocks review until one is set", () => {
+  it("shows the limit price beside the size, and blocks review until one is set", () => {
     renderTrade();
 
     fireEvent.click(screen.getByRole("tab", { name: "trade.orderTypeLimit" }));
-    fireEvent.click(screen.getByRole("button", { name: "Enter amount" }));
-    fireEvent.click(screen.getByRole("button", { name: "Review order" }));
+    typeInto(sizeInput(), "100");
 
-    // Second step: the hero card now edits the limit price, visibly.
-    expect(screen.getByText("trade.limitPrice")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: "Review order" }),
-    ).not.toBeInTheDocument();
+    // Both fields are editable at once — no step, nothing to flip between.
+    expect(sizeInput()).toBeInTheDocument();
+    expect(priceInput()).toBeInTheDocument();
     // No price typed yet — review is gated.
     expect(screen.getByRole("button", { name: "Review order" })).toBeDisabled();
 
-    // The mocked NumPad types "100"; the typed price must be on screen.
-    fireEvent.click(screen.getByRole("button", { name: "Enter amount" }));
-    expect(screen.getByText("$100")).toBeInTheDocument();
+    typeInto(priceInput(), "42000.5");
+    expect(priceInput().value).toBe("42000.5");
 
     fireEvent.click(screen.getByRole("button", { name: "Review order" }));
     expect(
       screen.getByRole("heading", { name: "Review order" }),
     ).toBeInTheDocument();
     expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  // Market orders have no price field to gate on, so the limit gate must not
+  // leak into them.
+  it("does not show a price field on a market order", () => {
+    renderTrade();
+
+    typeInto(sizeInput(), "100");
+
+    expect(screen.queryByLabelText("Limit price")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Review order" }),
+    ).not.toBeDisabled();
+  });
+
+  /**
+   * The number pad could not produce a third decimal in the size field: it
+   * dropped any key that would have added one. A native input will take
+   * whatever is typed, so the same cap is enforced on the way in — and by
+   * rejecting the keystroke, never by rounding. Rounding an amount up is why
+   * truncateToDecimals exists.
+   */
+  it("holds the size to two decimals and the price to eight", () => {
+    renderTrade();
+    fireEvent.click(screen.getByRole("tab", { name: "trade.orderTypeLimit" }));
+
+    typeInto(sizeInput(), "10.12");
+    expect(sizeInput().value).toBe("10.12");
+
+    typeInto(sizeInput(), "10.129");
+    expect(sizeInput().value).toBe("10.12");
+
+    typeInto(priceInput(), "1.12345678");
+    expect(priceInput().value).toBe("1.12345678");
+
+    typeInto(priceInput(), "1.123456789");
+    expect(priceInput().value).toBe("1.12345678");
+  });
+
+  /**
+   * The pad had twelve keys: ten digits, one point, one delete. It could not
+   * emit a sign, an exponent or a second decimal point, and a lone "0" was
+   * replaced by the next digit rather than kept in front of it. type="number"
+   * accepts all of those, and "1e5" parses as 100000.
+   */
+  it("refuses input the pad could never have produced", () => {
+    renderTrade();
+
+    typeInto(sizeInput(), "100");
+
+    typeInto(sizeInput(), "-100");
+    expect(sizeInput().value).toBe("100");
+
+    typeInto(sizeInput(), "1e5");
+    expect(sizeInput().value).toBe("100");
+
+    typeInto(sizeInput(), "05");
+    expect(sizeInput().value).toBe("5");
+
+    // A second decimal point never even reaches the handler: a number input
+    // reports a value it cannot parse as "", so the field empties rather than
+    // holding the old number. Empty is a state the pad had too, and every gate
+    // downstream reads it as a zero size.
+    typeInto(sizeInput(), "1.2.3");
+    expect(sizeInput().value).toBe("");
+    expect(screen.getByRole("button", { name: "Review order" })).toBeDisabled();
+  });
+
+  /**
+   * A native input hands back "" when cleared and can hand back a half-typed
+   * "1." — neither may reach an order. Every gate runs on parseFloat(...) || 0,
+   * so an unparseable field reads as a zero size and Review stays shut.
+   */
+  it("keeps review shut on an empty or half-typed size", () => {
+    renderTrade();
+
+    typeInto(sizeInput(), "100");
+    expect(
+      screen.getByRole("button", { name: "Review order" }),
+    ).not.toBeDisabled();
+
+    typeInto(sizeInput(), "");
+    expect(screen.getByRole("button", { name: "Review order" })).toBeDisabled();
+
+    typeInto(sizeInput(), ".");
+    expect(screen.getByRole("button", { name: "Review order" })).toBeDisabled();
+  });
+
+  // The size the exchange is asked for must be the number in the field, not a
+  // rounded stand-in for it.
+  it("submits the size exactly as typed", async () => {
+    renderTrade();
+
+    typeInto(sizeInput(), "10.99");
+    fireEvent.click(screen.getByRole("button", { name: "Review order" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm order" }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
+    expect(mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ sizeUsd: 10.99 }),
+    );
   });
 
   /**
@@ -243,7 +344,7 @@ describe("TradePage", () => {
     );
     renderTrade();
 
-    fireEvent.click(screen.getByRole("button", { name: "Enter amount" }));
+    typeInto(sizeInput(), "100");
     fireEvent.click(screen.getByRole("button", { name: "Review order" }));
 
     const confirm = screen.getByRole("button", { name: "Confirm order" });
@@ -262,7 +363,7 @@ describe("TradePage", () => {
     authenticated = true;
     renderTrade();
 
-    fireEvent.click(screen.getByRole("button", { name: "Enter amount" }));
+    typeInto(sizeInput(), "100");
     fireEvent.click(screen.getByRole("button", { name: "Review order" }));
     fireEvent.click(screen.getByRole("button", { name: "Confirm order" }));
 

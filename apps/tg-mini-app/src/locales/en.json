@@ -633,10 +633,6 @@
     "volume": "Vol {{volume}}",
     "priceUnavailable": "Price unavailable"
   },
-  "numPad": {
-    "delete": "Delete",
-    "enterKey": "Enter {{key}}"
-  },
   "swap": {
     "title": "Stable swap",
     "description": "Start from perp USDC, auto-route through spot when needed, and sweep back on USDC returns.",

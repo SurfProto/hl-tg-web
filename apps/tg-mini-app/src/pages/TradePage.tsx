@@ -18,7 +18,6 @@ import {
   validateOrderInput,
 } from "@repo/hyperliquid-sdk";
 import type { AnyMarket, Order } from "@repo/types";
-import { NumPad } from "../components/NumPad";
 import { ProtectionSheet } from "../components/ProtectionSheet";
 import { SegmentedControl } from "../components/SegmentedControl";
 import { TokenIcon } from "../components/TokenIcon";
@@ -60,17 +59,43 @@ function formatUsdInput(value: number): string {
     .replace(/(\.\d)0$/u, "$1");
 }
 
-function formatUsdParts(value: number): { integer: string; decimal: string } {
-  const formatted = new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-  const parts = formatted.split(".");
-  return {
-    integer: parts[0] || "0",
-    decimal: parts[1] || "00",
-  };
+/** Cents, as the on-screen pad allowed. */
+const SIZE_MAX_DECIMALS = 2;
+/** Eight places, matching truncateToDecimals(currentPrice, 8) on the Market fill. */
+const PRICE_MAX_DECIMALS = 8;
+
+/**
+ * The rules the on-screen pad used to enforce by construction, now that these
+ * fields are typed into directly.
+ *
+ * The pad could only ever emit digits and a single decimal point, and it
+ * stopped accepting keys once the field already held `maxDecimals` decimals.
+ * A native number input is looser: it will hand back a sign, an exponent
+ * ("1e5" parses as 100000) and any number of decimal places. So the same
+ * rules live here, and a keystroke that breaks one is rejected — the previous
+ * value stays, the new one is not rounded to fit. Rounding is precisely the
+ * bug truncateToDecimals exists to avoid: a size rounded up is either an order
+ * the exchange refuses or one larger than the user asked for.
+ *
+ * A partial "1." is allowed through, as it was on the pad — parseFloat reads
+ * it as 1, and every gate downstream runs on that number, never on the string.
+ */
+function acceptDecimalInput(
+  next: string,
+  previous: string,
+  maxDecimals: number,
+): string {
+  if (next === "") return "";
+  if (!/^\d*\.?\d*$/u.test(next)) return previous;
+  const decimals = next.split(".")[1] ?? "";
+  if (decimals.length > maxDecimals) return previous;
+  // The pad replaced a lone "0" with the digit typed after it, so "05" was
+  // unreachable; typing into the field, it is not.
+  return next.replace(/^0+(?=\d)/u, "");
 }
+
+const AMOUNT_INPUT_CLASS =
+  "editorial-display w-full min-w-0 bg-transparent text-foreground outline-none placeholder:text-muted [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
 
 const LEVERAGE_OPTIONS = [1, 2, 5, 10, 20, 25, 50];
 
@@ -103,7 +128,6 @@ export function TradePage() {
   const [amount, setAmount] = useState("");
   const [limitPrice, setLimitPrice] = useState("");
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
-  const [step, setStep] = useState<"amount" | "price">("amount");
   const [leverage, setLeverage] = useState(10);
   // No setter: the order-settings sheet that changed tif never shipped, so
   // every order is Gtc until it does. State rather than a constant so the
@@ -419,30 +443,34 @@ export function TradePage() {
   const isPending =
     placeOrder.isPending ||
     upsertPositionProtection.isPending;
-  // The price step must not review a zero limit: the field is optional in
-  // validateOrderInput (market orders have no limit), so without this gate an
-  // untouched price sailed through to a review row reading "—" and an SDK
-  // error on submit.
+  // A limit order must not be reviewed with a zero price: the field is
+  // optional in validateOrderInput (market orders have no limit), so without
+  // this gate an untouched price sailed through to a review row reading "—"
+  // and an SDK error on submit. Both numbers come from parseFloat(...) || 0,
+  // so an empty or half-typed field reads as zero here rather than as NaN.
   const isSubmitDisabled =
     amountNum === 0 ||
     isPending ||
     !validation.isValid ||
-    (step === "price" && limitPriceNum <= 0);
+    (orderType === "limit" && limitPriceNum <= 0);
 
   const handleAmountChange = (value: string) => {
     setSubmitError(null);
-    setAmount(value);
+    setAmount((previous) =>
+      acceptDecimalInput(value, previous, SIZE_MAX_DECIMALS),
+    );
   };
 
   const handleLimitPriceChange = (value: string) => {
     setSubmitError(null);
-    setLimitPrice(value);
+    setLimitPrice((previous) =>
+      acceptDecimalInput(value, previous, PRICE_MAX_DECIMALS),
+    );
   };
 
   const handleQuickFill = (usdValue: number) => {
     haptics.light();
-    setSubmitError(null);
-    setAmount(formatUsdInput(usdValue));
+    handleAmountChange(formatUsdInput(usdValue));
   };
 
   const handleLeveragePill = (value: number) => {
@@ -471,12 +499,6 @@ export function TradePage() {
       setSubmitError(
         validation.reason ?? t("trade.checkOrderDetails"),
       );
-      return;
-    }
-
-    if (orderType === "limit" && step === "amount") {
-      haptics.light();
-      setStep("price");
       return;
     }
 
@@ -596,7 +618,6 @@ export function TradePage() {
     }
   };
 
-  const amountParts = formatUsdParts(amountNum);
   const btcEquivalent = currentPrice ? (amountNum / currentPrice).toFixed(4) : "0.0000";
 
   if (flowStep === "success" && reviewedTrade && tradeResult) {
@@ -731,7 +752,6 @@ export function TradePage() {
           value={orderType}
           onChange={(type) => {
             setSubmitError(null);
-            setStep("amount");
             setOrderType(type);
           }}
           options={[
@@ -784,89 +804,100 @@ export function TradePage() {
 
       {/* Main Content */}
       <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
-        {/* Size input, or — on a limit order's second step — the limit price.
-            The NumPad below edits whichever field this card shows. The price
-            used to go into a field the screen never rendered: the first
-            Review tap silently flipped the step, the hero kept showing the
-            size, and the typed price was invisible all the way to a review
-            row reading "—". */}
+        {/* Size, and on a limit order the price, each typed into directly.
+            The two used to share one on-screen pad, so the page had to track
+            which of them the pad was aimed at — and the price was edited on a
+            second step this card never rendered: the first Review tap flipped
+            the pad over to it while the hero went on showing the size, so the
+            typed price stayed invisible all the way to a review row reading
+            "—". Both fields on screen at once, and there is nothing to aim. */}
         <div className="editorial-card p-5">
           <div className="flex items-center justify-between mb-2">
-            <span className="editorial-kicker">
-              {step === "amount"
-                ? `${t("trade.size")} · USD`
-                : t("trade.limitPrice")}
+            <label htmlFor="trade-size" className="editorial-kicker">
+              {`${t("trade.size")} · USD`}
+            </label>
+            <span className="editorial-mono text-xs text-muted">
+              {t("trade.availShort")} {availableMarginUsd.toLocaleString("en-US", { maximumFractionDigits: 2 })}
             </span>
-            {step === "amount" ? (
-              <span className="editorial-mono text-xs text-muted">
-                {t("trade.availShort")} {availableMarginUsd.toLocaleString("en-US", { maximumFractionDigits: 2 })}
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setStep("amount")}
-                className="editorial-mono text-xs font-semibold text-primary"
-              >
-                {t("trade.size")} ${amountParts.integer}.{amountParts.decimal}
-              </button>
-            )}
           </div>
-          {step === "amount" ? (
-            <div className="flex items-baseline gap-0.5">
-              <span className="editorial-display text-foreground">
-                ${amountParts.integer}
-              </span>
-              <span className="editorial-display-xs text-foreground">
-                .{amountParts.decimal}
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-baseline gap-0.5">
-              <span className="editorial-display text-foreground">
-                ${limitPrice || "0"}
-              </span>
-            </div>
-          )}
+          <div className="flex items-baseline gap-0.5">
+            <span className="editorial-display text-foreground">$</span>
+            <input
+              id="trade-size"
+              type="number"
+              name="trade-size"
+              inputMode="decimal"
+              autoComplete="off"
+              value={amount}
+              onChange={(event) => handleAmountChange(event.target.value)}
+              placeholder="0"
+              className={AMOUNT_INPUT_CLASS}
+            />
+          </div>
           <div className="editorial-mono mt-1 text-sm text-muted">
-            {step === "amount"
-              ? `≈ ${btcEquivalent} ${baseToken}`
-              : `${t("trade.market")} ${formatUsdPrice(currentPrice ?? 0)}`}
+            {`≈ ${btcEquivalent} ${baseToken}`}
           </div>
 
-          {step === "amount" ? (
-            /* Quick Amount Buttons */
-            <div className="flex gap-2 mt-4">
-              {[
-                { label: "$100", value: 100 },
-                { label: "$500", value: 500 },
-                { label: "$1k", value: 1000 },
-                { label: "$5k", value: 5000 },
-              ].map(({ label, value }) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => handleQuickFill(value)}
-                  className="flex-1 rounded-[18px] border border-border bg-[var(--color-primary-soft)] py-2.5 text-sm font-semibold text-foreground transition-colors active:bg-[var(--color-primary-soft-strong)]"
-                >
-                  {label}
-                </button>
-              ))}
+          {/* Quick Amount Buttons */}
+          <div className="flex gap-2 mt-4">
+            {[
+              { label: "$100", value: 100 },
+              { label: "$500", value: 500 },
+              { label: "$1k", value: 1000 },
+              { label: "$5k", value: 5000 },
+            ].map(({ label, value }) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => handleQuickFill(value)}
+                className="flex-1 rounded-[18px] border border-border bg-[var(--color-primary-soft)] py-2.5 text-sm font-semibold text-foreground transition-colors active:bg-[var(--color-primary-soft-strong)]"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {orderType === "limit" && (
+          <div className="editorial-card mt-4 p-5">
+            <div className="flex items-center justify-between mb-2">
+              <label htmlFor="trade-limit-price" className="editorial-kicker">
+                {t("trade.limitPrice")}
+              </label>
+              <span className="editorial-mono text-xs text-muted">
+                {t("trade.market")} {formatUsdPrice(currentPrice ?? 0)}
+              </span>
             </div>
-          ) : (
+            <div className="flex items-baseline gap-0.5">
+              <span className="editorial-display text-foreground">$</span>
+              <input
+                id="trade-limit-price"
+                type="number"
+                name="trade-limit-price"
+                inputMode="decimal"
+                autoComplete="off"
+                value={limitPrice}
+                onChange={(event) => handleLimitPriceChange(event.target.value)}
+                placeholder="0"
+                className={AMOUNT_INPUT_CLASS}
+              />
+            </div>
             <div className="flex gap-2 mt-4">
               <button
                 type="button"
                 onClick={() =>
                   currentPrice != null &&
-                  handleLimitPriceChange(truncateToDecimals(currentPrice, 8))
+                  handleLimitPriceChange(
+                    truncateToDecimals(currentPrice, PRICE_MAX_DECIMALS),
+                  )
                 }
                 className="flex-1 rounded-[18px] border border-border bg-[var(--color-primary-soft)] py-2.5 text-sm font-semibold text-foreground transition-colors active:bg-[var(--color-primary-soft-strong)]"
               >
                 {t("trade.market")}
               </button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Leverage Section */}
         {isPerp && (
@@ -955,17 +986,6 @@ export function TradePage() {
             {protectionSummary.length > 0 ? protectionSummary.join(" / ") : t("common.add")}
           </span>
         </button>
-      </div>
-
-      {/* NumPad */}
-      <div className="flex-none bg-white/92 pb-1 backdrop-blur-md">
-        <NumPad
-          value={step === "amount" ? amount : limitPrice}
-          onChange={
-            step === "amount" ? handleAmountChange : handleLimitPriceChange
-          }
-          maxDecimals={step === "amount" ? 2 : 8}
-        />
       </div>
 
       {/* Submit Button */}

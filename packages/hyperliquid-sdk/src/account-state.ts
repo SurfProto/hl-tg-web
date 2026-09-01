@@ -143,17 +143,35 @@ export function getNormalizedTotalEquity({
   availableBalance: number;
   assetPositions: Array<{
     position?: {
-      positionValue?: number;
+      marginUsed?: number;
+      unrealizedPnl?: number;
     };
   }>;
 }): number {
   const idleBalance = Number.isFinite(availableBalance) ? availableBalance : 0;
-  const openPositionValue = assetPositions.reduce((sum, assetPosition) => {
-    const positionValue = assetPosition.position?.positionValue ?? 0;
-    return sum + (Number.isFinite(positionValue) ? positionValue : 0);
+
+  // Collateral behind open positions, plus what those positions are currently
+  // worth. NOT positionValue, which is notional -- size times mark -- and is
+  // leveraged exposure rather than money the account holds. Adding it read an
+  // account with $28.17 free and $8.06 of margin behind a 10x position as
+  // holding $126.23, because $98.16 of borrowed exposure was counted as
+  // equity. The true figure was $36.23.
+  //
+  // This is the standard identity: equity = free collateral + margin used +
+  // unrealised PnL. Available already nets margin out of the raw balance, so
+  // adding both back gives the total the account would hold if every position
+  // closed at mark.
+  const marginAndPnl = assetPositions.reduce((sum, assetPosition) => {
+    const marginUsed = assetPosition.position?.marginUsed ?? 0;
+    const unrealizedPnl = assetPosition.position?.unrealizedPnl ?? 0;
+    return (
+      sum +
+      (Number.isFinite(marginUsed) ? marginUsed : 0) +
+      (Number.isFinite(unrealizedPnl) ? unrealizedPnl : 0)
+    );
   }, 0);
 
-  return idleBalance + openPositionValue;
+  return idleBalance + marginAndPnl;
 }
 
 export function getUnifiedApprovalState(

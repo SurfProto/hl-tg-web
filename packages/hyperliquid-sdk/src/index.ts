@@ -134,6 +134,9 @@ export {
   ARBITRUM_CHAIN_ID,
 } from "./constants";
 
+// Who pays the gas on a deposit
+export { configureGasSponsorship, isDepositGasSponsored } from "./gas-sponsorship";
+
 // Builder code
 export {
   configureBuilder,

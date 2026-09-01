@@ -8,30 +8,11 @@ import {
   useWithdraw,
 } from '@repo/hyperliquid-sdk';
 import { StableBalanceList } from '../../components/StableBalanceList';
+import { acceptDecimalInput } from '../../lib/decimal-input';
 
 /** USDC is quoted to cents here, and Max already offers no more than that. */
 const AMOUNT_MAX_DECIMALS = 2;
 
-/**
- * Reject the keystroke rather than reshaping the number.
- *
- * Deliberately identical in behaviour to the guard on the trade screen, so the
- * two can become one helper once both have landed. Truncating or rounding what
- * somebody typed into an amount field is the failure this file already carries
- * a comment about: `toFixed` turned 10.996 into "11.00", which is more than the
- * account held, and the exchange refused it.
- */
-function acceptDecimalInput(
-  next: string,
-  previous: string,
-  maxDecimals: number,
-): string {
-  if (next === '') return '';
-  if (!/^\d*\.?\d*$/u.test(next)) return previous;
-  const decimals = next.split('.')[1] ?? '';
-  if (decimals.length > maxDecimals) return previous;
-  return next.replace(/^0+(?=\d)/u, '');
-}
 
 export function WithdrawPage() {
   const { user } = usePrivy();

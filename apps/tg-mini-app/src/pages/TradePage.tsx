@@ -32,6 +32,7 @@ import {
   type ProtectionDraft,
 } from "../lib/protection";
 import { getAsyncValueState } from "../lib/async-value-state";
+import { acceptDecimalInput } from "../lib/decimal-input";
 import { formatUsdPrice } from "../utils/format";
 
 /**
@@ -64,35 +65,6 @@ const SIZE_MAX_DECIMALS = 2;
 /** Eight places, matching truncateToDecimals(currentPrice, 8) on the Market fill. */
 const PRICE_MAX_DECIMALS = 8;
 
-/**
- * The rules the on-screen pad used to enforce by construction, now that these
- * fields are typed into directly.
- *
- * The pad could only ever emit digits and a single decimal point, and it
- * stopped accepting keys once the field already held `maxDecimals` decimals.
- * A native number input is looser: it will hand back a sign, an exponent
- * ("1e5" parses as 100000) and any number of decimal places. So the same
- * rules live here, and a keystroke that breaks one is rejected — the previous
- * value stays, the new one is not rounded to fit. Rounding is precisely the
- * bug truncateToDecimals exists to avoid: a size rounded up is either an order
- * the exchange refuses or one larger than the user asked for.
- *
- * A partial "1." is allowed through, as it was on the pad — parseFloat reads
- * it as 1, and every gate downstream runs on that number, never on the string.
- */
-function acceptDecimalInput(
-  next: string,
-  previous: string,
-  maxDecimals: number,
-): string {
-  if (next === "") return "";
-  if (!/^\d*\.?\d*$/u.test(next)) return previous;
-  const decimals = next.split(".")[1] ?? "";
-  if (decimals.length > maxDecimals) return previous;
-  // The pad replaced a lone "0" with the digit typed after it, so "05" was
-  // unreachable; typing into the field, it is not.
-  return next.replace(/^0+(?=\d)/u, "");
-}
 
 const AMOUNT_INPUT_CLASS =
   "editorial-display w-full min-w-0 bg-transparent text-foreground outline-none placeholder:text-muted [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";

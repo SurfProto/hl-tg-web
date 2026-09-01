@@ -602,7 +602,15 @@
     "loadingMarketPrice": "Загрузка цены...",
     "marketPriceUnavailable": "Цена недоступна.",
     "marketStats": "Статистика рынка",
-    "marketStatsUnavailable": "Статистика рынка недоступна."
+    "marketStatsUnavailable": "Статистика рынка недоступна.",
+    "yourPosition": "Ваша позиция",
+    "positionSide": "Направление",
+    "positionSize": "Размер",
+    "positionEntry": "Цена входа",
+    "positionPnl": "Нереализованный PnL",
+    "positionLiquidation": "Цена ликвидации",
+    "positionLeverage": "Плечо",
+    "closePosition": "Закрыть позицию"
   },
   "tradingSetup": {
     "titleReauth": "Переавторизовать торговлю",

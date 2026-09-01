@@ -599,7 +599,15 @@
     "loadingMarketPrice": "Loading market price...",
     "marketPriceUnavailable": "Market price unavailable.",
     "marketStats": "Market stats",
-    "marketStatsUnavailable": "Market stats unavailable."
+    "marketStatsUnavailable": "Market stats unavailable.",
+    "yourPosition": "Your position",
+    "positionSide": "Side",
+    "positionSize": "Size",
+    "positionEntry": "Entry price",
+    "positionPnl": "Unrealized PnL",
+    "positionLiquidation": "Liquidation price",
+    "positionLeverage": "Leverage",
+    "closePosition": "Close position"
   },
   "tradingSetup": {
     "titleReauth": "Reauthorize trading",

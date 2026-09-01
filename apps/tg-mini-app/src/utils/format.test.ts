@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { formatUsdPrice, formatUsdPriceParts } from "./format";
+import {
+  formatPercent,
+  formatPnl,
+  formatPositionSize,
+  formatUsd,
+  formatUsdPrice,
+  formatUsdPriceParts,
+} from "./format";
 
 describe("formatUsdPrice", () => {
   // The defect this replaced: every result went through parseFloat, so a price
@@ -57,5 +64,38 @@ describe("formatUsdPriceParts", () => {
   it("falls back rather than throwing on an unusable price", () => {
     expect(formatUsdPriceParts(0)).toEqual({ integer: "0", decimal: "00" });
     expect(formatUsdPriceParts(Number.NaN)).toEqual({ integer: "0", decimal: "00" });
+  });
+});
+
+describe("formatPnl", () => {
+  // The defect these carry over from PositionsPage: a loss rendered as "$5",
+  // leaving color as the only thing separating it from a five-dollar win.
+  it("always states the sign", () => {
+    expect(formatPnl(5)).toBe("+$5");
+    expect(formatPnl(-5)).toBe("−$5");
+    expect(formatPnl(0)).toBe("+$0");
+  });
+});
+
+describe("formatUsd", () => {
+  it("states an amount without a sign", () => {
+    expect(formatUsd(1234.567)).toBe("$1,234.57");
+    expect(formatUsd(-40)).toBe("$40");
+  });
+});
+
+describe("formatPercent", () => {
+  it("marks a gain and leaves a loss its own minus", () => {
+    expect(formatPercent(11.111)).toBe("+11.11%");
+    expect(formatPercent(-11.111)).toBe("-11.11%");
+  });
+});
+
+describe("formatPositionSize", () => {
+  // Sizes arrive from float subtraction, so they carry binary dust.
+  it("drops the dust without rounding the size away", () => {
+    expect(formatPositionSize(0.30000000000000004)).toBe("0.3");
+    expect(formatPositionSize(0.000001)).toBe("0.000001");
+    expect(formatPositionSize(2)).toBe("2");
   });
 });

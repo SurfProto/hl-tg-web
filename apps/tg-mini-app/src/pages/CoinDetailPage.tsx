@@ -6,15 +6,26 @@ import {
   getMarketDisplayName,
   useAssetCtx,
   useCandles,
+  useClosePosition,
   useMarketData,
   useMarketPrice,
   useSpotBalance,
+  useUserState,
 } from '@repo/hyperliquid-sdk';
 import type { AnyMarket, Candle } from '@repo/types';
 import { Chart, type LiteCandleInspection } from '@repo/ui';
 import { StatRow } from '../components/StatRow';
-import { formatUsdPrice, formatUsdPriceParts } from '../utils/format';
+import {
+  formatPercent,
+  formatPnl,
+  formatPositionSize,
+  formatUsdPrice,
+  formatUsdPriceParts,
+} from '../utils/format';
 import { getAsyncValueState } from '../lib/async-value-state';
+import { findPositionForSymbol } from '../lib/market-symbol';
+import { useHaptics } from '../hooks/useHaptics';
+import { useToast } from '../hooks/useToast';
 import { TokenIcon } from '../components/TokenIcon';
 
 function formatVolume(vol: number): string {
@@ -64,6 +75,8 @@ export function CoinDetailPage() {
   const symbol = decodeURIComponent(rawSymbol);
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
+  const haptics = useHaptics();
+  const toast = useToast();
 
   const [interval, setInterval] = useState('1h');
   const [activeInspection, setActiveInspection] = useState<LiteCandleInspection | null>(null);
@@ -82,6 +95,8 @@ export function CoinDetailPage() {
   } = useAssetCtx(symbol);
   const { data: candles } = useCandles(symbol, interval);
   const { data: spotBalance } = useSpotBalance();
+  const { data: userState } = useUserState();
+  const closePosition = useClosePosition();
 
   const selectedMarket = useMemo<AnyMarket | null>(() => {
     const spotMatch = (markets?.spot ?? []).find((market: { name: string }) => market.name === symbol);
@@ -121,6 +136,37 @@ export function CoinDetailPage() {
 
     return balance ? parseFloat(balance.total) : 0;
   }, [spotBalance, baseToken, displayName, isPerp]);
+
+  /**
+   * The user's exposure to this market, if any.
+   *
+   * Matched on the whole symbol, dex prefix included: a position on `xyz:BTC`
+   * belongs to a different market than plain `BTC` and must not appear here.
+   * Perps only — spot holdings are the row above, and no position can carry a
+   * spot pair's name.
+   */
+  const position = useMemo(
+    () => (isPerp ? findPositionForSymbol(userState?.assetPositions, symbol) : null),
+    [isPerp, userState?.assetPositions, symbol],
+  );
+
+  const handleClosePosition = () => {
+    if (!position) return;
+
+    haptics.medium();
+    closePosition.mutate(position.coin, {
+      onSuccess: () => {
+        haptics.success();
+        toast.success(t('positions.positionClosed', { name: displayName }));
+      },
+      onError: (error) => {
+        haptics.error();
+        toast.error(
+          error instanceof Error ? error.message : t('positions.closeFailed'),
+        );
+      },
+    });
+  };
 
   const inspectionTooltip = useMemo(() => {
     if (!activeInspection) return null;
@@ -278,6 +324,67 @@ export function CoinDetailPage() {
             )}
           </div>
         </div>
+
+        {/* The trader's own exposure, on the screen where the decision is made.
+            Absent a position there is nothing to say, so nothing is drawn — an
+            empty card here would only push the market stats down. */}
+        {position ? (
+          <div className="mt-5">
+            <p className="editorial-kicker pb-2">{t('coinDetail.yourPosition')}</p>
+            <div className="editorial-card overflow-hidden px-4 py-1">
+              <StatRow
+                label={t('coinDetail.positionSide')}
+                value={position.szi > 0 ? t('common.long') : t('common.short')}
+                valueColor={position.szi > 0 ? 'positive' : 'negative'}
+              />
+              <StatRow
+                label={t('coinDetail.positionSize')}
+                value={`${formatPositionSize(Math.abs(position.szi))} ${baseToken}`}
+                mono
+              />
+              <StatRow
+                label={t('coinDetail.positionEntry')}
+                value={formatUsdPrice(position.entryPx)}
+                mono
+              />
+              <StatRow
+                label={t('coinDetail.positionPnl')}
+                value={`${formatPnl(position.unrealizedPnl ?? 0)} · ${formatPercent(
+                  (position.returnOnEquity ?? 0) * 100,
+                )}`}
+                valueColor={(position.unrealizedPnl ?? 0) >= 0 ? 'positive' : 'negative'}
+                mono
+              />
+              {/* Only the exchange's own liquidation price, never one this app
+                  worked out: the in-house estimate is optimistic in the
+                  direction that costs money, so an absent figure is omitted
+                  rather than guessed at. */}
+              {position.liquidationPx != null ? (
+                <StatRow
+                  label={t('coinDetail.positionLiquidation')}
+                  value={formatUsdPrice(position.liquidationPx)}
+                  mono
+                />
+              ) : null}
+              <StatRow
+                label={t('coinDetail.positionLeverage')}
+                value={`${position.leverage?.value ?? 1}×`}
+                mono
+                noBorder
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleClosePosition}
+              disabled={closePosition.isPending}
+              className="editorial-button-secondary mt-3 w-full disabled:opacity-50"
+            >
+              {closePosition.isPending
+                ? t('common.closing')
+                : t('coinDetail.closePosition')}
+            </button>
+          </div>
+        ) : null}
 
         <div className="mt-5">
           <p className="editorial-kicker pb-2">{t('coinDetail.marketStats')}</p>

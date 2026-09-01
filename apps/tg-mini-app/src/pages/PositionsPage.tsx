@@ -27,23 +27,14 @@ import {
   type PositionDirection,
   type ProtectionDraft,
 } from "../lib/protection";
-import { formatUsdPrice } from "../utils/format";
-
-function formatUsd(value: number) {
-  return `$${Math.abs(value).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
-}
-
-function formatPnl(value: number) {
-  // The explicit minus matters: this used to return "$5" for a five-dollar
-  // loss, leaving color as the only difference between winning and losing.
-  const sign = value >= 0 ? "+" : "−";
-  return `${sign}$${Math.abs(value).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
-}
-
-/** Sizes derived by float subtraction; six decimals covers every szDecimals. */
-function formatSize(value: number): string {
-  return String(parseFloat(value.toFixed(6)));
-}
+import {
+  formatPercent,
+  formatPnl,
+  formatPositionSize,
+  formatUsd,
+  formatUsdPrice,
+} from "../utils/format";
+import { stripDexPrefix } from "../lib/market-symbol";
 
 // The exchange's status words, in the user's language. An unmapped status
 // falls back to the raw word — honest, if unpolished, for the long tail
@@ -78,11 +69,6 @@ function formatFillTime(timeMs: number, locale: string): string {
     return time;
   }
   return `${date.toLocaleDateString(locale, { day: "numeric", month: "short" })} ${time}`;
-}
-
-function formatPercent(value: number) {
-  const sign = value >= 0 ? "+" : "";
-  return `${sign}${value.toFixed(2)}%`;
 }
 
 interface EditingProtectionState {
@@ -126,9 +112,7 @@ function PositionCard({
   const isPositive = pnl >= 0;
   const isLong = position.szi > 0;
   const direction: PositionDirection = isLong ? "long" : "short";
-  const displayName = position.coin.includes(":")
-    ? position.coin.split(":")[1]
-    : position.coin;
+  const displayName = stripDexPrefix(position.coin);
   const protectionOrders = openOrders.filter(
     (order: OpenOrder) =>
       order.coin === position.coin && order.isTrigger && order.reduceOnly,
@@ -163,7 +147,7 @@ function PositionCard({
               </span>
             </div>
             <div className="editorial-mono mt-1 text-xs text-muted">
-              {Math.abs(position.szi)} @ {formatUsdPrice(position.entryPx)}
+              {formatPositionSize(Math.abs(position.szi))} @ {formatUsdPrice(position.entryPx)}
             </div>
           </div>
         </div>
@@ -269,9 +253,7 @@ function OpenOrderCard({
     isLoading,
     isError,
   });
-  const orderCoin = order.coin.includes(":")
-    ? order.coin.split(":")[1]
-    : order.coin;
+  const orderCoin = stripDexPrefix(order.coin);
   const orderDirection: PositionDirection | null = linkedPosition
     ? linkedPosition.szi > 0
       ? "long"
@@ -593,9 +575,7 @@ export function PositionsPage() {
             ) : (
               <>
                 {historicalOrders.slice(0, visibleOrders).map((order: HistoricalOrder) => {
-                  const displayName = order.coin.includes(":")
-                    ? order.coin.split(":")[1]
-                    : order.coin;
+                  const displayName = stripDexPrefix(order.coin);
                   const statusKey = ORDER_STATUS_KEYS[order.status];
                   const partiallyFilled =
                     order.filledSz > 0 && order.filledSz < order.origSz;
@@ -624,8 +604,8 @@ export function PositionsPage() {
                             </div>
                             <p className="text-xs text-muted mt-0.5 font-mono">
                               {partiallyFilled
-                                ? `${formatSize(order.filledSz)}/${formatSize(order.origSz)}`
-                                : formatSize(order.origSz)}{" "}
+                                ? `${formatPositionSize(order.filledSz)}/${formatPositionSize(order.origSz)}`
+                                : formatPositionSize(order.origSz)}{" "}
                               @{" "}
                               {order.isTrigger && order.triggerPx
                                 ? formatUsdPrice(order.triggerPx)
@@ -668,9 +648,7 @@ export function PositionsPage() {
                 // opening fill used to render "+$0.00" in green — a fabricated
                 // win; it shows the trade's notional instead.
                 const isClose = fill.dir !== "Open";
-                const displayName = fill.coin.includes(":")
-                  ? fill.coin.split(":")[1]
-                  : fill.coin;
+                const displayName = stripDexPrefix(fill.coin);
                 return (
                   <div
                     key={fill.tid}

@@ -216,7 +216,14 @@ function PositionCard({
           }}
           className="flex-shrink-0 rounded-lg border border-border bg-surface px-3 py-2 text-xs font-semibold text-foreground transition-colors active:bg-[var(--color-primary-soft-strong)]"
         >
-          {t("positions.addMargin")}
+          {/* It says what it does. This was labelled "Add margin", but it calls
+              onTradeMore, which opens the trade screen on the same side — that
+              adds exposure at the same leverage and moves the liquidation price
+              the wrong way. It is the control someone reaches for when isolated
+              margin gets thin, and it did the opposite. Real add-margin needs
+              updateIsolatedMargin and an amount input; that is a feature, this
+              is stopping the button lying. */}
+          {t("positions.addToPosition")}
         </button>
         <button
           onClick={(event) => {

@@ -183,7 +183,6 @@
     "tabHistory": "История",
     "unrealizedPnl": "Нереализованный PnL",
     "margin": "Маржа",
-    "addMargin": "Добавить маржу",
     "markPrice": "Рынок",
     "loadingMarkPrice": "Загрузка...",
     "emptyTitle": "Нет открытых позиций",
@@ -224,7 +223,8 @@
     "closeFailed": "Не удалось закрыть. Попробуйте снова.",
     "orderCancelled": "Ордер отменён",
     "cancelFailed": "Не удалось отменить. Попробуйте снова.",
-    "positionLabel": "Позиция"
+    "positionLabel": "Позиция",
+    "addToPosition": "Увеличить позицию"
   },
   "points": {
     "referEarn": "Приглашай и зарабатывай",

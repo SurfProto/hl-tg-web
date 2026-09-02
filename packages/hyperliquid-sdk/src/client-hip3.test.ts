@@ -373,3 +373,82 @@ describe("getUserState across HIP-3 dexes", () => {
     expect(state.marginSummary.accountValue).toBeGreaterThan(0);
   });
 });
+
+// Widening the fan-out from zero calls to ten gave ten builder-run dexes shared
+// fate with the base account. postInfo throws on any non-OK status, so without
+// a per-call catch one flaky dex blanks every position, balance and equity
+// figure the app has — and gates closePosition and ensurePerpLeverage, which
+// read the same state.
+describe("a dex that will not answer", () => {
+  function createClientWithFailingDex() {
+    const { client, requests } = createClient();
+    const inner = (client as any).postInfo;
+
+    (client as any).walletAddress = "0xuser";
+    (client as any).postInfo = async (request: any) => {
+      if (request.type === "clearinghouseState") {
+        if (request.dex === "abc") {
+          throw new Error("Info request failed with status 503");
+        }
+        if (request.dex === "xyz") {
+          return {
+            marginSummary: { accountValue: "8.96", totalRawUsd: "8.96", totalMarginUsed: "1.00" },
+            assetPositions: [
+              {
+                type: "oneWay",
+                position: {
+                  coin: "GOLD-USDC",
+                  szi: "3.084",
+                  leverage: { type: "isolated", value: "10" },
+                  entryPx: "32.482",
+                  liquidationPx: "30.72",
+                  marginUsed: "1.00",
+                  maxLeverage: "10",
+                  positionValue: "8.96",
+                  returnOnEquity: "-0.1",
+                  unrealizedPnl: "-1.21",
+                },
+              },
+            ],
+          };
+        }
+        // The base account.
+        return {
+          marginSummary: { accountValue: "500", totalRawUsd: "500", totalMarginUsed: "0" },
+          assetPositions: [],
+        };
+      }
+      if (request.type === "spotClearinghouseState") return { balances: [] };
+      if (request.type === "userAbstraction") return null;
+      if (request.type === "userDexAbstraction") return null;
+      return inner(request);
+    };
+
+    return { client, requests };
+  }
+
+  it("still returns the account rather than throwing", async () => {
+    const { client } = createClientWithFailingDex();
+
+    await expect(client.getUserState({ fresh: true })).resolves.toBeTruthy();
+  });
+
+  it("keeps the positions the healthy dexes did report", async () => {
+    const { client } = createClientWithFailingDex();
+
+    const state = await client.getUserState({ fresh: true });
+
+    expect(state.assetPositions.map((p: any) => p.position.coin)).toContain(
+      "xyz:GOLD-USDC",
+    );
+  });
+
+  it("does not blank the base account because a builder dex is down", async () => {
+    const { client } = createClientWithFailingDex();
+
+    const state = await client.getUserState({ fresh: true });
+
+    // 500 of base collateral has nothing to do with whether "abc" answered.
+    expect(state.marginSummary.accountValue).toBeGreaterThan(400);
+  });
+});

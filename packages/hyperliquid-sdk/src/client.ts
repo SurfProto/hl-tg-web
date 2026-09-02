@@ -1362,12 +1362,21 @@ export class HyperliquidClient {
       }).catch(() => null),
       this.getUserAbstraction(),
       this.getUserDexAbstraction(),
+      // Each dex answers for itself. `postInfo` throws on any non-OK status,
+      // and a bare Promise.all would let one flaky builder dex reject the whole
+      // array — blanking every position, balance and equity figure, including
+      // the base account's, and taking closePosition and ensurePerpLeverage
+      // down with them. Before this fan-out existed the loaded set was empty,
+      // so there was nothing here to fail; widening it from zero calls to ten
+      // is what created the shared fate. A missing dex is a dex the user holds
+      // nothing on, which is the same thing they saw before and true nine times
+      // out of ten. `buildAccountState` already takes null for these.
       ...perpDexs.map(({ dex }) =>
         this.postInfo<any>({
           type: "clearinghouseState",
           dex,
           user: this.walletAddress as `0x${string}`,
-        }),
+        }).catch(() => null),
       ),
     ]);
 

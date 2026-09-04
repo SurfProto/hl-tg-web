@@ -5,13 +5,17 @@ import { describe, expect, it, vi } from "vitest";
 import { TelegramAuthGate } from "./App";
 import { installTelegramWebAppMock } from "./test/telegramMock";
 
-const { mockUsePrivy, mockGetAccessToken, bootstrapProfileMock } = vi.hoisted(
-  () => ({
-    mockUsePrivy: vi.fn(),
-    mockGetAccessToken: vi.fn(),
-    bootstrapProfileMock: vi.fn(),
-  }),
-);
+const {
+  mockUsePrivy,
+  mockGetAccessToken,
+  bootstrapProfileMock,
+  clearStoredAgentKeyMock,
+} = vi.hoisted(() => ({
+  mockUsePrivy: vi.fn(),
+  mockGetAccessToken: vi.fn(),
+  bootstrapProfileMock: vi.fn(),
+  clearStoredAgentKeyMock: vi.fn(),
+}));
 const translate = (key: string) =>
   ({
     "common.retry": "Retry",
@@ -50,6 +54,7 @@ vi.mock("./lib/profile", () => ({
 }));
 
 vi.mock("@repo/hyperliquid-sdk", () => ({
+  clearStoredAgentKey: clearStoredAgentKeyMock,
   useMarketData: () => ({
     data: [],
     isError: false,
@@ -112,5 +117,50 @@ describe("TelegramAuthGate", () => {
     });
 
     expect(bootstrapProfileMock).toHaveBeenCalledWith("access-token");
+  });
+
+  /**
+   * The end of an account's session on this device must delete its trading
+   * key: the key signs orders for up to 180 days and localStorage outlives
+   * the session, so whoever holds the device next must not inherit it.
+   */
+  it("deletes the departing account's trading key when the account changes", async () => {
+    installTelegramWebAppMock();
+    mockGetAccessToken.mockResolvedValue("access-token");
+    mockUsePrivy.mockReturnValue({
+      ready: true,
+      authenticated: true,
+      loginWithTelegram: vi.fn(),
+      user: { id: "did:privy:user:alice", wallet: { address: "0xalice" } },
+    });
+
+    let view!: ReturnType<typeof render>;
+    await act(async () => {
+      view = render(
+        <TelegramAuthGate>
+          <div>Protected app</div>
+        </TelegramAuthGate>,
+      );
+      await Promise.resolve();
+    });
+    expect(clearStoredAgentKeyMock).not.toHaveBeenCalled();
+
+    mockUsePrivy.mockReturnValue({
+      ready: true,
+      authenticated: true,
+      loginWithTelegram: vi.fn(),
+      user: { id: "did:privy:user:bob", wallet: { address: "0xbob" } },
+    });
+    await act(async () => {
+      view.rerender(
+        <TelegramAuthGate>
+          <div>Protected app</div>
+        </TelegramAuthGate>,
+      );
+      await Promise.resolve();
+    });
+
+    expect(clearStoredAgentKeyMock).toHaveBeenCalledWith("0xalice");
+    expect(clearStoredAgentKeyMock).not.toHaveBeenCalledWith("0xbob");
   });
 });

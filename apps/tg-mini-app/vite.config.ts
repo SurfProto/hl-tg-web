@@ -52,8 +52,34 @@ export default defineConfig({
     sourcemap: true,
     rollupOptions: {
       output: {
-        manualChunks: {
-          react: ["react", "react-dom"],
+        // The entry chunk was 2.58 MB minified, and by sourcemap attribution
+        // almost all of it is Privy 1.x's static dependency tree: viem + ox
+        // (~2 MB of source), ~530 KB of Solana token programs this EVM-only
+        // app never touches, and libphonenumber for SMS login. None of that
+        // is removable from here — Privy imports it unconditionally, so
+        // config changes don't tree-shake it; a Privy major upgrade is the
+        // real fix. What splitting buys today: the huge, rarely-changing
+        // vendor trees get their own hashed chunks, so they download in
+        // parallel and stay cached across app deploys instead of being
+        // re-fetched inside a monolith whose hash changes on every release.
+        // Only dependency leaves are split (crypto/math/util trees) — the
+        // safe kind, with no init-order entanglement with app code.
+        manualChunks(id: string) {
+          if (!id.includes("node_modules")) return undefined;
+          if (/node_modules\/(viem|ox|@noble|@scure|abitype)\//.test(id)) {
+            return "evm";
+          }
+          // Match the real package segment only: pnpm's virtual-store paths
+          // encode peer deps in the directory name (…react-auth@1.x_@solana+
+          // web3.js@…), so a bare substring test drags Privy itself in here.
+          if (/node_modules\/(@solana|@solana-program)/.test(id)) {
+            return "solana";
+          }
+          if (/node_modules\/libphonenumber-js\//.test(id)) return "phone";
+          if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) {
+            return "react";
+          }
+          return undefined;
         },
       },
     },

@@ -1329,13 +1329,22 @@ export class HyperliquidClient {
     ) {
       return this.userStateCache.data;
     }
-    await this.ensureMarketCache();
-    // Loaded dexes only, like getMids and refreshAssetCtxs: this runs before
-    // every leveraged order via ensurePerpLeverage, where fanning out to every
-    // named dex (247 on testnet) is what rate-limited the order in the first
-    // place. Positions on HIP-3 dexes still surface, because enumerating
-    // markets — which the app does at startup — loads every dex.
-    const perpDexs = this.getLoadedPerpDexs();
+    const cache = await this.ensureMarketCache();
+    // Every named dex, not only the loaded ones.
+    //
+    // This used to read getLoadedPerpDexs(), on the reasoning that enumerating
+    // markets at startup loads every dex anyway. The app does not: it reads
+    // markets from the edge endpoint, and the account snapshot builds a fresh
+    // client per request (api/account/_lib/upstream.ts), so the loaded set was
+    // empty on every single call. HIP-3 positions were never returned — not
+    // intermittently, never — and a user holding all of their collateral on a
+    // HIP-3 dex saw an account worth $0.00 with no position in it.
+    //
+    // The old comment's fear was fanning out to 247 dexes on testnet. Mainnet
+    // lists ten. Asking ten dexes whether this user holds anything is the
+    // cheap half; loading a dex's universe is the expensive half, and that is
+    // still deferred below to the dexes that actually came back with holdings.
+    const perpDexs = cache.perpDexs;
     const [
       baseState,
       spotState,
@@ -1353,14 +1362,41 @@ export class HyperliquidClient {
       }).catch(() => null),
       this.getUserAbstraction(),
       this.getUserDexAbstraction(),
+      // Each dex answers for itself. `postInfo` throws on any non-OK status,
+      // and a bare Promise.all would let one flaky builder dex reject the whole
+      // array — blanking every position, balance and equity figure, including
+      // the base account's, and taking closePosition and ensurePerpLeverage
+      // down with them. Before this fan-out existed the loaded set was empty,
+      // so there was nothing here to fail; widening it from zero calls to ten
+      // is what created the shared fate. A missing dex is a dex the user holds
+      // nothing on, which is the same thing they saw before and true nine times
+      // out of ten. `buildAccountState` already takes null for these.
       ...perpDexs.map(({ dex }) =>
         this.postInfo<any>({
           type: "clearinghouseState",
           dex,
           user: this.walletAddress as `0x${string}`,
-        }),
+        }).catch(() => null),
       ),
     ]);
+
+    // A dex's collateral asset is inferred from its universe, and without it
+    // buildAccountState drops that dex's balance from the stable totals — so a
+    // position would show while the equity backing it did not. Load the
+    // universe only where there is something to attribute, which is normally
+    // no dexes and rarely more than one, rather than all ten.
+    await Promise.all(
+      perpDexs
+        .filter((entry, index) => {
+          if (entry.collateralAsset) return false;
+          const state = dexStates[index];
+          return (
+            (state?.assetPositions?.length ?? 0) > 0 ||
+            Number(state?.marginSummary?.accountValue ?? 0) > 0
+          );
+        })
+        .map(({ dex }) => this.ensureHip3Dex(dex)),
+    );
 
     const result = buildAccountState({
       baseState,
@@ -1375,11 +1411,55 @@ export class HyperliquidClient {
   }
 
   // Get open orders
+  /**
+   * Open orders across the base perp dex and every HIP-3 dex.
+   *
+   * `frontendOpenOrders` is dex-scoped and defaults to the base dex, so a
+   * bare call returned no HIP-3 order, ever. That was worse than invisibility,
+   * because `upsertPositionProtection` feeds this list in as the set of orders
+   * to diff against: with none of a HIP-3 market's orders in it, the planner
+   * saw no existing stop, cancelled nothing, and rested a second full-size
+   * trigger on top of the live one. Removing protection was impossible for the
+   * same reason — no diff, so it refused with "no changes to apply" while the
+   * stop stayed on the exchange.
+   *
+   * The vendored SDK's `frontendOpenOrders` type takes no `dex`, so the
+   * per-dex calls go through `postInfo`, and each catches for the reason the
+   * clearinghouse fan-out does: one unreachable builder dex must not empty a
+   * list the protection planner then treats as authoritative. An order that
+   * fails to load is strictly better absent than the whole list being.
+   */
   async getOpenOrders(): Promise<OpenOrder[]> {
     const client = await this.getPublicClient();
-    const rawOrders = await client.frontendOpenOrders({
-      user: this.walletAddress as `0x${string}`,
-    });
+    const cache = await this.ensureMarketCache();
+
+    const [baseOrders, ...dexOrders] = await Promise.all([
+      client.frontendOpenOrders({ user: this.walletAddress as `0x${string}` }),
+      ...cache.perpDexs.map(({ dex }) =>
+        this.postInfo<any[]>({
+          type: "frontendOpenOrders",
+          dex,
+          user: this.walletAddress as `0x${string}`,
+        })
+          // Qualify here rather than at the call site. Positions arrive bare
+          // from a dex-scoped clearinghouseState and buildAccountState adds the
+          // prefix; whether orders do the same is undocumented, so this holds
+          // under either answer and every `order.coin === position.coin`
+          // comparison keeps matching.
+          .then((orders) =>
+            (orders ?? []).map((order: any) => ({
+              ...order,
+              coin:
+                typeof order?.coin === "string" && !order.coin.includes(":")
+                  ? `${dex}:${order.coin}`
+                  : order?.coin,
+            })),
+          )
+          .catch(() => []),
+      ),
+    ]);
+
+    const rawOrders = [...baseOrders, ...dexOrders.flat()];
     return rawOrders.map((order: any) => ({
       oid: order.oid,
       coin: order.coin,

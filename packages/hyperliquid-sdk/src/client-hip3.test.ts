@@ -276,3 +276,313 @@ describe("per-dex fan-out", () => {
     expect(dexRequests()).toEqual([]);
   });
 });
+
+// The bug this pins: getUserState used to fan clearinghouseState out over
+// getLoadedPerpDexs() only. The app reads markets from the edge endpoint and
+// the account snapshot builds a fresh client per request, so nothing had ever
+// loaded a dex universe by the time state was read — the loaded set was empty
+// on every call, and a HIP-3 position was never returned. A user holding all
+// of their collateral on one HIP-3 dex saw an empty account.
+describe("getUserState across HIP-3 dexes", () => {
+  const EMPTY = { marginSummary: { accountValue: "0" }, assetPositions: [] };
+
+  function createStateClient() {
+    const { client, requests, dexRequests } = createClient();
+    const inner = (client as any).postInfo;
+
+    (client as any).walletAddress = "0xuser";
+    (client as any).postInfo = async (request: any) => {
+      // The inner mock records what it handles; anything answered here has to
+      // record itself or it never appears in `requests`.
+      if (request.type !== "metaAndAssetCtxs" && request.type !== "perpDexs") {
+        requests.push(request);
+      }
+      if (request.type === "clearinghouseState") {
+        if (request.dex === "xyz") {
+          return {
+            marginSummary: { accountValue: "8.96", totalRawUsd: "8.96", totalMarginUsed: "1.00" },
+            assetPositions: [
+              {
+                type: "oneWay",
+                position: {
+                  // The dex reports its own bare symbol.
+                  coin: "GOLD-USDC",
+                  szi: "3.084",
+                  leverage: { type: "isolated", value: "10" },
+                  entryPx: "32.482",
+                  liquidationPx: "30.72",
+                  marginUsed: "1.00",
+                  maxLeverage: "10",
+                  positionValue: "8.96",
+                  returnOnEquity: "-0.1",
+                  unrealizedPnl: "-1.21",
+                },
+              },
+            ],
+          };
+        }
+        return EMPTY;
+      }
+      if (request.type === "spotClearinghouseState") return { balances: [] };
+      if (request.type === "userAbstraction") return null;
+      if (request.type === "userDexAbstraction") return null;
+      return inner(request);
+    };
+
+    const stateDexes = () =>
+      requests.filter((r: any) => r.type === "clearinghouseState").map((r: any) => r.dex ?? "main");
+
+    return { client, requests, stateDexes, dexRequests };
+  }
+
+  it("asks every named dex, not only the ones already loaded", async () => {
+    const { client, stateDexes } = createStateClient();
+
+    await client.getUserState({ fresh: true });
+
+    // No symbol was resolved first, so under the old behaviour this was ["main"].
+    expect(stateDexes().sort()).toEqual(["abc", "main", "xyz"]);
+  });
+
+  it("returns the position, qualified with its dex", async () => {
+    const { client } = createStateClient();
+
+    const state = await client.getUserState({ fresh: true });
+    const coins = state.assetPositions.map((p: any) => p.position.coin);
+
+    expect(coins).toContain("xyz:GOLD-USDC");
+    expect(state.assetPositions).toHaveLength(1);
+  });
+
+  it("loads the universe only for the dex holding something", async () => {
+    const { client, dexRequests } = createStateClient();
+
+    await client.getUserState({ fresh: true });
+
+    // "abc" answered empty, so its universe is never fetched — the cheap half
+    // is asking, the expensive half is loading.
+    expect(dexRequests().map((r: any) => r.dex)).toEqual(["xyz"]);
+  });
+
+  it("counts the HIP-3 collateral toward equity", async () => {
+    const { client } = createStateClient();
+
+    const state = await client.getUserState({ fresh: true });
+
+    // Was $0.00 while the user held a leveraged position.
+    expect(state.marginSummary.accountValue).toBeGreaterThan(0);
+  });
+});
+
+// Widening the fan-out from zero calls to ten gave ten builder-run dexes shared
+// fate with the base account. postInfo throws on any non-OK status, so without
+// a per-call catch one flaky dex blanks every position, balance and equity
+// figure the app has — and gates closePosition and ensurePerpLeverage, which
+// read the same state.
+describe("a dex that will not answer", () => {
+  function createClientWithFailingDex() {
+    const { client, requests } = createClient();
+    const inner = (client as any).postInfo;
+
+    (client as any).walletAddress = "0xuser";
+    (client as any).postInfo = async (request: any) => {
+      if (request.type === "clearinghouseState") {
+        if (request.dex === "abc") {
+          throw new Error("Info request failed with status 503");
+        }
+        if (request.dex === "xyz") {
+          return {
+            marginSummary: { accountValue: "8.96", totalRawUsd: "8.96", totalMarginUsed: "1.00" },
+            assetPositions: [
+              {
+                type: "oneWay",
+                position: {
+                  coin: "GOLD-USDC",
+                  szi: "3.084",
+                  leverage: { type: "isolated", value: "10" },
+                  entryPx: "32.482",
+                  liquidationPx: "30.72",
+                  marginUsed: "1.00",
+                  maxLeverage: "10",
+                  positionValue: "8.96",
+                  returnOnEquity: "-0.1",
+                  unrealizedPnl: "-1.21",
+                },
+              },
+            ],
+          };
+        }
+        // The base account.
+        return {
+          marginSummary: { accountValue: "500", totalRawUsd: "500", totalMarginUsed: "0" },
+          assetPositions: [],
+        };
+      }
+      if (request.type === "spotClearinghouseState") return { balances: [] };
+      if (request.type === "userAbstraction") return null;
+      if (request.type === "userDexAbstraction") return null;
+      return inner(request);
+    };
+
+    return { client, requests };
+  }
+
+  it("still returns the account rather than throwing", async () => {
+    const { client } = createClientWithFailingDex();
+
+    await expect(client.getUserState({ fresh: true })).resolves.toBeTruthy();
+  });
+
+  it("keeps the positions the healthy dexes did report", async () => {
+    const { client } = createClientWithFailingDex();
+
+    const state = await client.getUserState({ fresh: true });
+
+    expect(state.assetPositions.map((p: any) => p.position.coin)).toContain(
+      "xyz:GOLD-USDC",
+    );
+  });
+
+  it("does not blank the base account because a builder dex is down", async () => {
+    const { client } = createClientWithFailingDex();
+
+    const state = await client.getUserState({ fresh: true });
+
+    // 500 of base collateral has nothing to do with whether "abc" answered.
+    expect(state.marginSummary.accountValue).toBeGreaterThan(400);
+  });
+});
+
+// frontendOpenOrders is dex-scoped and defaults to the base dex, so a bare call
+// never returned a HIP-3 order. That was worse than invisibility:
+// upsertPositionProtection diffs against this list, so an empty one meant no
+// existing stop was found, nothing was cancelled, and a second full-size
+// trigger was rested on top of the live one.
+describe("getOpenOrders across HIP-3 dexes", () => {
+  function createOrderClient(options: { failDex?: string } = {}) {
+    const { client, requests } = createClient();
+    const inner = (client as any).postInfo;
+
+    (client as any).walletAddress = "0xuser";
+    (client as any).getPublicClient = async () => ({
+      spotMeta: async () => SPOT_META,
+      frontendOpenOrders: async () => [
+        {
+          oid: 1,
+          coin: "BTC",
+          side: "B",
+          limitPx: "50000",
+          sz: "0.1",
+          timestamp: 1,
+          orderType: "Limit",
+        },
+      ],
+    });
+
+    (client as any).postInfo = async (request: any) => {
+      if (request.type === "frontendOpenOrders") {
+        requests.push(request);
+        if (request.dex === options.failDex) {
+          throw new Error("Info request failed with status 503");
+        }
+        if (request.dex === "xyz") {
+          // Bare, the way a dex-scoped clearinghouseState reports positions.
+          return [
+            {
+              oid: 99,
+              coin: "GOLD-USDC",
+              side: "A",
+              limitPx: "0",
+              sz: "3.084",
+              timestamp: 2,
+              orderType: "Stop Market",
+              isTrigger: true,
+              triggerPx: "30.72",
+              reduceOnly: true,
+              isPositionTpsl: true,
+            },
+          ];
+        }
+        if (request.dex === "abc") {
+          // Already qualified, in case HL reports it that way.
+          return [
+            {
+              oid: 100,
+              coin: "abc:OIL-USDC",
+              side: "B",
+              limitPx: "70",
+              sz: "1",
+              timestamp: 3,
+              orderType: "Limit",
+            },
+          ];
+        }
+        return [];
+      }
+      return inner(request);
+    };
+
+    const orderDexes = () =>
+      requests
+        .filter((r: any) => r.type === "frontendOpenOrders")
+        .map((r: any) => r.dex);
+
+    return { client, orderDexes };
+  }
+
+  it("asks every named dex, not only the base one", async () => {
+    const { client, orderDexes } = createOrderClient();
+
+    await client.getOpenOrders();
+
+    expect(orderDexes().sort()).toEqual(["abc", "xyz"]);
+  });
+
+  it("returns HIP-3 orders alongside base ones", async () => {
+    const { client } = createOrderClient();
+
+    const coins = (await client.getOpenOrders()).map((o) => o.coin);
+
+    expect(coins).toContain("BTC");
+    expect(coins).toContain("xyz:GOLD-USDC");
+  });
+
+  it("qualifies a bare coin without double-prefixing one already qualified", async () => {
+    const { client } = createOrderClient();
+
+    const coins = (await client.getOpenOrders()).map((o) => o.coin);
+
+    // Both spellings land on the same form the positions list uses, which is
+    // what every order.coin === position.coin comparison depends on.
+    expect(coins).toContain("xyz:GOLD-USDC");
+    expect(coins).toContain("abc:OIL-USDC");
+    expect(coins).not.toContain("abc:abc:OIL-USDC");
+  });
+
+  it("keeps the trigger fields the protection planner diffs on", async () => {
+    const { client } = createOrderClient();
+
+    const stop = (await client.getOpenOrders()).find(
+      (o) => o.coin === "xyz:GOLD-USDC",
+    );
+
+    expect(stop).toMatchObject({
+      oid: 99,
+      isTrigger: true,
+      triggerPx: 30.72,
+      reduceOnly: true,
+      isPositionTpsl: true,
+    });
+  });
+
+  // An unreachable dex must not empty a list the planner treats as the full
+  // set of existing orders -- that is how the duplicate stop got rested.
+  it("does not lose every order because one dex is down", async () => {
+    const { client } = createOrderClient({ failDex: "abc" });
+
+    const coins = (await client.getOpenOrders()).map((o) => o.coin);
+
+    expect(coins).toContain("BTC");
+    expect(coins).toContain("xyz:GOLD-USDC");
+  });
+});

@@ -135,7 +135,6 @@ export function DepositPage() {
   const [recentOrders, setRecentOrders] = useState<OnrampOrderStatus[]>([]);
   const [fiatError, setFiatError] = useState<string | null>(null);
   const [tronAddress, setTronAddress] = useState("");
-  const [addressMode, setAddressMode] = useState<"privy" | "trc20">("trc20");
   const [isBootstrapping, setIsBootstrapping] = useState(false);
   const [isQuoting, setIsQuoting] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
@@ -300,7 +299,10 @@ export function DepositPage() {
   }, [getAccessToken, order, queryClient, t, view]);
 
   const isTrc20 = bootstrapData?.service.network === "TRC20";
-  const resolvedPayoutAddress = addressMode === "privy" ? (address ?? null) : tronAddress || null;
+  // The network decides the destination, not the user. TRC20 settles to a Tron
+  // address they type; everything else settles to their own embedded wallet,
+  // which the server now requires rather than trusts.
+  const resolvedPayoutAddress = isTrc20 ? tronAddress || null : (address ?? null);
   const onrampLimits = bootstrapData?.limits ?? null;
   const amountValidation = validateOnrampAmount(fiatAmount, onrampLimits);
 
@@ -320,7 +322,7 @@ export function DepositPage() {
       return;
     }
 
-    if (isTrc20 && addressMode === "trc20" && !isValidTrc20Address(tronAddress)) {
+    if (isTrc20 && !isValidTrc20Address(tronAddress)) {
       setFiatFailure(t("deposit.trc20AddressInvalid"));
       return;
     }
@@ -360,7 +362,7 @@ export function DepositPage() {
       return;
     }
 
-    if (isTrc20 && addressMode === "trc20" && !isValidTrc20Address(tronAddress)) {
+    if (isTrc20 && !isValidTrc20Address(tronAddress)) {
       setFiatFailure(t("deposit.trc20AddressInvalid"));
       return;
     }
@@ -481,8 +483,7 @@ export function DepositPage() {
         ? t("deposit.verifiedKyc")
         : t("deposit.pendingVerification");
   const isEmailRequired = !bootstrapData?.email || fiatState === "email_required";
-  const isTrc20AddressValid =
-    !isTrc20 || addressMode === "privy" || isValidTrc20Address(tronAddress);
+  const isTrc20AddressValid = !isTrc20 || isValidTrc20Address(tronAddress);
   const showOrderCard = Boolean(order && !isTerminalOnrampState(order.appState));
   const terminalRecentOrders = recentOrders.filter((recentOrder) =>
     isTerminalOnrampState(recentOrder.appState),
@@ -602,30 +603,12 @@ export function DepositPage() {
           <div className="rounded-[18px] border border-separator bg-white p-4 space-y-3">
             <div className="space-y-2">
               <p className="text-xs text-muted">{t("deposit.destinationWallet")}</p>
-              {isTrc20 && (
-                <div className="flex rounded-2xl bg-surface p-1 gap-1">
-                  <button
-                    type="button"
-                    onClick={() => { setAddressMode("privy"); setQuote(null); setQuoteRequest(null); }}
-                    className={`flex-1 rounded-xl py-2 text-sm font-semibold transition-colors ${addressMode === "privy" ? "bg-white text-foreground shadow-sm" : "text-muted"}`}
-                  >
-                    {t("deposit.usePrivyWallet")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setAddressMode("trc20"); setQuote(null); setQuoteRequest(null); }}
-                    className={`flex-1 rounded-xl py-2 text-sm font-semibold transition-colors ${addressMode === "trc20" ? "bg-white text-foreground shadow-sm" : "text-muted"}`}
-                  >
-                    {t("deposit.useExternalTrc20")}
-                  </button>
-                </div>
-              )}
-              {(!isTrc20 || addressMode === "privy") && (
+              {!isTrc20 && (
                 <div className="rounded-2xl bg-surface px-4 py-3 font-mono text-sm text-foreground break-all">
                   {address ?? t("deposit.connectWallet")}
                 </div>
               )}
-              {isTrc20 && addressMode === "trc20" && (
+              {isTrc20 && (
                 <div className="space-y-1">
                   <input
                     type="text"

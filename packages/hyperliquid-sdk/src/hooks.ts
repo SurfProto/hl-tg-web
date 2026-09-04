@@ -13,6 +13,7 @@ import {
   approveBuilderFee as approveBuilderFeeAction,
   isBuilderConfigured,
 } from "./builder";
+import { isDepositGasSponsored } from "./gas-sponsorship";
 import {
   TSUNAMI_AGENT_NAME,
   clearStoredAgentKey,
@@ -1129,10 +1130,13 @@ export function useFundArbitrumUsdc() {
       const walletAddress = address ?? user?.wallet?.address;
       if (!walletAddress) throw new Error("No wallet connected");
 
-      await fundWallet(walletAddress, {
-        chain: { id: 42161 },
-        amount: "10",
-        asset: "USDC",
+      await fundWallet({
+        address: walletAddress,
+        options: {
+          chain: { id: 42161 },
+          amount: "10",
+          asset: "USDC",
+        },
       });
     },
   });
@@ -1190,6 +1194,9 @@ export function useBridgeToHyperliquid() {
         args: [HL_BRIDGE_ARBITRUM, amountRaw],
       });
 
+      // Read once: the request and the sentence describing it must agree.
+      const sponsored = isDepositGasSponsored();
+
       await sendTransaction(
         {
           to: USDC_ARBITRUM,
@@ -1198,23 +1205,39 @@ export function useBridgeToHyperliquid() {
           chainId: arbitrum.id,
         },
         {
-          header: "Review Hyperliquid deposit",
-          description: `Bridge ${amount.toFixed(2)} USDC from Arbitrum into your Hyperliquid trading balance. Sponsored by Tsunami with love.`,
-          buttonText: "Confirm deposit",
-          successHeader: "Deposit submitted",
-          successDescription:
-            "Your USDC transfer to Hyperliquid is on the way.",
-          transactionInfo: {
-            title: "Deposit details",
-            action: "Bridge USDC",
-            contractInfo: {
-              name: "Sponsored by Tsunami with love",
-              url: "https://arbiscan.io/token/0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+          // v2 folded the flat UI options into `uiOptions`, and moved the
+          // signing address from a fourth positional argument into this object.
+          address: account,
+          // The flag the copy below is written against. v3 sponsors the
+          // embedded EOA itself over EIP-7702, so the address the Hyperliquid
+          // account is keyed to does not change — but it is gated on TEE
+          // execution, which is off. False here means the user pays, and the
+          // sentence about sponsorship stays unwritten.
+          sponsor: sponsored,
+          uiOptions: {
+            // No `header` in v3 — the sheet titles itself now. The description
+            // already said what the header did.
+            description: `Bridge ${amount.toFixed(2)} USDC from Arbitrum into your Hyperliquid trading balance.${
+              sponsored ? " Sponsored by P34k with love." : ""
+            }`,
+            buttonText: "Confirm deposit",
+            successHeader: "Deposit submitted",
+            successDescription:
+              "Your USDC transfer to Hyperliquid is on the way.",
+            transactionInfo: {
+              title: "Deposit details",
+              action: "Bridge USDC",
+              // Names the contract being called, which is what this field is
+              // for and what the url below already points at. It previously
+              // carried the sponsorship slogan instead, so the sheet told the
+              // user the counterparty was a marketing line.
+              contractInfo: {
+                name: "USD Coin (USDC)",
+                url: "https://arbiscan.io/token/0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+              },
             },
           },
         },
-        undefined,
-        account,
       );
     },
     onSuccess: () => {

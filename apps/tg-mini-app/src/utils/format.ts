@@ -55,3 +55,37 @@ export function formatUsdPriceParts(price: number): { integer: string; decimal: 
 export function formatSize(size: number, szDecimals: number): string {
   return parseFloat(size.toFixed(Math.max(0, szDecimals))).toString();
 }
+
+/**
+ * A position's size, where the asset's szDecimals is not at hand.
+ *
+ * Sizes arrive derived by float subtraction, so they carry binary dust
+ * (0.30000000000000004); six decimals covers every szDecimals the exchange
+ * lists and drops the dust. Lived on PositionsPage until the coin page had to
+ * render the same number the same way.
+ */
+export function formatPositionSize(size: number): string {
+  return String(parseFloat(size.toFixed(6)));
+}
+
+/** A dollar amount, unsigned — for margin and notional, never for PnL. */
+export function formatUsd(value: number): string {
+  return `$${Math.abs(value).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+}
+
+/**
+ * A PnL figure, always carrying its sign.
+ *
+ * The explicit minus matters: this used to return "$5" for a five-dollar loss,
+ * leaving color as the only difference between winning and losing.
+ */
+export function formatPnl(value: number): string {
+  const sign = value >= 0 ? '+' : '−';
+  return `${sign}$${Math.abs(value).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+}
+
+/** A signed percentage, two decimals: return on equity, price change. */
+export function formatPercent(value: number): string {
+  const sign = value >= 0 ? '+' : '';
+  return `${sign}${value.toFixed(2)}%`;
+}

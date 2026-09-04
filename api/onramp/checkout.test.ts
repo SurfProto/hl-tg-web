@@ -95,4 +95,62 @@ describe("POST /api/onramp/checkout", () => {
       expect.objectContaining({ code: "INVALID_PAYOUT_ADDRESS" }),
     );
   });
+
+  // Off TRC20 the provider settles to an EVM address, and the only one we will
+  // pay is the wallet already on the account. These three cover the whole rule,
+  // because the previous one — a non-empty string — accepted all of them.
+  describe("on a network that settles to an EVM address", () => {
+    const wallet = "0x1111111111111111111111111111111111111111";
+
+    beforeEach(() => {
+      mocks.getOnrampConfig.mockReturnValue({ privyAppId: "app-id", network: "ARBITRUM" });
+      mocks.getUserByPrivyUserId.mockResolvedValue({
+        id: "user-1",
+        email: "canonical@example.com",
+        wallet_address: wallet,
+        kyc_id: null,
+      });
+    });
+
+    async function checkout(payoutAddress: string) {
+      const response = createResponse();
+      await handler(
+        {
+          method: "POST",
+          headers: { authorization: "Bearer token" },
+          body: { amount: 1000, idempotencyKey: "key-1", payoutAddress },
+        },
+        response,
+      );
+      return response;
+    }
+
+    it("pays out to the wallet on the account, whatever case it is written in", async () => {
+      await checkout(wallet.toUpperCase().replace("0X", "0x"));
+
+      expect(mocks.createAndPersistOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: "key-1" }),
+      );
+    });
+
+    it("refuses a well-formed address belonging to somebody else", async () => {
+      const response = await checkout("0x2222222222222222222222222222222222222222");
+
+      expect(mocks.createAndPersistOrder).not.toHaveBeenCalled();
+      expect(response.status).toHaveBeenCalledWith(400);
+      expect(response.json).toHaveBeenCalledWith(
+        expect.objectContaining({ code: "PAYOUT_ADDRESS_MISMATCH" }),
+      );
+    });
+
+    it("refuses a malformed address, which the old length check accepted", async () => {
+      const response = await checkout("not-an-address");
+
+      expect(mocks.createAndPersistOrder).not.toHaveBeenCalled();
+      expect(response.status).toHaveBeenCalledWith(400);
+      expect(response.json).toHaveBeenCalledWith(
+        expect.objectContaining({ code: "INVALID_PAYOUT_ADDRESS" }),
+      );
+    });
+  });
 });

@@ -12,6 +12,28 @@ const mockUseAssetCtx = vi.fn();
 const mockUseCandles = vi.fn();
 const mockUseSpotBalance = vi.fn();
 const mockUseMids = vi.fn();
+const mockUseUserState = vi.fn();
+const closePositionMutate = vi.fn();
+let closePositionPending = false;
+
+function position(coin: string, overrides: Record<string, unknown> = {}) {
+  return {
+    type: "oneWay",
+    position: {
+      coin,
+      szi: 0.5,
+      leverage: { type: "cross", value: 10 },
+      entryPx: 90,
+      positionValue: 50,
+      unrealizedPnl: 5.25,
+      returnOnEquity: 0.1111,
+      liquidationPx: 60,
+      marginUsed: 4.5,
+      maxLeverage: 50,
+      ...overrides,
+    },
+  };
+}
 
 function translate(key: string) {
   return (
@@ -36,8 +58,19 @@ function translate(key: string) {
       "coinDetail.loadingMarketPrice": "Loading market price...",
       "coinDetail.marketPriceUnavailable": "Market price unavailable.",
       "coinDetail.marketStatsUnavailable": "Market stats unavailable.",
+      "coinDetail.yourPosition": "Your position",
+      "coinDetail.positionSide": "Side",
+      "coinDetail.positionSize": "Size",
+      "coinDetail.positionEntry": "Entry price",
+      "coinDetail.positionPnl": "Unrealized PnL",
+      "coinDetail.positionLiquidation": "Liquidation price",
+      "coinDetail.positionLeverage": "Leverage",
+      "coinDetail.closePosition": "Close position",
       "common.retry": "Retry",
       "common.loading": "Loading...",
+      "common.long": "Long",
+      "common.short": "Short",
+      "common.closing": "Closing...",
     } as Record<string, string>
   )[key] ?? key;
 }
@@ -69,6 +102,24 @@ vi.mock("@repo/hyperliquid-sdk", () => ({
   useCandles: (coin: string, interval: string) => mockUseCandles(coin, interval),
   useSpotBalance: () => mockUseSpotBalance(),
   useMids: () => mockUseMids(),
+  useUserState: () => mockUseUserState(),
+  useClosePosition: () => ({
+    mutate: closePositionMutate,
+    isPending: closePositionPending,
+  }),
+}));
+
+vi.mock("../hooks/useHaptics", () => ({
+  useHaptics: () => ({
+    light: vi.fn(),
+    medium: vi.fn(),
+    success: vi.fn(),
+    error: vi.fn(),
+  }),
+}));
+
+vi.mock("../hooks/useToast", () => ({
+  useToast: () => ({ error: vi.fn(), success: vi.fn() }),
 }));
 
 vi.mock("@repo/ui", () => ({
@@ -163,6 +214,9 @@ describe("CoinDetailPage", () => {
         "HYPE-USD": "7.5",
       },
     });
+    mockUseUserState.mockReturnValue({ data: { assetPositions: [] } });
+    closePositionMutate.mockClear();
+    closePositionPending = false;
   });
 
   it("passes lite-candle inspection props to the chart and renders the scrub tooltip", () => {
@@ -241,5 +295,129 @@ describe("CoinDetailPage", () => {
     expect(screen.getByText("12.5000 HYPE")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Sell" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Buy" })).not.toBeInTheDocument();
+  });
+
+  /**
+   * The exposure a trader has to the market they are looking at, on the screen
+   * where they decide what to do about it. This page used to say nothing about
+   * positions at all, so the only way to see one — or close it — was to leave.
+   */
+  it("shows the open position for the market on screen", () => {
+    mockUseUserState.mockReturnValue({
+      data: { assetPositions: [position("BTC")] },
+    });
+
+    renderPage("/coin/BTC");
+
+    expect(screen.getByText("Your position")).toBeInTheDocument();
+    expect(screen.getByText("Long")).toBeInTheDocument();
+    expect(screen.getByText("0.5 BTC")).toBeInTheDocument();
+    expect(screen.getByText("$90.00")).toBeInTheDocument();
+    expect(screen.getByText("+$5.25 · +11.11%")).toBeInTheDocument();
+    expect(screen.getByText("$60.00")).toBeInTheDocument();
+    expect(screen.getByText("10×")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Close position" }),
+    ).toBeInTheDocument();
+  });
+
+  // No position, no card: an empty state here would only push the market stats
+  // down the page for the majority of visitors, who hold nothing.
+  it("says nothing at all when the user holds no position here", () => {
+    renderPage("/coin/BTC");
+
+    expect(screen.queryByText("Your position")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Close position" }),
+    ).not.toBeInTheDocument();
+  });
+
+  /**
+   * A HIP-3 market's coin carries its dex, `xyz:GOLD-USDC`, and the dex is part
+   * of the market's identity: a position on the bare `GOLD-USDC` belongs to a
+   * different market and must not be reported as this one's.
+   */
+  it("matches a HIP-3 position by its whole prefixed symbol", () => {
+    mockUseMarketData.mockReturnValue({
+      data: {
+        perp: [{ name: "xyz:GOLD-USDC", maxLeverage: 10 }],
+        spot: [],
+      },
+    });
+    mockUseUserState.mockReturnValue({
+      data: {
+        assetPositions: [
+          position("GOLD-USDC", { szi: 3 }),
+          position("xyz:GOLD-USDC", {
+            szi: -2,
+            unrealizedPnl: -4.25,
+            returnOnEquity: -0.1111,
+          }),
+        ],
+      },
+    });
+
+    renderPage(`/coin/${encodeURIComponent("xyz:GOLD-USDC")}`);
+
+    expect(screen.getByText("Short")).toBeInTheDocument();
+    expect(screen.queryByText("Long")).not.toBeInTheDocument();
+    expect(screen.getByText("−$4.25 · -11.11%")).toBeInTheDocument();
+  });
+
+  it("does not lend a prefixed position to the bare market's page", () => {
+    mockUseUserState.mockReturnValue({
+      data: { assetPositions: [position("xyz:BTC")] },
+    });
+
+    renderPage("/coin/BTC");
+
+    expect(screen.queryByText("Your position")).not.toBeInTheDocument();
+  });
+
+  /**
+   * The app's own liquidation estimate is optimistic in the direction that
+   * costs money, so the row shows the exchange's figure or nothing at all.
+   */
+  it("omits liquidation entirely when the exchange reports none", () => {
+    mockUseUserState.mockReturnValue({
+      data: { assetPositions: [position("BTC", { liquidationPx: null })] },
+    });
+
+    renderPage("/coin/BTC");
+
+    expect(screen.getByText("Entry price")).toBeInTheDocument();
+    expect(screen.queryByText("Liquidation price")).not.toBeInTheDocument();
+  });
+
+  // Closing goes out under the exchange's own coin, prefix and all — the route
+  // param may be spelled either way, the order may not.
+  it("closes the position under the coin the exchange knows", () => {
+    mockUseMarketData.mockReturnValue({
+      data: { perp: [{ name: "xyz:GOLD-USDC", maxLeverage: 10 }], spot: [] },
+    });
+    mockUseUserState.mockReturnValue({
+      data: { assetPositions: [position("xyz:GOLD-USDC")] },
+    });
+
+    renderPage(`/coin/${encodeURIComponent("GOLD-USDC:xyz")}`);
+
+    fireEvent.click(screen.getByRole("button", { name: "Close position" }));
+
+    expect(closePositionMutate).toHaveBeenCalledWith(
+      "xyz:GOLD-USDC",
+      expect.anything(),
+    );
+  });
+
+  // One close in flight is enough; a second tap would send a second order.
+  it("bars a second close while the first is in flight", () => {
+    closePositionPending = true;
+    mockUseUserState.mockReturnValue({
+      data: { assetPositions: [position("BTC")] },
+    });
+
+    renderPage("/coin/BTC");
+
+    expect(screen.getByRole("button", { name: "Closing..." })).toBeDisabled();
   });
 });

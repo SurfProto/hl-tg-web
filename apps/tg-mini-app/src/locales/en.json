@@ -189,7 +189,6 @@
     "tabFills": "Fills",
     "unrealizedPnl": "UNREALIZED PNL",
     "margin": "MARGIN",
-    "addMargin": "Add margin",
     "markPrice": "Mark",
     "loadingMarkPrice": "Loading...",
     "positionValue": "Position value",
@@ -224,7 +223,8 @@
     "closeFailed": "Close failed. Please try again.",
     "orderCancelled": "Order cancelled",
     "cancelFailed": "Cancel failed. Please try again.",
-    "positionLabel": "Position"
+    "positionLabel": "Position",
+    "addToPosition": "Add to position"
   },
   "points": {
     "loadFailed": "We couldn't load your points. Check your connection and try again.",
@@ -347,7 +347,9 @@
     "accountValue": "Account value",
     "readyToTrade": "Ready to trade",
     "openSettings": "Open account settings",
-    "traderFallback": "Trader"
+    "traderFallback": "Trader",
+    "walletBalance": "In your wallet",
+    "walletBalanceHint": "USDC on Arbitrum, held outside your trading account. Withdrawals arrive here. Deposit it to trade with it."
   },
   "accountSettings": {
     "title": "Account settings",
@@ -472,8 +474,6 @@
     "bridgeSubmitted": "Bridge submitted. Hyperliquid balance updates in about a minute.",
     "bridgeInfo": "Minimum bridge amount is 5 USDC. Only send USDC on Arbitrum One.",
     "bridgeFailed": "Bridge failed",
-    "usePrivyWallet": "Privy wallet",
-    "useExternalTrc20": "External TRC20",
     "trc20AddressLabel": "Your USDT (TRC20) address",
     "trc20AddressHint": "Enter your Tron wallet address to receive USDT",
     "trc20AddressPlaceholder": "T...",
@@ -515,9 +515,13 @@
     "available": "Available {{amount}} USDC",
     "withdrawButton": "Withdraw to Arbitrum",
     "submitting": "Submitting...",
-    "withdrawSubmitted": "Withdrawal submitted. Arrival is usually within 5 minutes.",
+    "withdrawSubmitted": "Withdrawal submitted. Your USDC lands in the wallet above, usually within 5 minutes.",
     "withdrawFee": "A 1 USDC fee is deducted from each withdrawal.",
-    "withdrawFailed": "Withdrawal failed"
+    "withdrawFailed": "Withdrawal failed",
+    "destinationHint": "This is your own P34k wallet on Arbitrum. Withdrawing moves USDC out of your trading account and into that wallet, so it stops counting toward your trading balance.",
+    "walletBalance": "In your wallet now",
+    "walletBalanceAmount": "{{amount}} USDC",
+    "exceedsBalance": "You can withdraw at most {{amount}} USDC."
   },
   "notifications": {
     "title": "Notifications",
@@ -596,7 +600,15 @@
     "loadingMarketPrice": "Loading market price...",
     "marketPriceUnavailable": "Market price unavailable.",
     "marketStats": "Market stats",
-    "marketStatsUnavailable": "Market stats unavailable."
+    "marketStatsUnavailable": "Market stats unavailable.",
+    "yourPosition": "Your position",
+    "positionSide": "Side",
+    "positionSize": "Size",
+    "positionEntry": "Entry price",
+    "positionPnl": "Unrealized PnL",
+    "positionLiquidation": "Liquidation price",
+    "positionLeverage": "Leverage",
+    "closePosition": "Close position"
   },
   "tradingSetup": {
     "titleReauth": "Reauthorize trading",
@@ -629,10 +641,6 @@
   "marketList": {
     "volume": "Vol {{volume}}",
     "priceUnavailable": "Price unavailable"
-  },
-  "numPad": {
-    "delete": "Delete",
-    "enterKey": "Enter {{key}}"
   },
   "swap": {
     "title": "Stable swap",

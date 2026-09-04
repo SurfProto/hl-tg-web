@@ -9,9 +9,13 @@ import {
 /**
  * Referral rungs, and what each pays.
  *
- * Weights are the 0 / 1 / 3 / 6 schedule from the moat design, expressed
- * against a unit rather than as literal amounts, so retuning the programme
- * means changing one number rather than four.
+ * Weights are expressed against a unit rather than as literal amounts, so
+ * retuning the programme means changing one number rather than six.
+ *
+ * There are two schedules, not one. Counting a dry invite as the zero it pays,
+ * the referrer runs 0 / 0 / 3 / 6 and the referee 0 / 1 / 1 / 2. The moat
+ * design used to describe both as a single "0 / 1 / 3 / 6" ladder, which is
+ * neither of them — it cannot produce the referee's 500 at `retained`.
  *
  * Two thirds of the referrer's total weight sits on `retained`. That is
  * deliberate: it is the only rung that cannot be compressed into an afternoon,

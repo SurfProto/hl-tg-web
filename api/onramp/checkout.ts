@@ -28,7 +28,11 @@ export default async function handler(request: any, response: any) {
 
     const body = parseJsonBody<CheckoutBody>(request);
     const amount = parseAmount(body.amount);
-    const payoutAddress = parsePayoutAddress(body.payoutAddress, config.network);
+    const payoutAddress = parsePayoutAddress(
+      body.payoutAddress,
+      config.network,
+      user.wallet_address,
+    );
 
     // Required, not optional: without it a retry starts a second real payment
     // order. Clients should reuse the same key for the same checkout attempt.

@@ -183,7 +183,6 @@
     "tabHistory": "История",
     "unrealizedPnl": "Нереализованный PnL",
     "margin": "Маржа",
-    "addMargin": "Добавить маржу",
     "markPrice": "Рынок",
     "loadingMarkPrice": "Загрузка...",
     "emptyTitle": "Нет открытых позиций",
@@ -224,7 +223,8 @@
     "closeFailed": "Не удалось закрыть. Попробуйте снова.",
     "orderCancelled": "Ордер отменён",
     "cancelFailed": "Не удалось отменить. Попробуйте снова.",
-    "positionLabel": "Позиция"
+    "positionLabel": "Позиция",
+    "addToPosition": "Увеличить позицию"
   },
   "points": {
     "referEarn": "Приглашай и зарабатывай",
@@ -349,7 +349,9 @@
     "accountValue": "Стоимость аккаунта",
     "readyToTrade": "Готово к торговле",
     "openSettings": "Открыть настройки аккаунта",
-    "traderFallback": "Трейдер"
+    "traderFallback": "Трейдер",
+    "walletBalance": "В кошельке",
+    "walletBalanceHint": "USDC в сети Arbitrum, вне торгового счёта. Сюда приходят выводы. Пополните счёт, чтобы торговать этими средствами."
   },
   "accountSettings": {
     "title": "Настройки аккаунта",
@@ -475,8 +477,6 @@
     "amountBelowMinimum": "Минимальная сумма {{amount}} {{currency}}.",
     "amountAboveMaximum": "Максимальная сумма {{amount}} {{currency}}.",
     "authRequired": "Нужно войти, чтобы продолжить.",
-    "usePrivyWallet": "Privy кошелёк",
-    "useExternalTrc20": "Внешний TRC20",
     "trc20AddressLabel": "Ваш адрес USDT (TRC20)",
     "trc20AddressHint": "Введите адрес Tron-кошелька для получения USDT",
     "trc20AddressPlaceholder": "T...",
@@ -518,9 +518,13 @@
     "available": "Доступно {{amount}} USDC",
     "withdrawButton": "Вывести на Arbitrum",
     "submitting": "Отправка...",
-    "withdrawSubmitted": "Запрос на вывод отправлен. Обычно поступает в течение 5 минут.",
+    "withdrawSubmitted": "Запрос на вывод отправлен. USDC поступит в кошелёк выше, обычно в течение 5 минут.",
     "withdrawFee": "Комиссия 1 USDC взимается за каждый вывод.",
-    "withdrawFailed": "Не удалось вывести средства"
+    "withdrawFailed": "Не удалось вывести средства",
+    "destinationHint": "Это ваш собственный кошелёк P34k в сети Arbitrum. При выводе USDC уходит с торгового счёта в этот кошелёк и перестаёт учитываться в торговом балансе.",
+    "walletBalance": "Сейчас в кошельке",
+    "walletBalanceAmount": "{{amount}} USDC",
+    "exceedsBalance": "Максимальная сумма вывода — {{amount}} USDC."
   },
   "notifications": {
     "title": "Уведомления",
@@ -599,7 +603,15 @@
     "loadingMarketPrice": "Загрузка цены...",
     "marketPriceUnavailable": "Цена недоступна.",
     "marketStats": "Статистика рынка",
-    "marketStatsUnavailable": "Статистика рынка недоступна."
+    "marketStatsUnavailable": "Статистика рынка недоступна.",
+    "yourPosition": "Ваша позиция",
+    "positionSide": "Направление",
+    "positionSize": "Размер",
+    "positionEntry": "Цена входа",
+    "positionPnl": "Нереализованный PnL",
+    "positionLiquidation": "Цена ликвидации",
+    "positionLeverage": "Плечо",
+    "closePosition": "Закрыть позицию"
   },
   "tradingSetup": {
     "titleReauth": "Переавторизовать торговлю",
@@ -632,10 +644,6 @@
   "marketList": {
     "volume": "Объём {{volume}}",
     "priceUnavailable": "Цена недоступна"
-  },
-  "numPad": {
-    "delete": "Удалить",
-    "enterKey": "Ввести {{key}}"
   },
   "swap": {
     "title": "Обмен стейблов",

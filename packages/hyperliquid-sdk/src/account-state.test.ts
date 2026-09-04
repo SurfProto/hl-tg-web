@@ -135,22 +135,65 @@ describe("getNormalizedTotalEquity", () => {
     ).toBe(145);
   });
 
-  it("adds current position values on top of idle available balance", () => {
+  // The account that exposed this: $28.17 free, $8.06 of margin behind a 10x
+  // SOFTBANK long marked at a $2.11 loss. The screen read $126.23, because
+  // 3.084 × $31.83 = $98.16 of notional was being added as though it were
+  // money the account held. The true figure was $34.12.
+  it("counts margin and unrealised PnL, never notional", () => {
+    const equity = getNormalizedTotalEquity({
+      availableBalance: 28.17,
+      assetPositions: [
+        {
+          type: "oneWay",
+          position: {
+            marginUsed: 8.06,
+            unrealizedPnl: -2.11,
+            // Present, and deliberately ignored.
+            positionValue: 98.16,
+          },
+        } as any,
+      ],
+    });
+
+    expect(equity).toBeCloseTo(34.12, 2);
+    expect(equity).not.toBeCloseTo(126.33, 2);
+  });
+
+  it("sums across several positions", () => {
     expect(
       getNormalizedTotalEquity({
         availableBalance: 120,
         assetPositions: [
-          {
-            type: "oneWay",
-            position: { positionValue: 35.5 },
-          } as any,
-          {
-            type: "oneWay",
-            position: { positionValue: 64.5 },
-          } as any,
+          { type: "oneWay", position: { marginUsed: 35.5, unrealizedPnl: 1.5 } } as any,
+          { type: "oneWay", position: { marginUsed: 64.5, unrealizedPnl: -1.5 } } as any,
         ],
       }),
-    ).toBe(220);
+    ).toBeCloseTo(220, 6);
+  });
+
+  // A losing position pulls equity below the free balance. Under the old rule
+  // it could only ever add.
+  it("lets a loss reduce equity", () => {
+    expect(
+      getNormalizedTotalEquity({
+        availableBalance: 10,
+        assetPositions: [
+          { type: "oneWay", position: { marginUsed: 5, unrealizedPnl: -8 } } as any,
+        ],
+      }),
+    ).toBeCloseTo(7, 6);
+  });
+
+  it("ignores values that are not finite", () => {
+    expect(
+      getNormalizedTotalEquity({
+        availableBalance: 50,
+        assetPositions: [
+          { type: "oneWay", position: { marginUsed: Number.NaN, unrealizedPnl: 2 } } as any,
+          { type: "oneWay", position: {} } as any,
+        ],
+      }),
+    ).toBeCloseTo(52, 6);
   });
 });
 
@@ -508,19 +551,29 @@ describe("buildAccountState", () => {
     });
   });
 
-  it("reports equity as idle balance plus open position value, not the raw account value", () => {
+  // This test used to assert the opposite, in as many words: "800 idle plus a
+  // 1500 position is the number the app shows". It was a deliberate choice and
+  // it was wrong -- a 1500 notional position held on 200 of margin is exposure,
+  // not money, and counting it made the hero figure grow with leverage. The
+  // exchange's own accountValue said 1000.
+  it("reports equity as collateral plus unrealised PnL, not notional", () => {
     const state = build({
       baseState: perpState({
         totalRawUsd: "1000",
         totalMarginUsed: "200",
         accountValue: "1000",
-        assetPositions: [position("BTC", { positionValue: "1500" })],
+        assetPositions: [
+          position("BTC", {
+            positionValue: "1500",
+            marginUsed: "200",
+            unrealizedPnl: "0",
+          }),
+        ],
       }),
     });
 
-    // Raw accountValue says 1000; 800 idle plus a 1500 position is the number
-    // the app shows.
-    expect(state.marginSummary.accountValue).toBe(2300);
+    // 800 idle + 200 margin + 0 PnL, which is what the exchange reports too.
+    expect(state.marginSummary.accountValue).toBe(1000);
     expect(state.marginSummary.totalMarginUsed).toBe(200);
   });
 

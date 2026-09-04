@@ -370,10 +370,16 @@ export function TradePage() {
   const liquidationPx = useMemo(() => {
     if (!isPerp || amountNum === 0 || !currentPrice || leverage <= 1)
       return null;
+    // Still an estimate for a fresh isolated position — cross margin and
+    // existing positions move the real number — but with the maintenance
+    // margin term included: Hyperliquid's maintenance rate is half the
+    // initial margin at max leverage, and omitting it showed liquidation
+    // further away than it is, on the flattering side of wrong.
+    const maintenanceMarginRate = 1 / (2 * maxLeverage);
     return activeSide === "buy"
-      ? currentPrice * (1 - 1 / leverage)
-      : currentPrice * (1 + 1 / leverage);
-  }, [amountNum, currentPrice, isPerp, leverage, activeSide]);
+      ? currentPrice * (1 - 1 / leverage + maintenanceMarginRate)
+      : currentPrice * (1 + 1 / leverage - maintenanceMarginRate);
+  }, [amountNum, currentPrice, isPerp, leverage, activeSide, maxLeverage]);
 
   const estimatedProtectionSize = useMemo(() => {
     if (!isPerp || amountNum <= 0 || !currentPrice) return 0;

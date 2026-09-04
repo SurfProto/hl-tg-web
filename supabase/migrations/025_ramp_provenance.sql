@@ -1,3 +1,7 @@
+-- Renamed 024_ → 025_: two migrations shipped as 024 from parallel branches
+-- (price_alerts landed first and was applied to production under that number).
+-- Content unchanged; every statement is guarded, so re-running is a no-op.
+--
 -- Which rail did this money come in on?
 --
 -- Deposit detection is deliberately rail-agnostic: `sync_deposits` reads

@@ -163,4 +163,52 @@ describe("TelegramAuthGate", () => {
     expect(clearStoredAgentKeyMock).toHaveBeenCalledWith("0xalice");
     expect(clearStoredAgentKeyMock).not.toHaveBeenCalledWith("0xbob");
   });
+
+  /**
+   * Same boundary, subtler shape: the Privy user stays but their wallet
+   * changes. The departing wallet's key must not linger just because the
+   * login did.
+   */
+  it("deletes the old wallet's trading key when the same user changes wallet", async () => {
+    // This file has no beforeEach reset; the previous test's clear call would
+    // otherwise bleed into the not-called assertion below.
+    clearStoredAgentKeyMock.mockClear();
+    installTelegramWebAppMock();
+    mockGetAccessToken.mockResolvedValue("access-token");
+    mockUsePrivy.mockReturnValue({
+      ready: true,
+      authenticated: true,
+      loginWithTelegram: vi.fn(),
+      user: { id: "did:privy:user:alice", wallet: { address: "0xold" } },
+    });
+
+    let view!: ReturnType<typeof render>;
+    await act(async () => {
+      view = render(
+        <TelegramAuthGate>
+          <div>Protected app</div>
+        </TelegramAuthGate>,
+      );
+      await Promise.resolve();
+    });
+    expect(clearStoredAgentKeyMock).not.toHaveBeenCalled();
+
+    mockUsePrivy.mockReturnValue({
+      ready: true,
+      authenticated: true,
+      loginWithTelegram: vi.fn(),
+      user: { id: "did:privy:user:alice", wallet: { address: "0xnew" } },
+    });
+    await act(async () => {
+      view.rerender(
+        <TelegramAuthGate>
+          <div>Protected app</div>
+        </TelegramAuthGate>,
+      );
+      await Promise.resolve();
+    });
+
+    expect(clearStoredAgentKeyMock).toHaveBeenCalledWith("0xold");
+    expect(clearStoredAgentKeyMock).not.toHaveBeenCalledWith("0xnew");
+  });
 });

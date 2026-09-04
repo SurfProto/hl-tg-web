@@ -1503,6 +1503,30 @@ export class HyperliquidClient {
     }));
   }
 
+  /**
+   * Ask the exchange what became of a client order id. Used when a submission
+   * failed ambiguously: resting in the book, or present in fills, means the
+   * order made it regardless of what the transport said on the way back.
+   */
+  private async findOrderOutcome(
+    cloid: string,
+  ): Promise<{ status: "resting" | "filled"; oid: number } | null> {
+    const [openOrders, fills] = await Promise.all([
+      this.getOpenOrders().catch(() => [] as OpenOrder[]),
+      this.getFills().catch(() => [] as Fill[]),
+    ]);
+
+    const resting = openOrders.find((openOrder) => openOrder.cloid === cloid);
+    if (resting) {
+      return { oid: resting.oid, status: "resting" };
+    }
+    const filled = fills.find((fill) => fill.cloid === cloid);
+    if (filled) {
+      return { oid: filled.oid, status: "filled" };
+    }
+    return null;
+  }
+
   async placeOrder(order: Order) {
     let normalized: NormalizedOrderContext | undefined;
     let leverageMayHaveChanged = false;
@@ -1548,6 +1572,29 @@ export class HyperliquidClient {
         }),
       );
     } catch (error) {
+      // The truth might be "placed". A timeout or a dropped response leaves
+      // the order's fate unknown, and reporting "failed" to a user whose
+      // order actually rests invites a doubled resubmission — the in-memory
+      // double-tap guard cannot cover that, because the user is *meant* to
+      // retry a failure. The cloid travels with the order precisely so the
+      // exchange can be asked; a definitive rejection reconciles to nothing
+      // and falls through to the original error. If the book is merely slow
+      // to reflect a landed order, this misses and the user sees a failure —
+      // no worse than before, and the Orders tab tells the rest.
+      if (normalized?.cloid) {
+        const outcome = await this.findOrderOutcome(normalized.cloid).catch(
+          () => null,
+        );
+        if (outcome) {
+          return {
+            cloid: normalized.cloid,
+            oid: outcome.oid,
+            reconciled: true,
+            status: outcome.status,
+          };
+        }
+      }
+
       this.normalizeExchangeError(
         "placeOrder",
         {

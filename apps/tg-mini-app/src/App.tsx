@@ -242,10 +242,10 @@ export function TelegramAuthGate({ children }: { children: React.ReactNode }) {
     if (!ready) return;
 
     const currentUserId = authenticated ? (user?.id ?? null) : null;
-    if (
+    const accountChanged =
       previousUserId.current !== null &&
-      previousUserId.current !== currentUserId
-    ) {
+      previousUserId.current !== currentUserId;
+    if (accountChanged) {
       queryClient.clear();
       // The end of an account's session on this device is the moment its
       // trading key must stop existing here: the key can sign orders for up
@@ -262,6 +262,15 @@ export function TelegramAuthGate({ children }: { children: React.ReactNode }) {
     if (currentUserId === null) {
       previousWallet.current = null;
     } else if (user?.wallet?.address) {
+      // Same login, different wallet is the same boundary: the departing
+      // wallet's key must not linger just because the Privy user stayed.
+      if (
+        !accountChanged &&
+        previousWallet.current &&
+        previousWallet.current !== user.wallet.address
+      ) {
+        clearStoredAgentKey(previousWallet.current);
+      }
       // The embedded wallet can arrive a beat after the user id; keep the
       // last known address until the new one exists.
       previousWallet.current = user.wallet.address;

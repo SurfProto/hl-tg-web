@@ -1670,3 +1670,62 @@ export async function reviewWnftConversion(
   );
   return rows[0] ? mapWnftRow(rows[0]) : null;
 }
+
+// ---------------------------------------------------------------------------
+// Growth funnel inputs
+// ---------------------------------------------------------------------------
+
+export async function listUserAttributions(
+  config: RewardsConfig,
+): Promise<Array<{ userId: string; source: "campaign" | "referral" | "direct"; campaignCode: string | null; firstSeenAt: string }>> {
+  const rows = await supabaseRequest<
+    Array<{ user_id: string; source: string; campaign_code: string | null; first_seen_at: string }>
+  >(config, "user_attribution?select=user_id,source,campaign_code,first_seen_at", {
+    headers: buildHeaders(config),
+  });
+  return rows.map((row) => ({
+    userId: row.user_id,
+    source: row.source as "campaign" | "referral" | "direct",
+    campaignCode: row.campaign_code,
+    firstSeenAt: row.first_seen_at,
+  }));
+}
+
+/** Users with at least one real inbound deposit. */
+export async function getFundedUserIds(config: RewardsConfig): Promise<string[]> {
+  const rows = await supabaseRequest<Array<{ user_id: string }>>(
+    config,
+    "hl_deposits?is_external=eq.true&amount_usd=gt.0&select=user_id",
+    { headers: buildHeaders(config) },
+  );
+  return [...new Set(rows.map((row) => row.user_id))];
+}
+
+/** Last reconciled trade per user, in one query. */
+export async function getLastActivityByUser(
+  config: RewardsConfig,
+): Promise<Array<{ userId: string; lastOccurredAt: string }>> {
+  const rows = await supabaseRequest<
+    Array<{ user_id: string; last_occurred_at: string }>
+  >(config, "rpc/growth_last_activity", {
+    body: JSON.stringify({}),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
+  return rows.map((row) => ({ userId: row.user_id, lastOccurredAt: row.last_occurred_at }));
+}
+
+/** Operator-seeded campaign spend. */
+export async function listCampaignSpend(
+  config: RewardsConfig,
+): Promise<Array<{ campaignCode: string; spendUsd: number }>> {
+  const rows = await supabaseRequest<
+    Array<{ campaign_code: string; spend_usd: string | number }>
+  >(config, "campaign_spend?select=campaign_code,spend_usd", {
+    headers: buildHeaders(config),
+  });
+  return rows.map((row) => ({
+    campaignCode: row.campaign_code,
+    spendUsd: Number(row.spend_usd),
+  }));
+}

@@ -1582,3 +1582,91 @@ export async function upsertWnftProvisional(
     },
   );
 }
+
+export interface WnftConversionRecord {
+  id: string;
+  userId: string;
+  status: "provisional" | "confirmed" | "rejected";
+  qualifyingOrderCount: number;
+  qualifyingNotionalUsd: number;
+  convertedAt: string | null;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  reviewReason: string | null;
+  createdAt: string;
+}
+
+function mapWnftRow(row: {
+  id: string;
+  user_id: string;
+  status: WnftConversionRecord["status"];
+  qualifying_order_count: string | number;
+  qualifying_notional_usd: string | number;
+  converted_at: string | null;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  review_reason: string | null;
+  created_at: string;
+}): WnftConversionRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    status: row.status,
+    qualifyingOrderCount: Number(row.qualifying_order_count),
+    qualifyingNotionalUsd: Number(row.qualifying_notional_usd),
+    convertedAt: row.converted_at,
+    reviewedAt: row.reviewed_at,
+    reviewedBy: row.reviewed_by,
+    reviewReason: row.review_reason,
+    createdAt: row.created_at,
+  };
+}
+
+/** WNFT records for the review queue, newest conversion first. */
+export async function listWnftConversions(
+  config: RewardsConfig,
+  status?: WnftConversionRecord["status"],
+): Promise<WnftConversionRecord[]> {
+  const statusFilter = status
+    ? `&status=eq.${encodeURIComponent(status)}`
+    : "";
+  const rows = await supabaseRequest<Parameters<typeof mapWnftRow>[0][]>(
+    config,
+    `wnft_conversions?select=*${statusFilter}&order=converted_at.desc.nullslast`,
+    { headers: buildHeaders(config) },
+  );
+  return rows.map(mapWnftRow);
+}
+
+/**
+ * Confirm or reject one provisional WNFT, recording who and why.
+ *
+ * Guarded to `status=eq.provisional`: a record already decided is never
+ * re-decided by this path, and the row's own check constraint refuses a
+ * terminal status without the reviewer and time this sets. Returns the updated
+ * record, or null when nothing matched (already reviewed, or no such record).
+ */
+export async function reviewWnftConversion(
+  config: RewardsConfig,
+  userId: string,
+  decision: "confirmed" | "rejected",
+  reviewedBy: string,
+  reason: string,
+): Promise<WnftConversionRecord | null> {
+  const rows = await supabaseRequest<Parameters<typeof mapWnftRow>[0][]>(
+    config,
+    `wnft_conversions?user_id=eq.${encodeURIComponent(userId)}&status=eq.provisional`,
+    {
+      body: JSON.stringify({
+        status: decision,
+        reviewed_at: new Date().toISOString(),
+        reviewed_by: reviewedBy,
+        review_reason: reason,
+        updated_at: new Date().toISOString(),
+      }),
+      headers: buildHeaders(config, { Prefer: "return=representation" }),
+      method: "PATCH",
+    },
+  );
+  return rows[0] ? mapWnftRow(rows[0]) : null;
+}

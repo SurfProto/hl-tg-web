@@ -136,6 +136,13 @@ export interface Order {
   coin: string;
   side: OrderSide;
   sizeUsd: number;
+  /**
+   * Exact base size, when the caller already has one. Without it the size is
+   * derived as sizeUsd / price, and a float round-trip near a lot boundary
+   * can truncate away one lot — modifying a resting order's price must not
+   * change how much of it there is.
+   */
+  baseSz?: number;
   limitPx?: number;
   orderType: OrderType;
   reduceOnly: boolean;

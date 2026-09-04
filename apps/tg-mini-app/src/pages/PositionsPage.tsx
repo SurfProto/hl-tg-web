@@ -1,11 +1,13 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   useUserState,
   useOpenOrders,
   useFills,
+  useCancelAllOrders,
   useCancelOrder,
+  useModifyOrder,
   useClosePosition,
   useHistoricalOrders,
   useMarketPrice,
@@ -248,17 +250,23 @@ interface OpenOrderCardProps {
   order: any;
   linkedPosition?: any;
   pendingCancelOid: number | null;
+  pendingModifyOid: number | null;
   onCancel: (order: any) => void;
+  onModify: (order: any, newPrice: number) => void;
 }
 
 function OpenOrderCard({
   order,
   linkedPosition,
   pendingCancelOid,
+  pendingModifyOid,
   onCancel,
+  onModify,
 }: OpenOrderCardProps) {
   const haptics = useHaptics();
   const { t } = useTranslation();
+  // null = editor closed; a string = the price being typed.
+  const [draftPrice, setDraftPrice] = useState<string | null>(null);
   const { data: orderCurrentPrice, isError, isLoading } = useMarketPrice(order.coin);
   const priceState = getAsyncValueState({
     hasValue: orderCurrentPrice != null,
@@ -302,8 +310,8 @@ function OpenOrderCard({
                     : protectionKind === "takeProfit"
                       ? "bg-positive/10 text-positive"
                       : order.side === "buy"
-                        ? "bg-primary/10 text-primary"
-                        : "bg-secondary/10 text-secondary"
+                        ? "bg-positive/10 text-positive"
+                        : "bg-negative/10 text-negative"
                 }`}
               >
                 {orderBadgeLabel}
@@ -318,20 +326,77 @@ function OpenOrderCard({
             </div>
           </div>
         </div>
-        <button
-          onClick={(event) => {
-            event.stopPropagation();
-            haptics.medium();
-            onCancel(order);
-          }}
-          disabled={pendingCancelOid === order.oid}
-          className="rounded-lg bg-negative/10 px-3 py-2 text-xs font-semibold text-negative transition-colors active:bg-negative/20 disabled:opacity-50"
-        >
-          {pendingCancelOid === order.oid
-            ? t("common.canceling")
-            : t("common.cancel")}
-        </button>
+        <div className="flex gap-2">
+          {/* Only a resting limit order has a price worth editing: a trigger
+              order's meaningful number is its trigger, managed in the
+              protection sheet. */}
+          {!order.isTrigger && order.limitPx ? (
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                haptics.light();
+                setDraftPrice((open) =>
+                  open === null ? String(order.limitPx) : null,
+                );
+              }}
+              disabled={pendingModifyOid === order.oid}
+              className="rounded-lg border border-border bg-surface px-3 py-2 text-xs font-semibold text-foreground transition-colors active:bg-[var(--color-primary-soft-strong)] disabled:opacity-50"
+            >
+              {t("common.edit")}
+            </button>
+          ) : null}
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              haptics.medium();
+              onCancel(order);
+            }}
+            disabled={pendingCancelOid === order.oid}
+            className="rounded-lg bg-negative/10 px-3 py-2 text-xs font-semibold text-negative transition-colors active:bg-negative/20 disabled:opacity-50"
+          >
+            {pendingCancelOid === order.oid
+              ? t("common.canceling")
+              : t("common.cancel")}
+          </button>
+        </div>
       </div>
+
+      {draftPrice !== null && (
+        <div className="mt-3 flex items-center gap-2 border-t border-separator pt-3">
+          <label htmlFor={`edit-price-${order.oid}`} className="editorial-kicker flex-shrink-0">
+            {t("positions.limitPrice")}
+          </label>
+          <input
+            id={`edit-price-${order.oid}`}
+            type="number"
+            inputMode="decimal"
+            autoComplete="off"
+            value={draftPrice}
+            onChange={(event) => setDraftPrice(event.target.value)}
+            className="editorial-mono min-w-0 flex-1 rounded-lg border border-separator bg-surface px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const newPrice = parseFloat(draftPrice);
+              if (!Number.isFinite(newPrice) || newPrice <= 0) return;
+              haptics.medium();
+              setDraftPrice(null);
+              onModify(order, newPrice);
+            }}
+            disabled={
+              pendingModifyOid === order.oid ||
+              !(parseFloat(draftPrice) > 0) ||
+              parseFloat(draftPrice) === order.limitPx
+            }
+            className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
+          >
+            {pendingModifyOid === order.oid
+              ? t("common.saving")
+              : t("common.save")}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -408,6 +473,14 @@ export function PositionsPage() {
     [fills],
   );
   const cancelOrder = useCancelOrder();
+  const cancelAllOrders = useCancelAllOrders();
+  const modifyOrder = useModifyOrder();
+  const [pendingModifyOid, setPendingModifyOid] = useState<number | null>(null);
+  // Cancel-all takes two taps: the first arms it for a few seconds, the
+  // second fires. Same reasoning as everywhere else money moves in one tap —
+  // a mis-tap must not be able to sweep every resting order.
+  const [cancelAllArmed, setCancelAllArmed] = useState(false);
+  const cancelAllDisarmRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closePosition = useClosePosition();
   const upsertPositionProtection = useUpsertPositionProtection();
 
@@ -539,6 +612,55 @@ export function PositionsPage() {
 
       {activeTab === "orders" && (
         <div className="space-y-3">
+          {openOrders && openOrders.length > 1 && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!cancelAllArmed) {
+                    haptics.light();
+                    setCancelAllArmed(true);
+                    if (cancelAllDisarmRef.current) {
+                      clearTimeout(cancelAllDisarmRef.current);
+                    }
+                    cancelAllDisarmRef.current = setTimeout(
+                      () => setCancelAllArmed(false),
+                      4000,
+                    );
+                    return;
+                  }
+                  haptics.medium();
+                  setCancelAllArmed(false);
+                  cancelAllOrders.mutate(undefined, {
+                    onSuccess: () => {
+                      haptics.success();
+                      toast.success(t("positions.allOrdersCancelled"));
+                    },
+                    onError: (error) => {
+                      haptics.error();
+                      toast.error(
+                        error instanceof Error
+                          ? error.message
+                          : t("positions.cancelFailed"),
+                      );
+                    },
+                  });
+                }}
+                disabled={cancelAllOrders.isPending}
+                className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors disabled:opacity-50 ${
+                  cancelAllArmed
+                    ? "bg-negative text-white"
+                    : "bg-negative/10 text-negative active:bg-negative/20"
+                }`}
+              >
+                {cancelAllOrders.isPending
+                  ? t("common.canceling")
+                  : cancelAllArmed
+                    ? t("positions.cancelAllConfirm")
+                    : t("positions.cancelAll")}
+              </button>
+            </div>
+          )}
           {!openOrders || openOrders.length === 0 ? (
             <PositionsEmptyState />
           ) : (
@@ -548,6 +670,45 @@ export function PositionsPage() {
                 order={order}
                 linkedPosition={positionsByCoin.get(order.coin)}
                 pendingCancelOid={pendingCancelOid}
+                pendingModifyOid={pendingModifyOid}
+                onModify={(targetOrder, newPrice) => {
+                  setPendingModifyOid(targetOrder.oid);
+                  modifyOrder.mutate(
+                    {
+                      oid: targetOrder.oid,
+                      order: {
+                        coin: targetOrder.coin,
+                        side: targetOrder.side,
+                        // The exact resting size travels as baseSz; sizeUsd is
+                        // still supplied for validation, but the size the
+                        // exchange keeps must not change because the price did.
+                        sizeUsd: newPrice * targetOrder.sz,
+                        baseSz: targetOrder.sz,
+                        orderType: "limit",
+                        reduceOnly: Boolean(targetOrder.reduceOnly),
+                        marketType: "perp",
+                        limitPx: newPrice,
+                        tif: targetOrder.tif ?? "Gtc",
+                      },
+                    },
+                    {
+                      onSuccess: () => {
+                        setPendingModifyOid(null);
+                        haptics.success();
+                        toast.success(t("positions.orderModified"));
+                      },
+                      onError: (error) => {
+                        setPendingModifyOid(null);
+                        haptics.error();
+                        toast.error(
+                          error instanceof Error
+                            ? error.message
+                            : t("positions.modifyFailed"),
+                        );
+                      },
+                    },
+                  );
+                }}
                 onCancel={(targetOrder) => {
                   setPendingCancelOid(targetOrder.oid);
                   cancelOrder.mutate(

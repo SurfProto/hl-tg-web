@@ -227,7 +227,12 @@
     "positionLabel": "Позиция",
     "addToPosition": "Увеличить позицию",
     "tabFunding": "Фандинг",
-    "realizedPnlRecent": "Реализованный PnL · за период"
+    "realizedPnlRecent": "Реализованный PnL · за период",
+    "cancelAll": "Отменить все",
+    "cancelAllConfirm": "Нажмите ещё раз — отменить все",
+    "allOrdersCancelled": "Все ордера отменены",
+    "orderModified": "Ордер обновлён",
+    "modifyFailed": "Не удалось обновить. Попробуйте снова."
   },
   "points": {
     "referEarn": "Приглашай и зарабатывай",

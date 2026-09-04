@@ -227,7 +227,12 @@
     "positionLabel": "Position",
     "addToPosition": "Add to position",
     "tabFunding": "Funding",
-    "realizedPnlRecent": "Realized PnL · recent"
+    "realizedPnlRecent": "Realized PnL · recent",
+    "cancelAll": "Cancel all",
+    "cancelAllConfirm": "Tap again to cancel all",
+    "allOrdersCancelled": "All orders cancelled",
+    "orderModified": "Order updated",
+    "modifyFailed": "Update failed. Please try again."
   },
   "points": {
     "loadFailed": "We couldn't load your points. Check your connection and try again.",

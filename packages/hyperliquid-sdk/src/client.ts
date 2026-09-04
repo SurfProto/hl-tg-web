@@ -1059,7 +1059,7 @@ export class HyperliquidClient {
         ? (executionContext?.rawExecutionPrice ??
           getAggressiveMarketPrice(referencePrice, order.side))
         : referencePrice;
-    const rawSize = order.sizeUsd / referencePrice;
+    const rawSize = order.baseSz ?? order.sizeUsd / referencePrice;
     const formattedPrice = this.formatPrice(rawPrice, market);
 
     return {

@@ -390,7 +390,14 @@ function App() {
         config={{
           defaultChain: arbitrum,
           supportedChains: [arbitrum],
-          loginMethods: ["email", "sms", "telegram"],
+          // Telegram only. The app runs inside a Telegram mini app and logs in
+          // seamlessly from that context; email and sms were configured login
+          // UIs no one reaches here. Deposits are unaffected — every deposit
+          // path (Privy funding, the HL bridge, the fiat on-ramp, a direct
+          // send to the address) depends on the embedded wallet below, not on
+          // any contact login method. Privy's own *funding* methods are
+          // configured in the Privy dashboard, independently of this list.
+          loginMethods: ["telegram"],
           appearance: {
             theme: "light",
             accentColor: "#3b82f6",

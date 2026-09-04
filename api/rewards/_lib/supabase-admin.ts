@@ -5,7 +5,9 @@ import type {
   RewardLedgerEntry,
 } from "../../../packages/types/src";
 import { buildHeaders, supabaseRequest } from "../../_lib/supabase";
+import type { BuilderFillRow } from "./builder-fills";
 import type { RewardsConfig } from "./config";
+import type { WnftQualification } from "./wnft";
 
 export interface RewardsUserRow {
   id: string;
@@ -1478,4 +1480,105 @@ export async function getReferralFunnel(config: RewardsConfig): Promise<Referral
     retained: Number(row?.retained ?? 0),
     traded: Number(row?.traded ?? 0),
   };
+}
+
+// ---------------------------------------------------------------------------
+// WNFT conversion records
+// ---------------------------------------------------------------------------
+
+/** Every user with a wallet, id and lowercased address, for wallet→user joins. */
+export async function getWalletUsers(
+  config: RewardsConfig,
+): Promise<Array<{ id: string; walletAddress: string }>> {
+  const rows = await supabaseRequest<
+    Array<{ id: string; wallet_address: string | null }>
+  >(config, "users?wallet_address=not.is.null&select=id,wallet_address", {
+    headers: buildHeaders(config),
+  });
+  return rows
+    .filter((row) => row.wallet_address)
+    .map((row) => ({ id: row.id, walletAddress: row.wallet_address!.toLowerCase() }));
+}
+
+/** One wallet's reconciled builder fills. The column is stored lowercase. */
+export async function getBuilderFillsForWallet(
+  config: RewardsConfig,
+  walletAddress: string,
+): Promise<BuilderFillRow[]> {
+  const rows = await supabaseRequest<
+    Array<{
+      builder_fee_usd: string | number;
+      coin: string;
+      is_trigger: boolean;
+      occurred_at: string;
+      px: string | number;
+      row_key: string;
+      side: string;
+      sz: string | number;
+      wallet_address: string;
+    }>
+  >(
+    config,
+    `builder_fills?wallet_address=eq.${encodeURIComponent(walletAddress.toLowerCase())}` +
+      `&select=builder_fee_usd,coin,is_trigger,occurred_at,px,row_key,side,sz,wallet_address` +
+      `&order=occurred_at.asc`,
+    { headers: buildHeaders(config) },
+  );
+  return rows.map((row) => ({
+    builderFeeUsd: Number(row.builder_fee_usd),
+    coin: row.coin,
+    isTrigger: row.is_trigger,
+    occurredAt: row.occurred_at,
+    px: Number(row.px),
+    rowKey: row.row_key,
+    side: row.side,
+    sz: Number(row.sz),
+    walletAddress: row.wallet_address,
+  }));
+}
+
+/** The review status of a user's WNFT record, or null if there is none. */
+export async function getWnftStatus(
+  config: RewardsConfig,
+  userId: string,
+): Promise<"provisional" | "confirmed" | "rejected" | null> {
+  const rows = await supabaseRequest<Array<{ status: string }>>(
+    config,
+    `wnft_conversions?user_id=eq.${encodeURIComponent(userId)}&select=status&limit=1`,
+    { headers: buildHeaders(config) },
+  );
+  return (rows[0]?.status as "provisional" | "confirmed" | "rejected") ?? null;
+}
+
+/**
+ * Record — or refresh the evidence on — a provisional WNFT conversion.
+ *
+ * Never touches a reviewed record: the caller must skip confirmed/rejected
+ * users. builder_fills are append-only, so qualification is monotonic and this
+ * only ever moves an account into or within `provisional`, never out of a
+ * human decision.
+ */
+export async function upsertWnftProvisional(
+  config: RewardsConfig,
+  userId: string,
+  qualification: WnftQualification,
+): Promise<void> {
+  await supabaseRequest<null>(
+    config,
+    "wnft_conversions?on_conflict=user_id",
+    {
+      body: JSON.stringify({
+        user_id: userId,
+        status: "provisional",
+        qualifying_order_count: qualification.qualifyingOrderCount,
+        qualifying_notional_usd: qualification.qualifyingNotionalUsd,
+        converted_at: qualification.convertedAt,
+        updated_at: new Date().toISOString(),
+      }),
+      headers: buildHeaders(config, {
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      }),
+      method: "POST",
+    },
+  );
 }

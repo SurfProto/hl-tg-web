@@ -33,6 +33,14 @@ export interface RewardsConfig {
   weeklyRewardPoolUsd: number;
   weeklyTopTraderCohortSize: number;
   weeklyWinnerCount: number;
+  /**
+   * WNFT conversion thresholds. Policy, not constants: the floor is derived
+   * from the bounty and attack cost, so it lives in env and defaults to a
+   * placeholder that must be set deliberately before the program relies on it.
+   */
+  wnftMinOrderNotionalUsd: number;
+  wnftSameOrderWindowSeconds: number;
+  wnftMinQualifyingOrders: number;
   xpPerUsd: number;
 }
 
@@ -106,6 +114,12 @@ export function getRewardsConfig(env: NodeJS.ProcessEnv = process.env): RewardsC
       Math.floor(getNumber(env, "REWARDS_WEEKLY_TOP_TRADER_COHORT_SIZE", 10)),
     ),
     weeklyWinnerCount,
+    wnftMinOrderNotionalUsd: getNumber(env, "WNFT_MIN_ORDER_NOTIONAL_USD", 100),
+    wnftSameOrderWindowSeconds: getNumber(env, "WNFT_SAME_ORDER_WINDOW_SECONDS", 2),
+    wnftMinQualifyingOrders: Math.max(
+      1,
+      Math.floor(getNumber(env, "WNFT_MIN_QUALIFYING_ORDERS", 2)),
+    ),
     xpPerUsd: getNumber(env, "REWARDS_XP_PER_USD", DEFAULT_XP_PER_USD),
   };
 }

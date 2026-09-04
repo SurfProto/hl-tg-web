@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BuilderFillRow } from "./builder-fills";
-import { deriveWnftQualification } from "./wnft";
+import { deriveWnftQualification, refreshWnftForWallets } from "./wnft";
 
 const CONFIG = {
   minOrderNotionalUsd: 100,
@@ -129,5 +129,59 @@ describe("deriveWnftQualification", () => {
     expect(
       deriveWnftQualification(twoOrders, { ...CONFIG, minQualifyingOrders: 3 }).qualifies,
     ).toBe(false);
+  });
+});
+
+describe("refreshWnftForWallets", () => {
+  const twoOrders: BuilderFillRow[] = [
+    fill({ occurredAt: "2026-02-01T10:00:00.000Z", px: 100000, sz: 0.002 }),
+    fill({ occurredAt: "2026-02-01T14:00:00.000Z", px: 100000, sz: 0.002 }),
+  ];
+
+  function deps(overrides: Partial<Parameters<typeof refreshWnftForWallets>[2]> = {}) {
+    return {
+      getWalletUsers: async () => [{ id: "user-1", walletAddress: "0xabc" }],
+      getBuilderFillsForWallet: async () => twoOrders,
+      getWnftStatus: async () => null,
+      upsertWnftProvisional: async () => {},
+      ...overrides,
+    };
+  }
+
+  it("records a provisional conversion for a newly qualifying wallet", async () => {
+    const upserts: string[] = [];
+    const summary = await refreshWnftForWallets(
+      ["0xABC"], // upper-case in, joined case-insensitively
+      CONFIG,
+      deps({ upsertWnftProvisional: async (userId) => void upserts.push(userId) }),
+    );
+
+    expect(summary).toEqual({ evaluated: 1, provisional: 1, skippedReviewed: 0 });
+    expect(upserts).toEqual(["user-1"]);
+  });
+
+  it("never touches a confirmed or rejected record", async () => {
+    const upserts: string[] = [];
+    const summary = await refreshWnftForWallets(["0xabc"], CONFIG, deps({
+      getWnftStatus: async () => "confirmed",
+      upsertWnftProvisional: async (userId) => void upserts.push(userId),
+    }));
+
+    expect(summary).toEqual({ evaluated: 0, provisional: 0, skippedReviewed: 1 });
+    expect(upserts).toEqual([]);
+  });
+
+  it("skips a wallet with no linked account before evaluating it", async () => {
+    const summary = await refreshWnftForWallets(["0xnobody"], CONFIG, deps());
+    expect(summary).toEqual({ evaluated: 0, provisional: 0, skippedReviewed: 0 });
+  });
+
+  it("evaluates but does not record a wallet that does not qualify", async () => {
+    const summary = await refreshWnftForWallets(["0xabc"], CONFIG, deps({
+      getBuilderFillsForWallet: async () => [
+        fill({ occurredAt: "2026-02-01T10:00:00.000Z", px: 100000, sz: 0.02 }), // one order
+      ],
+    }));
+    expect(summary).toEqual({ evaluated: 1, provisional: 0, skippedReviewed: 0 });
   });
 });

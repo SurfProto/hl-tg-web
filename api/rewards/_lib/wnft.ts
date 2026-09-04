@@ -117,3 +117,83 @@ export function deriveWnftQualification(
     convertedAt,
   };
 }
+
+/**
+ * Repository surface the WNFT refresh needs. Injected so the orchestration is
+ * testable without a database.
+ */
+export interface WnftSyncDeps {
+  getWalletUsers: () => Promise<Array<{ id: string; walletAddress: string }>>;
+  getBuilderFillsForWallet: (walletAddress: string) => Promise<BuilderFillRow[]>;
+  getWnftStatus: (
+    userId: string,
+  ) => Promise<"provisional" | "confirmed" | "rejected" | null>;
+  upsertWnftProvisional: (
+    userId: string,
+    qualification: WnftQualification,
+  ) => Promise<void>;
+}
+
+export interface WnftRefreshSummary {
+  evaluated: number;
+  provisional: number;
+  skippedReviewed: number;
+}
+
+/**
+ * Re-derive WNFT qualification for the wallets a builder-fill sync just
+ * touched, and record a provisional record for any that now qualify.
+ *
+ * A reviewed record (confirmed or rejected) is never touched — a human's
+ * decision is final until a human changes it. Nothing here is payable: a
+ * provisional record is the held, awaiting-review state, and the cash bounty
+ * is a separate gated track.
+ */
+export async function refreshWnftForWallets(
+  walletAddresses: string[],
+  config: WnftQualificationConfig,
+  deps: WnftSyncDeps,
+): Promise<WnftRefreshSummary> {
+  const wallets = Array.from(
+    new Set(walletAddresses.map((address) => address.toLowerCase())),
+  );
+  if (wallets.length === 0) {
+    return { evaluated: 0, provisional: 0, skippedReviewed: 0 };
+  }
+
+  const walletUsers = await deps.getWalletUsers();
+  const userIdByWallet = new Map(
+    walletUsers.map((user) => [user.walletAddress.toLowerCase(), user.id]),
+  );
+
+  let evaluated = 0;
+  let provisional = 0;
+  let skippedReviewed = 0;
+
+  for (const wallet of wallets) {
+    const userId = userIdByWallet.get(wallet);
+    if (!userId) {
+      // A builder fill for a wallet with no linked account — nothing to
+      // convert. Normal, not an error.
+      continue;
+    }
+
+    const status = await deps.getWnftStatus(userId);
+    if (status === "confirmed" || status === "rejected") {
+      skippedReviewed += 1;
+      continue;
+    }
+
+    evaluated += 1;
+    const qualification = deriveWnftQualification(
+      await deps.getBuilderFillsForWallet(wallet),
+      config,
+    );
+    if (qualification.qualifies) {
+      await deps.upsertWnftProvisional(userId, qualification);
+      provisional += 1;
+    }
+  }
+
+  return { evaluated, provisional, skippedReviewed };
+}

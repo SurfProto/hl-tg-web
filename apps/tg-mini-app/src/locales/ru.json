@@ -232,7 +232,9 @@
     "cancelAllConfirm": "Нажмите ещё раз — отменить все",
     "allOrdersCancelled": "Все ордера отменены",
     "orderModified": "Ордер обновлён",
-    "modifyFailed": "Не удалось обновить. Попробуйте снова."
+    "modifyFailed": "Не удалось обновить. Попробуйте снова.",
+    "closeConfirmBody": "Закрыть {{size}} {{name}} {{side}} по рынку?",
+    "confirmClose": "Закрыть позицию"
   },
   "points": {
     "referEarn": "Приглашай и зарабатывай",
@@ -619,7 +621,16 @@
     "positionPnl": "Нереализованный PnL",
     "positionLiquidation": "Цена ликвидации",
     "positionLeverage": "Плечо",
-    "closePosition": "Закрыть позицию"
+    "closePosition": "Закрыть позицию",
+    "alertsTitle": "Ценовые алерты",
+    "alertArm": "Уведомить",
+    "alertAboveHint": "Сработает один раз, когда цена поднимется выше {{price}}.",
+    "alertBelowHint": "Сработает один раз, когда цена опустится ниже {{price}}.",
+    "alertOneShotNote": "Одноразовый: придёт в Telegram один раз.",
+    "alertArmed": "Алерт установлен",
+    "alertRemoved": "Алерт удалён",
+    "alertFailed": "Не удалось сохранить алерт. Попробуйте снова.",
+    "alertRemove": "Удалить"
   },
   "tradingSetup": {
     "titleReauth": "Переавторизовать торговлю",

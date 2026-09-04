@@ -48,12 +48,28 @@ function formatDeposit(event: PendingNotificationEvent): string {
   return `Deposit complete: ${amount} ${currency} credited.`;
 }
 
+function formatPriceAlert(event: PendingNotificationEvent): string {
+  const language = event.language.toLowerCase();
+  const coin = String(event.payload.coin ?? "");
+  const markPx = formatNumber(Number(event.payload.markPx), 2);
+  const targetPx = formatNumber(Number(event.payload.targetPx), 2);
+  const above = event.payload.direction === "above";
+
+  if (language === "ru") {
+    return `Ценовой алерт ${coin}: цена ${markPx} — ${above ? "выше" : "ниже"} уровня ${targetPx}.`;
+  }
+
+  return `Price alert on ${coin}: ${markPx} is ${above ? "above" : "below"} your ${targetPx} level.`;
+}
+
 export function buildTelegramMessage(event: PendingNotificationEvent): string {
   switch (event.topic) {
     case "liquidation_risk":
       return formatLiquidation(event);
     case "usdc_deposit":
       return formatDeposit(event);
+    case "price_alert":
+      return formatPriceAlert(event);
     case "order_fill":
     default:
       return formatFill(event);

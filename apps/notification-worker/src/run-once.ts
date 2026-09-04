@@ -4,6 +4,7 @@ import {
   detectLiquidationEvents,
   type LiquidationRiskState,
 } from "./detect-liquidation";
+import { detectPriceAlertEvents } from "./detect-price-alerts";
 import { processTelegramEvents } from "./process-telegram-events";
 import type {
   EligibleUser,
@@ -70,22 +71,33 @@ async function detectUserEvents(
     await repository.ensureTelegramChannel(user.userId, user.telegramId);
   }
 
-  const [fills, positions, depositOrders, fillState, liquidationState, depositState] =
-    await Promise.all([
-      marketData.getFills(user.walletAddress),
-      marketData.getPositions(user.walletAddress),
-      repository.listSuccessfulDepositOrders(user.userId),
-      repository.getRuntimeState(user.userId, "fills"),
-      repository.getRuntimeState(user.userId, "liquidation"),
-      repository.getRuntimeState(user.userId, "deposits"),
-    ]);
+  const [
+    fills,
+    positions,
+    depositOrders,
+    priceAlerts,
+    fillState,
+    liquidationState,
+    depositState,
+  ] = await Promise.all([
+    marketData.getFills(user.walletAddress),
+    marketData.getPositions(user.walletAddress),
+    repository.listSuccessfulDepositOrders(user.userId),
+    repository.listActivePriceAlerts(user.userId),
+    repository.getRuntimeState(user.userId, "fills"),
+    repository.getRuntimeState(user.userId, "liquidation"),
+    repository.getRuntimeState(user.userId, "deposits"),
+  ]);
 
-  const midsByCoin =
-    positions.length > 0
-      ? await marketData.getMids(
-          Array.from(new Set(positions.map((position) => position.coin))),
-        )
-      : {};
+  // One mids fetch serves both consumers: liquidation bands need position
+  // coins, price alerts need theirs.
+  const midCoins = Array.from(
+    new Set([
+      ...positions.map((position) => position.coin),
+      ...priceAlerts.map((alert) => alert.coin),
+    ]),
+  );
+  const midsByCoin = midCoins.length > 0 ? await marketData.getMids(midCoins) : {};
 
   const fillResult = detectFillEvents({
     user,
@@ -119,6 +131,12 @@ async function detectUserEvents(
     } | null,
     enabled: user.preferences.usdc_deposits,
   });
+  // Creating an alert is the opt-in, so there is no preference gate here.
+  const priceAlertResult = detectPriceAlertEvents({
+    user,
+    alerts: priceAlerts,
+    midsByCoin,
+  });
 
   await Promise.all([
     repository.setRuntimeState(user.userId, "fills", fillResult.state),
@@ -131,5 +149,14 @@ async function detectUserEvents(
     ...fillResult.events.map((event) => repository.enqueueEvent(event)),
     ...liquidationResult.events.map((event) => repository.enqueueEvent(event)),
     ...depositResult.events.map((event) => repository.enqueueEvent(event)),
+    ...priceAlertResult.events.map((event) => repository.enqueueEvent(event)),
   ]);
+
+  // Consumed only after the events are enqueued: a crash in between replays
+  // into the enqueue's per-alert idempotency key rather than a second message.
+  await Promise.all(
+    priceAlertResult.triggeredAlertIds.map((alertId) =>
+      repository.markPriceAlertTriggered(alertId),
+    ),
+  );
 }

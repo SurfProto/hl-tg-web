@@ -232,7 +232,9 @@
     "cancelAllConfirm": "Tap again to cancel all",
     "allOrdersCancelled": "All orders cancelled",
     "orderModified": "Order updated",
-    "modifyFailed": "Update failed. Please try again."
+    "modifyFailed": "Update failed. Please try again.",
+    "closeConfirmBody": "Close {{size}} {{name}} {{side}} at market?",
+    "confirmClose": "Close position"
   },
   "points": {
     "loadFailed": "We couldn't load your points. Check your connection and try again.",
@@ -616,7 +618,16 @@
     "positionPnl": "Unrealized PnL",
     "positionLiquidation": "Liquidation price",
     "positionLeverage": "Leverage",
-    "closePosition": "Close position"
+    "closePosition": "Close position",
+    "alertsTitle": "Price alerts",
+    "alertArm": "Alert me",
+    "alertAboveHint": "Fires once when the price rises above {{price}}.",
+    "alertBelowHint": "Fires once when the price falls below {{price}}.",
+    "alertOneShotNote": "One-shot: fires once in Telegram, then it is spent.",
+    "alertArmed": "Alert armed",
+    "alertRemoved": "Alert removed",
+    "alertFailed": "Could not save the alert. Try again.",
+    "alertRemove": "Remove"
   },
   "tradingSetup": {
     "titleReauth": "Reauthorize trading",

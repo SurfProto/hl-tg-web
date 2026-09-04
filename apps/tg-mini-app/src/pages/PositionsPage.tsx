@@ -104,6 +104,11 @@ function PositionCard({
   const navigate = useNavigate();
   const haptics = useHaptics();
   const { t } = useTranslation();
+  // Close asks once before firing. A market close of a leveraged position is
+  // the most consequential single tap in the app, it sat 8px from two benign
+  // buttons on a card that is itself tappable, and it fired immediately —
+  // while lesser actions (agent revocation, cancel-all) already confirm.
+  const [confirmingClose, setConfirmingClose] = useState(false);
   const { data: currentPrice, isError, isLoading } = useMarketPrice(position.coin);
   const priceState = getAsyncValueState({
     hasValue: currentPrice != null,
@@ -232,7 +237,7 @@ function PositionCard({
           onClick={(event) => {
             event.stopPropagation();
             haptics.medium();
-            onClosePosition(position.coin, displayName);
+            setConfirmingClose(true);
           }}
           disabled={pendingCloseCoin === position.coin}
           className="flex-1 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
@@ -242,6 +247,46 @@ function PositionCard({
             : t("common.close")}
         </button>
       </div>
+
+      {confirmingClose && (
+        <div
+          className="mt-3 border-t border-separator pt-3"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <p className="text-sm text-foreground">
+            {t("positions.closeConfirmBody", {
+              size: Math.abs(position.szi),
+              name: displayName,
+              side: isLong ? t("common.long") : t("common.short"),
+            })}
+          </p>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                haptics.light();
+                setConfirmingClose(false);
+              }}
+              className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-xs font-semibold text-foreground"
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                haptics.medium();
+                setConfirmingClose(false);
+                onClosePosition(position.coin, displayName);
+              }}
+              className="flex-1 rounded-lg bg-negative px-4 py-2 text-xs font-semibold text-white transition-opacity active:opacity-80"
+            >
+              {t("positions.confirmClose")}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

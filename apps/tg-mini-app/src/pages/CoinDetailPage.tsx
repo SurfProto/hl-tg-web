@@ -1,5 +1,6 @@
-import { startTransition, useMemo, useState } from 'react';
+import { startTransition, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useToken } from '@privy-io/react-auth';
 import { useTranslation } from 'react-i18next';
 import {
   getMarketBaseAsset,
@@ -23,6 +24,12 @@ import {
   formatUsdPriceParts,
 } from '../utils/format';
 import { getAsyncValueState } from '../lib/async-value-state';
+import {
+  createPriceAlert,
+  listPriceAlerts,
+  removePriceAlert,
+  type PriceAlertRecord,
+} from '../lib/priceAlerts';
 import { findPositionForSymbol } from '../lib/market-symbol';
 import { useHaptics } from '../hooks/useHaptics';
 import { useToast } from '../hooks/useToast';
@@ -68,6 +75,156 @@ function formatTooltipTimestamp(candle: Candle, interval: string, locale: string
     hour: 'numeric',
     minute: '2-digit',
   }).format(date);
+}
+
+/**
+ * Arm and manage one-shot price alerts for this coin. The direction is
+ * inferred rather than asked for — a target above the current price can only
+ * mean "tell me when it gets there from below", and vice versa — and the
+ * inference is spelled out under the input before anything is armed.
+ */
+function PriceAlertsCard({
+  coin,
+  currentPrice,
+}: {
+  coin: string;
+  currentPrice: number | null;
+}) {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const haptics = useHaptics();
+  const { getAccessToken } = useToken();
+  const [alerts, setAlerts] = useState<PriceAlertRecord[] | null>(null);
+  const [target, setTarget] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const accessToken = await getAccessToken();
+        if (!accessToken || cancelled) return;
+        const all = await listPriceAlerts(accessToken);
+        if (!cancelled) {
+          setAlerts(all.filter((alert) => alert.coin === coin));
+        }
+      } catch {
+        // Signed out, or the request failed — the card simply lists nothing;
+        // arming will surface its own error if tried.
+        if (!cancelled) setAlerts([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [coin, getAccessToken]);
+
+  const targetPx = parseFloat(target) || 0;
+  const direction: 'above' | 'below' | null =
+    targetPx > 0 && currentPrice != null && targetPx !== currentPrice
+      ? targetPx > currentPrice
+        ? 'above'
+        : 'below'
+      : null;
+
+  const arm = async () => {
+    if (!direction || targetPx <= 0) return;
+    setBusy(true);
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        throw new Error(t('coinDetail.alertFailed'));
+      }
+      const alert = await createPriceAlert(accessToken, {
+        coin,
+        direction,
+        targetPx,
+      });
+      haptics.success();
+      toast.success(t('coinDetail.alertArmed'));
+      setAlerts((current) => [alert, ...(current ?? [])]);
+      setTarget('');
+    } catch (error) {
+      haptics.error();
+      toast.error(
+        error instanceof Error ? error.message : t('coinDetail.alertFailed'),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (alertId: string) => {
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) return;
+      await removePriceAlert(accessToken, alertId);
+      haptics.light();
+      toast.success(t('coinDetail.alertRemoved'));
+      setAlerts((current) =>
+        (current ?? []).filter((alert) => alert.id !== alertId),
+      );
+    } catch (error) {
+      haptics.error();
+      toast.error(
+        error instanceof Error ? error.message : t('coinDetail.alertFailed'),
+      );
+    }
+  };
+
+  return (
+    <div className="mt-5">
+      <p className="editorial-kicker pb-2">{t('coinDetail.alertsTitle')}</p>
+      <div className="editorial-card p-4">
+        <div className="flex gap-2">
+          <input
+            type="number"
+            inputMode="decimal"
+            autoComplete="off"
+            value={target}
+            onChange={(event) => setTarget(event.target.value)}
+            placeholder={currentPrice != null ? String(currentPrice) : '0'}
+            aria-label={t('coinDetail.alertsTitle')}
+            className="editorial-mono min-w-0 flex-1 rounded-lg border border-separator bg-surface px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={arm}
+            disabled={busy || !direction}
+            className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-50"
+          >
+            {busy ? t('common.saving') : t('coinDetail.alertArm')}
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-muted">
+          {direction === 'above'
+            ? t('coinDetail.alertAboveHint', { price: formatUsdPrice(targetPx) })
+            : direction === 'below'
+              ? t('coinDetail.alertBelowHint', { price: formatUsdPrice(targetPx) })
+              : t('coinDetail.alertOneShotNote')}
+        </p>
+        {alerts && alerts.length > 0 && (
+          <div className="mt-3 space-y-2 border-t border-separator pt-3">
+            {alerts.map((alert) => (
+              <div key={alert.id} className="flex items-center justify-between">
+                <span className="editorial-mono text-sm text-foreground">
+                  {alert.direction === 'above' ? '≥' : '≤'}{' '}
+                  {formatUsdPrice(alert.targetPx)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => remove(alert.id)}
+                  className="text-xs font-semibold text-negative"
+                >
+                  {t('coinDetail.alertRemove')}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function CoinDetailPage() {
@@ -385,6 +542,8 @@ export function CoinDetailPage() {
             </button>
           </div>
         ) : null}
+
+        <PriceAlertsCard coin={symbol} currentPrice={price ?? null} />
 
         <div className="mt-5">
           <p className="editorial-kicker pb-2">{t('coinDetail.marketStats')}</p>

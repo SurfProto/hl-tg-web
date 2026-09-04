@@ -1,6 +1,7 @@
 export type NotificationTopic =
   | "liquidation_risk"
   | "order_fill"
+  | "price_alert"
   | "usdc_deposit";
 
 export type NotificationChannel = "telegram";
@@ -53,6 +54,17 @@ export interface PositionSnapshot {
   entryPx: number;
 }
 
+/**
+ * One armed price alert. One-shot: the row is the arming, triggering consumes
+ * it, and re-arming is a new row.
+ */
+export interface PriceAlert {
+  id: string;
+  coin: string;
+  targetPx: number;
+  direction: "above" | "below";
+}
+
 export interface QueuedNotificationEvent {
   userId: string;
   channel: NotificationChannel;
@@ -99,6 +111,8 @@ export interface NotificationRepository {
   getRuntimeState<T>(userId: string, stateKey: string): Promise<T | null>;
   setRuntimeState(userId: string, stateKey: string, state: unknown): Promise<void>;
   listSuccessfulDepositOrders(userId: string): Promise<SuccessfulDepositOrder[]>;
+  listActivePriceAlerts(userId: string): Promise<PriceAlert[]>;
+  markPriceAlertTriggered(alertId: string): Promise<void>;
   enqueueEvent(event: QueuedNotificationEvent): Promise<void>;
   claimPendingTelegramEvents(limit: number, now: Date): Promise<PendingNotificationEvent[]>;
   markEventSent(eventId: string): Promise<void>;

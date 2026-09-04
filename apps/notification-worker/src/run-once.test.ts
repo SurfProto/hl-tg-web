@@ -40,6 +40,8 @@ function createHarness() {
       runtimeState.set(`${userId}:${stateKey}`, state);
     }),
     listSuccessfulDepositOrders: vi.fn().mockResolvedValue([]),
+    listActivePriceAlerts: vi.fn().mockResolvedValue([]),
+    markPriceAlertTriggered: vi.fn(),
     enqueueEvent: vi.fn(async (event: QueuedNotificationEvent) => {
       pendingEvents.push({
         id: `${pendingEvents.length + 1}`,
@@ -175,6 +177,8 @@ describe("runNotificationWorkerOnce", () => {
         stateWrites.push(userId);
       }),
       listSuccessfulDepositOrders: vi.fn().mockResolvedValue([]),
+      listActivePriceAlerts: vi.fn().mockResolvedValue([]),
+      markPriceAlertTriggered: vi.fn(),
       enqueueEvent: vi.fn(),
       claimPendingTelegramEvents: vi.fn(async () => []),
       markEventSent: vi.fn(),
@@ -230,6 +234,8 @@ describe("runNotificationWorkerOnce", () => {
       getRuntimeState: (async () => null) as NotificationRepository["getRuntimeState"],
       setRuntimeState: vi.fn(),
       listSuccessfulDepositOrders: vi.fn().mockResolvedValue([]),
+      listActivePriceAlerts: vi.fn().mockResolvedValue([]),
+      markPriceAlertTriggered: vi.fn(),
       enqueueEvent: vi.fn(),
       claimPendingTelegramEvents: vi.fn(async () => []),
       markEventSent: vi.fn(),

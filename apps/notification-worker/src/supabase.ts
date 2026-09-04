@@ -5,6 +5,7 @@ import type {
   NotificationRepository,
   NotificationChannelStatus,
   PendingNotificationEvent,
+  PriceAlert,
   QueuedNotificationEvent,
   SuccessfulDepositOrder,
 } from "./types";
@@ -172,6 +173,34 @@ class SupabaseNotificationRepository implements NotificationRepository {
       payoutCurrency: row.payout_currency,
       lastSyncedAt: row.last_synced_at,
     }));
+  }
+
+  async listActivePriceAlerts(userId: string): Promise<PriceAlert[]> {
+    const { data, error } = await this.supabase
+      .from("price_alerts")
+      .select("id, coin, target_px, direction")
+      .eq("user_id", userId)
+      .is("triggered_at", null);
+
+    if (error) throw error;
+    return (data ?? []).map((row) => ({
+      id: row.id,
+      coin: row.coin,
+      targetPx: Number(row.target_px),
+      direction: row.direction as PriceAlert["direction"],
+    }));
+  }
+
+  async markPriceAlertTriggered(alertId: string): Promise<void> {
+    // Marked only after the event is enqueued; a crash in between replays
+    // into the enqueue's per-alert idempotency key, not a second message.
+    const { error } = await this.supabase
+      .from("price_alerts")
+      .update({ triggered_at: new Date().toISOString() })
+      .eq("id", alertId)
+      .is("triggered_at", null);
+
+    if (error) throw error;
   }
 
   async enqueueEvent(event: QueuedNotificationEvent): Promise<void> {

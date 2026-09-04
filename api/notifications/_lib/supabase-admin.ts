@@ -73,6 +73,83 @@ export async function getNotificationsStatus(
   };
 }
 
+export interface PriceAlertRecord {
+  id: string;
+  coin: string;
+  targetPx: number;
+  direction: "above" | "below";
+  createdAt: string;
+}
+
+interface PriceAlertRow {
+  id: string;
+  coin: string;
+  target_px: string | number;
+  direction: "above" | "below";
+  created_at: string;
+}
+
+function mapPriceAlertRow(row: PriceAlertRow): PriceAlertRecord {
+  return {
+    id: row.id,
+    coin: row.coin,
+    targetPx: Number(row.target_px),
+    direction: row.direction,
+    createdAt: row.created_at,
+  };
+}
+
+/** The caller's own armed alerts, newest first. Triggered rows are history. */
+export async function listPriceAlerts(
+  config: ProfileConfig,
+  userId: string,
+): Promise<PriceAlertRecord[]> {
+  const rows = await supabaseRequest<PriceAlertRow[]>(
+    config,
+    `price_alerts?user_id=eq.${encodeURIComponent(userId)}&triggered_at=is.null&select=id,coin,target_px,direction,created_at&order=created_at.desc`,
+    { headers: buildHeaders(config) },
+  );
+  return rows.map(mapPriceAlertRow);
+}
+
+export async function insertPriceAlert(
+  config: ProfileConfig,
+  userId: string,
+  input: { coin: string; targetPx: number; direction: "above" | "below" },
+): Promise<PriceAlertRecord> {
+  const rows = await supabaseRequest<PriceAlertRow[]>(config, "price_alerts", {
+    body: JSON.stringify({
+      coin: input.coin,
+      direction: input.direction,
+      target_px: input.targetPx,
+      user_id: userId,
+    }),
+    headers: buildHeaders(config, { Prefer: "return=representation" }),
+    method: "POST",
+  });
+  return mapPriceAlertRow(rows[0]);
+}
+
+/**
+ * Deletes only the caller's own row — the user_id filter is the IDOR guard.
+ * Returns whether anything was deleted, so the route can 404 honestly.
+ */
+export async function deletePriceAlert(
+  config: ProfileConfig,
+  userId: string,
+  alertId: string,
+): Promise<boolean> {
+  const rows = await supabaseRequest<PriceAlertRow[]>(
+    config,
+    `price_alerts?id=eq.${encodeURIComponent(alertId)}&user_id=eq.${encodeURIComponent(userId)}`,
+    {
+      headers: buildHeaders(config, { Prefer: "return=representation" }),
+      method: "DELETE",
+    },
+  );
+  return rows.length > 0;
+}
+
 export interface TelegramChannelRow {
   status: string;
   target: string;

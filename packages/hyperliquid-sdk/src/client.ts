@@ -11,6 +11,7 @@ import type {
   AccountAbstractionMode,
   AssetCtx,
   Fill,
+  FundingPayment,
   HistoricalOrder,
   MarketStats,
   MarketType,
@@ -1962,10 +1963,26 @@ export class HyperliquidClient {
     });
   }
 
-  // Get user funding
-  async getUserFunding() {
+  /**
+   * The account's funding payments, newest first, normalized like fills:
+   * numeric strings parsed, one flat row per payment. Signed from the
+   * account's point of view — positive means funding was received.
+   */
+  async getUserFunding(): Promise<FundingPayment[]> {
     const client = await this.getPublicClient();
-    return client.userFunding({ user: this.walletAddress as `0x${string}` });
+    const raw = await client.userFunding({
+      user: this.walletAddress as `0x${string}`,
+    });
+    return raw
+      .map((entry: any) => ({
+        coin: entry.delta?.coin ?? "",
+        usdc: parseFloat(entry.delta?.usdc ?? "0"),
+        fundingRate: parseFloat(entry.delta?.fundingRate ?? "0"),
+        szi: parseFloat(entry.delta?.szi ?? "0"),
+        time: entry.time,
+      }))
+      .filter((payment: FundingPayment) => payment.coin !== "")
+      .sort((a: FundingPayment, b: FundingPayment) => b.time - a.time);
   }
 
   // Get portfolio

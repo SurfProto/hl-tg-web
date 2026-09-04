@@ -86,7 +86,6 @@
     "goingLong": "GOING LONG",
     "buy": "Buy",
     "sell": "Sell",
-    "or": "OR",
     "profitWhenPriceRises": "profit when price rises",
     "size": "SIZE",
     "availShort": "AVAIL",
@@ -151,7 +150,9 @@
     "shortCta": "Short {{name}}",
     "ariaOrderSettings": "Order settings",
     "ariaCloseOrderSettings": "Close order settings",
-    "applyProtection": "Apply Protection"
+    "applyProtection": "Apply Protection",
+    "goingShort": "GOING SHORT",
+    "profitWhenPriceFalls": "profit when price falls"
   },
   "protection": {
     "title": "Protection",
@@ -224,7 +225,9 @@
     "orderCancelled": "Order cancelled",
     "cancelFailed": "Cancel failed. Please try again.",
     "positionLabel": "Position",
-    "addToPosition": "Add to position"
+    "addToPosition": "Add to position",
+    "tabFunding": "Funding",
+    "realizedPnlRecent": "Realized PnL · recent"
   },
   "points": {
     "loadFailed": "We couldn't load your points. Check your connection and try again.",

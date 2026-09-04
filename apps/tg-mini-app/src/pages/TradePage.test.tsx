@@ -18,7 +18,7 @@ vi.mock("react-i18next", () => ({
         "trade.buy": "Buy",
         "trade.sell": "Sell",
         "trade.goingLong": "Going long",
-        "trade.or": "Or",
+        
         "trade.profitWhenPriceRises": "Profit when price rises",
         "trade.size": "Size",
         "trade.limitPrice": "Limit price",

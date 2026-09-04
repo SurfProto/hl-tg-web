@@ -30,7 +30,7 @@ Server-side (Functions):
 | `TELEGRAM_BOT_TOKEN` or `MARKET_TELEGRAM_BOT_TOKEN` | Verifies Mini App init data. |
 | `PRIVY_APP_SECRET`, `PROFILE_PRIVY_APP_ID` | Server-only; `PROFILE_PRIVY_APP_ID` falls back to `VITE_PRIVY_APP_ID`. |
 | `PRIVY_JWKS_URL` or `PRIVY_VERIFICATION_KEY` | Access-token verification. One is required. |
-| `CRON_SECRET` | Authorises every scheduled route: `/api/notifications/worker`, `/api/market/stats` and `/api/rewards/sync-fills`. You choose the value; Vercel sends it as `Authorization: Bearer <value>` on cron invocations. Without it, fill ingestion 401s on every run and nobody earns trading XP. |
+| `CRON_SECRET` | Authorises every scheduled route: `/api/notifications/worker`, `/api/market/stats`, `/api/rewards/sync-fills` and `/api/rewards/sync-builder-fills`. You choose the value; Vercel sends it as `Authorization: Bearer <value>` on cron invocations. Without it, fill ingestion 401s on every run and nobody earns trading XP. |
 | `PLATFORM_ADMIN_KEY`, `PLATFORM_WEBHOOK_SECRET`, `PLATFORM_QUOTE_SECRET` | Platform routes. `PLATFORM_QUOTE_SECRET` falls back to the webhook secret; use a separate key. |
 | `PLATFORM_HIGH_RISK_COUNTRIES`, `PLATFORM_PROHIBITED_COUNTRIES` | Comma-separated ISO codes. Optional. |
 | `REWARDS_ADMIN_KEY` | Rewards admin routes. |

@@ -1,13 +1,5 @@
 import { useTranslation } from 'react-i18next';
-
-function openExternal(url?: string) {
-  if (!url) return;
-  if (window.Telegram?.WebApp?.openLink) {
-    (window.Telegram.WebApp as any).openLink(url);
-    return;
-  }
-  window.open(url, '_blank', 'noopener,noreferrer');
-}
+import { openExternal } from '../../lib/openExternal';
 
 export function SupportPage() {
   const { t } = useTranslation();

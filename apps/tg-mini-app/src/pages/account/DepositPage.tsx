@@ -28,17 +28,9 @@ import {
 } from "../../lib/onramp";
 import { useToast } from "../../components/Toast";
 import { log } from "../../lib/logger";
+import { openExternal } from "../../lib/openExternal";
 
 type DepositView = "choice" | "fiat" | "crypto";
-
-function openExternal(url?: string | null) {
-  if (!url) return;
-  if (window.Telegram?.WebApp?.openLink) {
-    window.Telegram.WebApp.openLink(url);
-    return;
-  }
-  window.open(url, "_blank", "noopener,noreferrer");
-}
 
 function isValidTrc20Address(addr: string): boolean {
   return /^T[a-zA-Z0-9]{33}$/.test(addr);

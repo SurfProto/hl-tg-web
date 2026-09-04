@@ -17,7 +17,8 @@ import {
 import { Layout } from "./components/Layout";
 import { HomePage } from "./pages/HomePage";
 import { NotFoundPage } from "./pages/NotFoundPage";
-import { bootstrapProfile } from "./lib/profile";
+import { bootstrapProfile, recordAttribution } from "./lib/profile";
+import { getFirstTouch } from "./lib/attribution";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ToastProvider } from "./components/Toast";
 import { AgentRecoverySheet } from "./components/AgentRecoverySheet";
@@ -221,6 +222,18 @@ export function TelegramAuthGate({ children }: { children: React.ReactNode }) {
         }
 
         await bootstrapProfile(accessToken);
+
+        // Persist the first touch this session captured. Its own try so a
+        // failed attribution write never blocks the profile bootstrap above,
+        // and only when there is something to record.
+        const firstTouch = getFirstTouch();
+        if (firstTouch) {
+          try {
+            await recordAttribution(accessToken, firstTouch);
+          } catch (error) {
+            log.warn("[auth] Attribution record failed", { error });
+          }
+        }
       } catch (error) {
         log.warn("[auth] Profile bootstrap failed", {
           error,

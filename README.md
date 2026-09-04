@@ -6,9 +6,11 @@ A Telegram-first trading experience for Hyperliquid, built with React, TypeScrip
 
 This is a monorepo containing:
 
-- **apps/tg-mini-app**: Telegram Mini App (primary interface)
-- **apps/notification-worker**: External Telegram notification worker
-- **apps/web**: Desktop webapp (secondary interface)
+- **apps/tg-mini-app**: Telegram Mini App (the product — deployed to production)
+- **apps/notification-worker**: Telegram notification worker (fills, deposits, liquidation risk, price alerts)
+- **apps/onramp-proxy**: server-to-server signing proxy for the fiat on-ramp provider
+- **apps/web**: static scaffold, not deployed — kept only as a placeholder
+- **api/**: Vercel serverless functions (not a pnpm workspace; tested via `vitest.api.config.ts`)
 - **packages/ui**: Shared UI components
 - **packages/hyperliquid-sdk**: Hyperliquid SDK wrapper with builder code enforcement
 - **packages/types**: Shared TypeScript types
@@ -31,7 +33,7 @@ This is a monorepo containing:
 
 ### Prerequisites
 
-- Node.js >= 18
+- Node.js >= 20 (what `engines` pins and CI runs)
 - pnpm >= 9
 
 ### Installation
@@ -40,10 +42,10 @@ This is a monorepo containing:
 # Install dependencies
 pnpm install
 
-# Copy environment variables
-cp .env.example .env
+# Copy environment variables (.env.local is the gitignored convention here)
+cp .env.example .env.local
 
-# Edit .env with your values
+# Edit .env.local with your values
 ```
 
 ### Development

@@ -30,6 +30,20 @@ function getBoolean(env: EnvLike, key: string, fallback = false): boolean {
   return value === "1" || value.toLowerCase() === "true";
 }
 
+/**
+ * A typo'd number must fall back, not propagate: Number("15s") is NaN, and
+ * sleep(NaN) is a zero-delay tight loop hammering Supabase, Hyperliquid and
+ * Telegram until someone notices.
+ */
+function getPositiveNumber(
+  env: EnvLike,
+  key: string,
+  fallback: number,
+): number {
+  const parsed = Number(env[key] ?? "");
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export function getNotificationWorkerConfig(
   env: EnvLike = process.env,
 ): NotificationWorkerConfig {
@@ -37,8 +51,8 @@ export function getNotificationWorkerConfig(
     supabaseUrl: getRequired(env, "SUPABASE_URL"),
     supabaseServiceRoleKey: getRequired(env, "SUPABASE_SERVICE_ROLE_KEY"),
     telegramBotToken: getRequired(env, "TELEGRAM_BOT_TOKEN"),
-    pollIntervalMs: Number(env.NOTIFICATION_POLL_INTERVAL_MS ?? "15000"),
-    deliveryBatchSize: Number(env.NOTIFICATION_DELIVERY_BATCH_SIZE ?? "50"),
+    pollIntervalMs: getPositiveNumber(env, "NOTIFICATION_POLL_INTERVAL_MS", 15000),
+    deliveryBatchSize: getPositiveNumber(env, "NOTIFICATION_DELIVERY_BATCH_SIZE", 50),
     hyperliquidTestnet: getBoolean(env, "VITE_HYPERLIQUID_TESTNET", false),
     runOnce: getBoolean(env, "NOTIFICATION_RUN_ONCE", false),
   };

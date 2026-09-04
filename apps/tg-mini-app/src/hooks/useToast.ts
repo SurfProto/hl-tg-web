@@ -1,12 +1,4 @@
-import { useContext } from 'react';
-import { ToastContext } from '../components/Toast';
-
-export function useToast() {
-  const ctx = useContext(ToastContext);
-  if (!ctx) throw new Error('useToast must be used within ToastProvider');
-  return {
-    success: (message: string) => ctx.add(message, 'success'),
-    error: (message: string) => ctx.add(message, 'error'),
-    info: (message: string) => ctx.add(message, 'info'),
-  };
-}
+// One implementation, one address. This file used to carry a verbatim copy of
+// the hook components/Toast.tsx already exports, and pages imported the two
+// interchangeably — which is exactly how copies drift apart.
+export { useToast } from '../components/Toast';

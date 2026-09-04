@@ -81,7 +81,6 @@
     "goingLong": "Лонг",
     "buy": "Купить",
     "sell": "Продать",
-    "or": "Или",
     "profitWhenPriceRises": "прибыль при росте цены",
     "size": "Размер",
     "availShort": "Доступно",
@@ -151,7 +150,9 @@
     "shortCta": "Шорт {{name}}",
     "ariaOrderSettings": "Настройки ордера",
     "ariaCloseOrderSettings": "Закрыть настройки ордера",
-    "applyProtection": "Применить защиту"
+    "applyProtection": "Применить защиту",
+    "goingShort": "Шорт",
+    "profitWhenPriceFalls": "прибыль при падении цены"
   },
   "protection": {
     "title": "Защита",
@@ -224,7 +225,9 @@
     "orderCancelled": "Ордер отменён",
     "cancelFailed": "Не удалось отменить. Попробуйте снова.",
     "positionLabel": "Позиция",
-    "addToPosition": "Увеличить позицию"
+    "addToPosition": "Увеличить позицию",
+    "tabFunding": "Фандинг",
+    "realizedPnlRecent": "Реализованный PnL · за период"
   },
   "points": {
     "referEarn": "Приглашай и зарабатывай",

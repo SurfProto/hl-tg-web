@@ -1031,6 +1031,23 @@ export function useUserFees() {
   });
 }
 
+/**
+ * The account's funding payments, for the history feed. Account-scoped like
+ * every account query; funding settles hourly, so a minute of staleness is
+ * invisible.
+ */
+export function useUserFunding() {
+  const { client } = useHyperliquid();
+  const scope = useAccountScope();
+
+  return useQuery({
+    queryKey: ["userFunding", scope],
+    queryFn: () => client?.getUserFunding(),
+    enabled: !!client && Boolean(scope),
+    staleTime: 60_000,
+  });
+}
+
 export function usePortfolio() {
   const { client } = useHyperliquid();
   const scope = useAccountScope();

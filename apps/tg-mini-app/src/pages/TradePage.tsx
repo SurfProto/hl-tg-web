@@ -101,10 +101,7 @@ export function TradePage() {
   const [limitPrice, setLimitPrice] = useState("");
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
   const [leverage, setLeverage] = useState(10);
-  // No setter: the order-settings sheet that changed tif never shipped, so
-  // every order is Gtc until it does. State rather than a constant so the
-  // fee quote and order payload keep reading it the way that sheet will.
-  const [tif] = useState<"Gtc" | "Alo" | "Ioc">("Gtc");
+  const [tif, setTif] = useState<"Gtc" | "Alo" | "Ioc">("Gtc");
   const [protectionOpen, setProtectionOpen] = useState(false);
   const [protectionDraft, setProtectionDraft] = useState<ProtectionDraft>(
     EMPTY_PROTECTION_DRAFT,
@@ -655,7 +652,7 @@ export function TradePage() {
               ...(reviewedTrade.order.orderType === "limit"
                 ? [
                     [t("trade.limitPrice"), formatUsdPrice(reviewedTrade.order.limitPx ?? 0)],
-                    [t("trade.timeInForce"), reviewedTrade.order.tif ?? "GTC"],
+                    [t("trade.timeInForce"), (reviewedTrade.order.tif ?? "Gtc").toUpperCase()],
                   ]
                 : []),
               ...(reviewedTrade.protectionEnabled
@@ -733,7 +730,14 @@ export function TradePage() {
         />
       </div>
 
-      {/* Buy/Sell Toggle */}
+      {/* Buy/Sell Toggle.
+          The two halves mirror each other exactly — kicker, arrow, and the
+          profit hint on whichever is active. Sell used to be the odd one out
+          (kicker reading "OR", no arrow, no hint, and a hardcoded near-black
+          while buy was primary blue). Colors follow the design handoff's one
+          rule for direction — green long, red short — which the coin page's
+          dock already used, so the same action no longer changes color
+          between screens. */}
       <div className="px-4 pb-4">
         <div className="grid grid-cols-2 gap-3">
           <button
@@ -741,7 +745,7 @@ export function TradePage() {
             onClick={() => handleSideToggle("buy")}
             className={`rounded-[24px] border p-4 text-left transition-all ${
               activeSide === "buy"
-                ? "border-primary bg-primary text-white shadow-[0_18px_36px_rgba(78,123,255,0.24)]"
+                ? "border-positive bg-positive text-white shadow-[0_18px_36px_rgba(27,148,93,0.24)]"
                 : "border-border bg-white text-muted"
             }`}
           >
@@ -762,14 +766,21 @@ export function TradePage() {
             onClick={() => handleSideToggle("sell")}
             className={`rounded-[24px] border p-4 text-left transition-all ${
               activeSide === "sell"
-                ? "border-[#10161f] bg-[#10161f] text-white shadow-[0_18px_36px_rgba(15,23,42,0.2)]"
+                ? "border-negative bg-negative text-white shadow-[0_18px_36px_rgba(235,77,61,0.2)]"
                 : "border-border bg-white text-muted"
             }`}
           >
             <div className="editorial-kicker mb-2 opacity-80">
-              {t("trade.or")}
+              {t("trade.goingShort")}
             </div>
-            <div className="editorial-display-sm">{t("trade.sell")}</div>
+            <div className="editorial-display-sm flex items-center gap-1">
+              {t("trade.sell")} <span className="text-lg">↓</span>
+            </div>
+            {activeSide === "sell" && (
+              <div className="mt-2 text-[10px] opacity-80">
+                {t("trade.profitWhenPriceFalls")}
+              </div>
+            )}
           </button>
         </div>
       </div>
@@ -867,6 +878,43 @@ export function TradePage() {
               >
                 {t("trade.market")}
               </button>
+            </div>
+
+            {/* Time in force. The state, the fee quote's post-only branch and
+                the review row all existed; the control that sets them never
+                shipped, so every limit order was silently Gtc. */}
+            <div className="mt-4">
+              <div className="flex items-center justify-between">
+                <span className="editorial-kicker">{t("trade.timeInForce")}</span>
+                <span className="editorial-mono text-xs text-muted">
+                  {tif === "Gtc"
+                    ? t("trade.goodTillCancelled")
+                    : tif === "Alo"
+                      ? t("trade.addLiquidityOnly")
+                      : t("trade.immediateOrCancel")}
+                </span>
+              </div>
+              <div className="mt-2 flex gap-2">
+                {(["Gtc", "Alo", "Ioc"] as const).map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => {
+                      haptics.selection();
+                      setTif(option);
+                    }}
+                    className={`editorial-chip editorial-chip-compact ${
+                      tif === option ? "editorial-chip-active" : ""
+                    }`}
+                  >
+                    {option === "Gtc"
+                      ? t("trade.gtc")
+                      : option === "Alo"
+                        ? t("trade.alo")
+                        : t("trade.ioc")}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -968,8 +1016,8 @@ export function TradePage() {
           disabled={isSubmitDisabled}
           className={`w-full rounded-full py-4 text-base font-semibold text-white transition-opacity active:opacity-80 disabled:opacity-40 ${
             activeSide === "buy"
-              ? "bg-primary shadow-[0_18px_36px_rgba(78,123,255,0.28)]"
-              : "bg-[#10161f] shadow-[0_18px_36px_rgba(15,23,42,0.22)]"
+              ? "bg-positive shadow-[0_18px_36px_rgba(27,148,93,0.28)]"
+              : "bg-negative shadow-[0_18px_36px_rgba(235,77,61,0.22)]"
           }`}
         >
           {t("trade.reviewOrder")}

@@ -10,8 +10,9 @@ import {
   useHistoricalOrders,
   useMarketPrice,
   useUpsertPositionProtection,
+  useUserFunding,
 } from "@repo/hyperliquid-sdk";
-import type { HistoricalOrder, OpenOrder } from "@repo/types";
+import type { FundingPayment, HistoricalOrder, OpenOrder } from "@repo/types";
 import { ProtectionSheet } from "../components/ProtectionSheet";
 import { SegmentedControl } from "../components/SegmentedControl";
 import { TokenIcon } from "../components/TokenIcon";
@@ -141,8 +142,8 @@ function PositionCard({
               <span
                 className={`editorial-kicker whitespace-nowrap rounded-full px-2 py-1 ${
                   isLong
-                    ? "bg-primary/10 text-primary"
-                    : "bg-secondary/10 text-secondary"
+                    ? "bg-positive/10 text-positive"
+                    : "bg-negative/10 text-negative"
                 }`}
               >
                 {isLong ? t("common.long") : t("common.short")} · {position.leverage?.value ?? 1}×
@@ -381,7 +382,8 @@ export function PositionsPage() {
     "positions",
   );
   const [visibleFills, setVisibleFills] = useState(20);
-  const [historyView, setHistoryView] = useState<"fills" | "orders">("fills");
+  const [historyView, setHistoryView] = useState<"fills" | "orders" | "funding">("fills");
+  const [visibleFunding, setVisibleFunding] = useState(20);
   const [visibleOrders, setVisibleOrders] = useState(20);
   const [editingProtection, setEditingProtection] =
     useState<EditingProtectionState | null>(null);
@@ -392,6 +394,19 @@ export function PositionsPage() {
   const { data: openOrders } = useOpenOrders();
   const { data: fills } = useFills();
   const { data: historicalOrders } = useHistoricalOrders();
+  const { data: fundingPayments } = useUserFunding();
+
+  // Net realized outcome over the fills the exchange still retains: closed
+  // PnL minus every fee paid. "Recent" in the label is load-bearing — this is
+  // a window, not a lifetime total.
+  const realizedRecentUsd = useMemo(
+    () =>
+      (fills ?? []).reduce(
+        (sum: number, fill: any) => sum + (fill.closedPnl ?? 0) - (fill.fee ?? 0),
+        0,
+      ),
+    [fills],
+  );
   const cancelOrder = useCancelOrder();
   const closePosition = useClosePosition();
   const upsertPositionProtection = useUpsertPositionProtection();
@@ -566,7 +581,7 @@ export function PositionsPage() {
           {/* Trades first, order statuses one tap away — retail users think
               in trades, not order lifecycles. */}
           <div className="flex gap-2">
-            {(["fills", "orders"] as const).map((view) => (
+            {(["fills", "orders", "funding"] as const).map((view) => (
               <button
                 key={view}
                 type="button"
@@ -575,12 +590,64 @@ export function PositionsPage() {
                   historyView === view ? "editorial-chip-active" : ""
                 }`}
               >
-                {view === "fills" ? t("positions.tabFills") : t("positions.tabOrders")}
+                {view === "fills"
+                  ? t("positions.tabFills")
+                  : view === "orders"
+                    ? t("positions.tabOrders")
+                    : t("positions.tabFunding")}
               </button>
             ))}
           </div>
 
-          {historyView === "orders" ? (
+          {historyView === "funding" ? (
+            !fundingPayments || fundingPayments.length === 0 ? (
+              <PositionsEmptyState />
+            ) : (
+              <>
+                {fundingPayments.slice(0, visibleFunding).map((payment: FundingPayment) => {
+                  const displayName = stripDexPrefix(payment.coin);
+                  return (
+                    <div
+                      key={`${payment.coin}-${payment.time}`}
+                      className="rounded-[18px] border border-separator bg-white p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <TokenIcon coin={displayName.split("/")[0]} size={32} />
+                          <div>
+                            <p className="font-bold text-foreground">{displayName}</p>
+                            <p className="text-xs text-muted mt-0.5 font-mono">
+                              {`${(payment.fundingRate * 100).toFixed(4).replace(/0+$/u, "").replace(/\.$/u, "")}%`}
+                            </p>
+                            <p className="text-xs text-muted mt-0.5">
+                              {formatFillTime(payment.time, i18n.language)}
+                            </p>
+                          </div>
+                        </div>
+                        <p
+                          className={`text-sm font-bold font-mono ${payment.usdc >= 0 ? "text-positive" : "text-negative"}`}
+                        >
+                          {formatPnl(payment.usdc)}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+                {fundingPayments.length > visibleFunding && (
+                  <button
+                    type="button"
+                    onClick={() => setVisibleFunding((count) => count + 20)}
+                    className="w-full rounded-[18px] border border-separator bg-white px-4 py-3 text-sm font-semibold text-primary transition-colors active:bg-surface"
+                  >
+                    {t("positions.showMore")}
+                  </button>
+                )}
+                <p className="pt-1 text-center text-xs text-muted">
+                  {t("positions.recentActivityNote")}
+                </p>
+              </>
+            )
+          ) : historyView === "orders" ? (
             !historicalOrders || historicalOrders.length === 0 ? (
               <PositionsEmptyState />
             ) : (
@@ -654,6 +721,18 @@ export function PositionsPage() {
             <PositionsEmptyState />
           ) : (
             <>
+              {/* The number a history screen is opened for: what trading has
+                  actually netted, fees included, over the retained window. */}
+              <div className="flex items-center justify-between rounded-[18px] border border-separator bg-white px-4 py-3">
+                <span className="editorial-kicker">
+                  {t("positions.realizedPnlRecent")}
+                </span>
+                <span
+                  className={`editorial-mono text-sm font-bold ${realizedRecentUsd >= 0 ? "text-positive" : "text-negative"}`}
+                >
+                  {formatPnl(realizedRecentUsd)}
+                </span>
+              </div>
               {fills.slice(0, visibleFills).map((fill: any) => {
                 // Realized PnL exists only where something was closed. An
                 // opening fill used to render "+$0.00" in green — a fabricated

@@ -241,6 +241,18 @@ export interface HistoricalOrder {
   statusTimestamp: number;
 }
 
+/** One funding transfer on a held position. */
+export interface FundingPayment {
+  coin: string;
+  /** Signed USDC: positive when the account received funding, negative when it paid. */
+  usdc: number;
+  /** The hourly rate that produced this payment, as a decimal. */
+  fundingRate: number;
+  /** Position size at the time, signed like szi. */
+  szi: number;
+  time: number;
+}
+
 // Position types
 export interface Position {
   coin: string;

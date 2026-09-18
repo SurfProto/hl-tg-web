@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@nktkas/hyperliquid": "^0.15.0",
-    "@privy-io/react-auth": "^3.40.0",
+    "@privy-io/react-auth": "3.38.0",
     "@repo/types": "workspace:*",
     "@tanstack/react-query": "^5.40.0",
     "viem": "^2.47.6",

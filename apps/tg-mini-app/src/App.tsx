@@ -24,6 +24,7 @@ import { ToastProvider } from "./components/Toast";
 import { AgentRecoverySheet } from "./components/AgentRecoverySheet";
 import { PortfolioRangeProvider } from "./hooks/usePortfolioRange";
 import { log } from "./lib/logger";
+import { reportClientError, toReportableError } from "./lib/error-reporting";
 import { teardownStartupShell } from "./lib/startup";
 import "./index.css";
 import "./lib/i18n";
@@ -201,12 +202,38 @@ export function TelegramAuthGate({ children }: { children: React.ReactNode }) {
   const isTMA = Boolean(window.Telegram?.WebApp?.initData);
   const authSettled = !isTMA || authenticated || loginError != null;
 
+  // Diagnostic: when Privy never becomes ready the app sits on the spinner
+  // with nothing thrown to trace, and a console inside Telegram is
+  // unreachable. Report the stall once, with the Telegram context, so a
+  // webview-only failure shows up in the server logs next to client crashes.
+  // The report carries navigator.userAgent, which names the webview.
+  useEffect(() => {
+    if (ready) return;
+    const timer = window.setTimeout(() => {
+      reportClientError({
+        kind: "window-error",
+        message:
+          `[diag] privy-not-ready-after-12s isTMA=${isTMA} ` +
+          `hasTelegramWebApp=${Boolean(window.Telegram?.WebApp)} ` +
+          `hasInitData=${Boolean(window.Telegram?.WebApp?.initData)}`,
+      });
+    }, 12_000);
+    return () => window.clearTimeout(timer);
+  }, [isTMA, ready]);
+
   useEffect(() => {
     if (!ready || authenticated || !isTMA) return;
 
     setLoginError(null);
     loginWithTelegram().catch((err: unknown) => {
       log.warn("[auth] Telegram login failed", { error: err });
+      // Server-visible for the same reason the stall above is reported.
+      const { message, stack } = toReportableError(err);
+      reportClientError({
+        kind: "window-error",
+        message: `[diag] loginWithTelegram failed: ${message}`,
+        stack,
+      });
       setLoginError(t("errors.loginFailed"));
     });
   }, [authenticated, isTMA, loginWithTelegram, ready, t]);

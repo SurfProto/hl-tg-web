@@ -284,3 +284,35 @@ export async function upsertNotificationPreferences(
 
   return rows[0];
 }
+
+/**
+ * Record a user's first touch, once. Insert-if-absent (on_conflict do nothing),
+ * so the first authenticated session's value is permanent and no later call can
+ * change it. Idempotent: calling it every session is safe and cheap.
+ */
+export async function recordFirstTouch(
+  config: ProfileConfig,
+  userId: string,
+  firstTouch: {
+    source: "campaign" | "referral" | "direct";
+    campaignCode: string | null;
+    rawStartParam: string | null;
+  },
+): Promise<void> {
+  await supabaseRequest<null>(
+    config,
+    "user_attribution?on_conflict=user_id",
+    {
+      body: JSON.stringify({
+        user_id: userId,
+        source: firstTouch.source,
+        campaign_code: firstTouch.campaignCode,
+        raw_start_param: firstTouch.rawStartParam,
+      }),
+      headers: buildHeaders(config, {
+        Prefer: "resolution=ignore-duplicates,return=minimal",
+      }),
+      method: "POST",
+    },
+  );
+}

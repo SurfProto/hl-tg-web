@@ -12,6 +12,7 @@ import {
   bootstrapTelegramWebApp,
   migrateLegacyHashRoute,
 } from "./lib/startup";
+import { captureFirstTouch } from "./lib/attribution";
 import "./index.css";
 
 // Inject builder config from Vite env before any rendering.
@@ -32,6 +33,9 @@ configureGasSponsorship(import.meta.env.VITE_SPONSOR_DEPOSIT_GAS);
 installGlobalErrorLogging();
 migrateLegacyHashRoute();
 bootstrapTelegramWebApp();
+// Capture first-touch attribution before anything can navigate or authenticate
+// away from the start_param the app was opened with. Immutable once written.
+captureFirstTouch();
 
 void loadHyperliquidSDK().catch((error: unknown) => {
   log.warn("[startup] failed to preload Hyperliquid SDK", { error });

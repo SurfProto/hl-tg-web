@@ -58,6 +58,9 @@ function config(): RewardsConfig {
     weeklyRewardPoolUsd: 100,
     weeklyTopTraderCohortSize: 10,
     weeklyWinnerCount: 1,
+    wnftMinOrderNotionalUsd: 100,
+    wnftSameOrderWindowSeconds: 2,
+    wnftMinQualifyingOrders: 2,
     xpPerUsd: 1,
   };
 }

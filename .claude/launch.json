@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "tg-mini-app-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "vite", "preview", "--port", "4173", "--strictPort"],
+      "cwd": "apps/tg-mini-app",
+      "port": 4173
+    }
+  ]
+}

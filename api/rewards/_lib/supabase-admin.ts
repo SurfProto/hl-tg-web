@@ -5,7 +5,9 @@ import type {
   RewardLedgerEntry,
 } from "../../../packages/types/src";
 import { buildHeaders, supabaseRequest } from "../../_lib/supabase";
+import type { BuilderFillRow } from "./builder-fills";
 import type { RewardsConfig } from "./config";
+import type { WnftQualification } from "./wnft";
 
 export interface RewardsUserRow {
   id: string;
@@ -1478,4 +1480,252 @@ export async function getReferralFunnel(config: RewardsConfig): Promise<Referral
     retained: Number(row?.retained ?? 0),
     traded: Number(row?.traded ?? 0),
   };
+}
+
+// ---------------------------------------------------------------------------
+// WNFT conversion records
+// ---------------------------------------------------------------------------
+
+/** Every user with a wallet, id and lowercased address, for wallet→user joins. */
+export async function getWalletUsers(
+  config: RewardsConfig,
+): Promise<Array<{ id: string; walletAddress: string }>> {
+  const rows = await supabaseRequest<
+    Array<{ id: string; wallet_address: string | null }>
+  >(config, "users?wallet_address=not.is.null&select=id,wallet_address", {
+    headers: buildHeaders(config),
+  });
+  return rows
+    .filter((row) => row.wallet_address)
+    .map((row) => ({ id: row.id, walletAddress: row.wallet_address!.toLowerCase() }));
+}
+
+/** One wallet's reconciled builder fills. The column is stored lowercase. */
+export async function getBuilderFillsForWallet(
+  config: RewardsConfig,
+  walletAddress: string,
+): Promise<BuilderFillRow[]> {
+  const rows = await supabaseRequest<
+    Array<{
+      builder_fee_usd: string | number;
+      coin: string;
+      is_trigger: boolean;
+      occurred_at: string;
+      px: string | number;
+      row_key: string;
+      side: string;
+      sz: string | number;
+      wallet_address: string;
+    }>
+  >(
+    config,
+    `builder_fills?wallet_address=eq.${encodeURIComponent(walletAddress.toLowerCase())}` +
+      `&select=builder_fee_usd,coin,is_trigger,occurred_at,px,row_key,side,sz,wallet_address` +
+      `&order=occurred_at.asc`,
+    { headers: buildHeaders(config) },
+  );
+  return rows.map((row) => ({
+    builderFeeUsd: Number(row.builder_fee_usd),
+    coin: row.coin,
+    isTrigger: row.is_trigger,
+    occurredAt: row.occurred_at,
+    px: Number(row.px),
+    rowKey: row.row_key,
+    side: row.side,
+    sz: Number(row.sz),
+    walletAddress: row.wallet_address,
+  }));
+}
+
+/** The review status of a user's WNFT record, or null if there is none. */
+export async function getWnftStatus(
+  config: RewardsConfig,
+  userId: string,
+): Promise<"provisional" | "confirmed" | "rejected" | null> {
+  const rows = await supabaseRequest<Array<{ status: string }>>(
+    config,
+    `wnft_conversions?user_id=eq.${encodeURIComponent(userId)}&select=status&limit=1`,
+    { headers: buildHeaders(config) },
+  );
+  return (rows[0]?.status as "provisional" | "confirmed" | "rejected") ?? null;
+}
+
+/**
+ * Record — or refresh the evidence on — a provisional WNFT conversion.
+ *
+ * Never touches a reviewed record: the caller must skip confirmed/rejected
+ * users. builder_fills are append-only, so qualification is monotonic and this
+ * only ever moves an account into or within `provisional`, never out of a
+ * human decision.
+ */
+export async function upsertWnftProvisional(
+  config: RewardsConfig,
+  userId: string,
+  qualification: WnftQualification,
+): Promise<void> {
+  await supabaseRequest<null>(
+    config,
+    "wnft_conversions?on_conflict=user_id",
+    {
+      body: JSON.stringify({
+        user_id: userId,
+        status: "provisional",
+        qualifying_order_count: qualification.qualifyingOrderCount,
+        qualifying_notional_usd: qualification.qualifyingNotionalUsd,
+        converted_at: qualification.convertedAt,
+        updated_at: new Date().toISOString(),
+      }),
+      headers: buildHeaders(config, {
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      }),
+      method: "POST",
+    },
+  );
+}
+
+export interface WnftConversionRecord {
+  id: string;
+  userId: string;
+  status: "provisional" | "confirmed" | "rejected";
+  qualifyingOrderCount: number;
+  qualifyingNotionalUsd: number;
+  convertedAt: string | null;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  reviewReason: string | null;
+  createdAt: string;
+}
+
+function mapWnftRow(row: {
+  id: string;
+  user_id: string;
+  status: WnftConversionRecord["status"];
+  qualifying_order_count: string | number;
+  qualifying_notional_usd: string | number;
+  converted_at: string | null;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  review_reason: string | null;
+  created_at: string;
+}): WnftConversionRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    status: row.status,
+    qualifyingOrderCount: Number(row.qualifying_order_count),
+    qualifyingNotionalUsd: Number(row.qualifying_notional_usd),
+    convertedAt: row.converted_at,
+    reviewedAt: row.reviewed_at,
+    reviewedBy: row.reviewed_by,
+    reviewReason: row.review_reason,
+    createdAt: row.created_at,
+  };
+}
+
+/** WNFT records for the review queue, newest conversion first. */
+export async function listWnftConversions(
+  config: RewardsConfig,
+  status?: WnftConversionRecord["status"],
+): Promise<WnftConversionRecord[]> {
+  const statusFilter = status
+    ? `&status=eq.${encodeURIComponent(status)}`
+    : "";
+  const rows = await supabaseRequest<Parameters<typeof mapWnftRow>[0][]>(
+    config,
+    `wnft_conversions?select=*${statusFilter}&order=converted_at.desc.nullslast`,
+    { headers: buildHeaders(config) },
+  );
+  return rows.map(mapWnftRow);
+}
+
+/**
+ * Confirm or reject one provisional WNFT, recording who and why.
+ *
+ * Guarded to `status=eq.provisional`: a record already decided is never
+ * re-decided by this path, and the row's own check constraint refuses a
+ * terminal status without the reviewer and time this sets. Returns the updated
+ * record, or null when nothing matched (already reviewed, or no such record).
+ */
+export async function reviewWnftConversion(
+  config: RewardsConfig,
+  userId: string,
+  decision: "confirmed" | "rejected",
+  reviewedBy: string,
+  reason: string,
+): Promise<WnftConversionRecord | null> {
+  const rows = await supabaseRequest<Parameters<typeof mapWnftRow>[0][]>(
+    config,
+    `wnft_conversions?user_id=eq.${encodeURIComponent(userId)}&status=eq.provisional`,
+    {
+      body: JSON.stringify({
+        status: decision,
+        reviewed_at: new Date().toISOString(),
+        reviewed_by: reviewedBy,
+        review_reason: reason,
+        updated_at: new Date().toISOString(),
+      }),
+      headers: buildHeaders(config, { Prefer: "return=representation" }),
+      method: "PATCH",
+    },
+  );
+  return rows[0] ? mapWnftRow(rows[0]) : null;
+}
+
+// ---------------------------------------------------------------------------
+// Growth funnel inputs
+// ---------------------------------------------------------------------------
+
+export async function listUserAttributions(
+  config: RewardsConfig,
+): Promise<Array<{ userId: string; source: "campaign" | "referral" | "direct"; campaignCode: string | null; firstSeenAt: string }>> {
+  const rows = await supabaseRequest<
+    Array<{ user_id: string; source: string; campaign_code: string | null; first_seen_at: string }>
+  >(config, "user_attribution?select=user_id,source,campaign_code,first_seen_at", {
+    headers: buildHeaders(config),
+  });
+  return rows.map((row) => ({
+    userId: row.user_id,
+    source: row.source as "campaign" | "referral" | "direct",
+    campaignCode: row.campaign_code,
+    firstSeenAt: row.first_seen_at,
+  }));
+}
+
+/** Users with at least one real inbound deposit. */
+export async function getFundedUserIds(config: RewardsConfig): Promise<string[]> {
+  const rows = await supabaseRequest<Array<{ user_id: string }>>(
+    config,
+    "hl_deposits?is_external=eq.true&amount_usd=gt.0&select=user_id",
+    { headers: buildHeaders(config) },
+  );
+  return [...new Set(rows.map((row) => row.user_id))];
+}
+
+/** Last reconciled trade per user, in one query. */
+export async function getLastActivityByUser(
+  config: RewardsConfig,
+): Promise<Array<{ userId: string; lastOccurredAt: string }>> {
+  const rows = await supabaseRequest<
+    Array<{ user_id: string; last_occurred_at: string }>
+  >(config, "rpc/growth_last_activity", {
+    body: JSON.stringify({}),
+    headers: buildHeaders(config),
+    method: "POST",
+  });
+  return rows.map((row) => ({ userId: row.user_id, lastOccurredAt: row.last_occurred_at }));
+}
+
+/** Operator-seeded campaign spend. */
+export async function listCampaignSpend(
+  config: RewardsConfig,
+): Promise<Array<{ campaignCode: string; spendUsd: number }>> {
+  const rows = await supabaseRequest<
+    Array<{ campaign_code: string; spend_usd: string | number }>
+  >(config, "campaign_spend?select=campaign_code,spend_usd", {
+    headers: buildHeaders(config),
+  });
+  return rows.map((row) => ({
+    campaignCode: row.campaign_code,
+    spendUsd: Number(row.spend_usd),
+  }));
 }

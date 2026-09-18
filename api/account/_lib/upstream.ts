@@ -29,7 +29,16 @@ export async function getAccountSnapshot(args: AccountReadArgs) {
   const client = await createClient(args);
   const [userState, spotBalance] = await Promise.all([
     client.getUserState({ fresh: true }),
-    client.getSpotBalance(),
+    // Spot is secondary to the perp/margin state the balance shows. A spot
+    // failure must not reject the whole snapshot and blank a balance that
+    // came back fine — it degrades the spot-token list to empty and no more.
+    // userState stays strict: it *is* the balance, so its failure is a real
+    // failure the cache's stale fallback and the client's last-known both
+    // absorb.
+    client.getSpotBalance().catch((error: unknown) => {
+      console.warn("[account] spot balance fetch failed", error);
+      return { balances: [] };
+    }),
   ]);
   return { userState, spotBalance };
 }

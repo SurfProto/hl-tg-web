@@ -9,7 +9,6 @@ This is a monorepo containing:
 - **apps/tg-mini-app**: Telegram Mini App (the product — deployed to production)
 - **apps/notification-worker**: Telegram notification worker (fills, deposits, liquidation risk, price alerts)
 - **apps/onramp-proxy**: server-to-server signing proxy for the fiat on-ramp provider
-- **apps/web**: static scaffold, not deployed — kept only as a placeholder
 - **api/**: Vercel serverless functions (not a pnpm workspace; tested via `vitest.api.config.ts`)
 - **packages/ui**: Shared UI components
 - **packages/hyperliquid-sdk**: Hyperliquid SDK wrapper with builder code enforcement
@@ -56,9 +55,6 @@ pnpm dev
 
 # Start only Telegram Mini App
 pnpm --filter @repo/tg-mini-app dev
-
-# Start only webapp
-pnpm --filter @repo/web dev
 ```
 
 ### Build
@@ -113,7 +109,6 @@ For the VPS deployment of the external notifications worker, see [apps/notificat
 - ✅ Builder code enforcement (automatic)
 - ✅ Recoverable and user-revocable Hyperliquid agent authorization
 - ✅ Testnet toggle
-- ✅ Desktop webapp (PWA-ready)
 
 ### Rewards safety status
 

@@ -58,6 +58,25 @@ export function getTelegramProfile() {
   return window.Telegram?.WebApp?.initDataUnsafe?.user;
 }
 
+/**
+ * Send the client-captured first touch to the server, once per session. The
+ * server writes it only if the account has none yet, so calling this on every
+ * authenticated load is safe and idempotent.
+ */
+export async function recordAttribution(
+  accessToken: string,
+  firstTouch: {
+    source: "campaign" | "referral" | "direct";
+    campaignCode: string | null;
+    rawStartParam: string | null;
+  },
+): Promise<{ recorded: boolean }> {
+  return requestJson<{ recorded: boolean }>("/api/profile/attribution", accessToken, {
+    method: "POST",
+    body: JSON.stringify(firstTouch),
+  });
+}
+
 export async function bootstrapProfile(
   accessToken: string,
   input: BootstrapProfileInput = {},

@@ -3,10 +3,15 @@ import { ensureMethod, HttpError, json, withJsonRoute } from "../onramp/_lib/htt
 import { loadBuilderFillsDay } from "./_lib/builder-fills";
 import { getRewardsConfig } from "./_lib/config";
 import {
+  getBuilderFillsForWallet,
   getPendingBuilderFillDays,
+  getWalletUsers,
+  getWnftStatus,
   recordBuilderFillDay,
   upsertBuilderFills,
+  upsertWnftProvisional,
 } from "./_lib/supabase-admin";
+import { refreshWnftForWallets } from "./_lib/wnft";
 
 /**
  * Daily ingestion of Hyperliquid's builder-fills export.
@@ -71,6 +76,9 @@ export default async function handler(request: any, response: any) {
     let failed = 0;
     let rowsIngested = 0;
     let feeUsd = 0;
+    // Wallets whose reconciled fills changed this run, so WNFT qualification is
+    // re-derived only for accounts that could have crossed the line.
+    const touchedWallets = new Set<string>();
 
     for (const day of days) {
       const result = await loadBuilderFillsDay({
@@ -127,9 +135,41 @@ export default async function handler(request: any, response: any) {
       ingested += 1;
       rowsIngested += result.rows.length;
       feeUsd += dayFeeUsd;
+      for (const row of result.rows) {
+        touchedWallets.add(row.walletAddress);
+      }
 
       if (result.malformed > 0) {
         console.warn(`[builder-fills] malformed rows day=${day} count=${result.malformed}`);
+      }
+    }
+
+    // WNFT refresh is secondary to fill ingestion: a failure here must not
+    // fail a run that correctly ingested fills, so it is logged, not thrown.
+    let wnftEvaluated = 0;
+    let wnftProvisional = 0;
+    if (touchedWallets.size > 0) {
+      try {
+        const summary = await refreshWnftForWallets(
+          [...touchedWallets],
+          {
+            minOrderNotionalUsd: config.wnftMinOrderNotionalUsd,
+            sameOrderWindowSeconds: config.wnftSameOrderWindowSeconds,
+            minQualifyingOrders: config.wnftMinQualifyingOrders,
+          },
+          {
+            getWalletUsers: () => getWalletUsers(config),
+            getBuilderFillsForWallet: (wallet) =>
+              getBuilderFillsForWallet(config, wallet),
+            getWnftStatus: (userId) => getWnftStatus(config, userId),
+            upsertWnftProvisional: (userId, qualification) =>
+              upsertWnftProvisional(config, userId, qualification),
+          },
+        );
+        wnftEvaluated = summary.evaluated;
+        wnftProvisional = summary.provisional;
+      } catch (error) {
+        console.warn("[builder-fills] wnft refresh failed", error);
       }
     }
 
@@ -137,7 +177,8 @@ export default async function handler(request: any, response: any) {
     console.info(
       `[builder-fills] run complete considered=${days.length} ingested=${ingested} ` +
         `unpublished=${unpublished} failed=${failed} rows=${rowsIngested} ` +
-        `feeUsd=${feeUsd.toFixed(6)} durationMs=${durationMs}`,
+        `feeUsd=${feeUsd.toFixed(6)} wnftEvaluated=${wnftEvaluated} ` +
+        `wnftProvisional=${wnftProvisional} durationMs=${durationMs}`,
     );
 
     json(response, 200, {
@@ -150,6 +191,8 @@ export default async function handler(request: any, response: any) {
         ingested,
         rowsIngested,
         unpublished,
+        wnftEvaluated,
+        wnftProvisional,
       },
     });
   });

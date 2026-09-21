@@ -27,6 +27,22 @@ function looksLikeHtml(body: string) {
   return trimmed.startsWith("<!doctype html") || trimmed.startsWith("<html");
 }
 
+/**
+ * A response the API itself refused, carrying the status and code it refused
+ * with, so a caller can tell a 401 (log in again) from a 503 (ask again
+ * shortly) instead of seeing one opaque Error for both.
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
   const rawBody = await response.text();
@@ -44,7 +60,11 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!response.ok || !payload.success) {
-    throw new Error(payload.error ?? "API request failed");
+    throw new ApiError(
+      payload.error ?? "API request failed",
+      response.status,
+      (payload as { code?: string }).code,
+    );
   }
 
   return payload.data;
@@ -126,20 +146,23 @@ export function fetchEdgeCandles(coin: string, interval = "1h") {
   );
 }
 
-export function fetchAccountSnapshot(accessToken: string) {
+export function fetchAccountSnapshot(accessToken: string, init?: Pick<RequestInit, "signal">) {
   return requestJson<AccountSnapshot>("/api/account/snapshot", {
+    ...init,
     headers: accountHeaders(accessToken),
   });
 }
 
-export function fetchAccountOrders(accessToken: string) {
+export function fetchAccountOrders(accessToken: string, init?: Pick<RequestInit, "signal">) {
   return requestJson<OpenOrder[]>("/api/account/orders", {
+    ...init,
     headers: accountHeaders(accessToken),
   });
 }
 
-export function fetchAccountFills(accessToken: string) {
+export function fetchAccountFills(accessToken: string, init?: Pick<RequestInit, "signal">) {
   return requestJson<Fill[]>("/api/account/fills", {
+    ...init,
     headers: accountHeaders(accessToken),
   });
 }

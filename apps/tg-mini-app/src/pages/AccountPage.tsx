@@ -5,6 +5,7 @@ import { useArbitrumUsdcBalance, useUserState } from "@repo/hyperliquid-sdk";
 import { useTranslation } from "react-i18next";
 import { useHaptics } from "../hooks/useHaptics";
 import { getAccountOverviewStats } from "./account-page-state";
+import { getBalanceHeroValueState } from "../components/balance-hero-state";
 import { StableBalanceList } from "../components/StableBalanceList";
 import { UnifiedAccountBanner } from "../components/UnifiedAccountBanner";
 
@@ -63,7 +64,11 @@ export function AccountPage() {
   const privy = usePrivy() as any;
   const { user } = privy;
   const { wallets } = useWallets();
-  const { data: userState, isLoading: userStateLoading } = useUserState();
+  const {
+    data: userState,
+    isLoading: userStateLoading,
+    isError: userStateError,
+  } = useUserState();
 
   const walletAddress =
     user?.wallet?.address ??
@@ -83,6 +88,15 @@ export function AccountPage() {
     useArbitrumUsdcBalance(walletAddress);
   const visibleStableBalances = userState?.visibleStableBalances ?? [];
   const shellLoading = userStateLoading;
+  // The hero's own rule, reused rather than restated: a held balance survives
+  // a failed refetch, but a first load that errored has nothing to show — and
+  // "$0.00" is a confirmed figure, the one thing this page must never invent.
+  const balanceUnavailable =
+    getBalanceHeroValueState({
+      userState,
+      isLoading: userStateLoading,
+      isError: userStateError,
+    }).state === "error";
 
   return (
     <div className="editorial-page">
@@ -126,6 +140,8 @@ export function AccountPage() {
               <div className="editorial-kicker">{t("account.totalEquity")}</div>
               {shellLoading ? (
                 <SkeletonBar className="mt-1.5 h-6 w-24" />
+              ) : balanceUnavailable ? (
+                <div className="mt-2 text-sm text-negative">{t("balanceHero.balanceUnavailable")}</div>
               ) : (
                 <div className="editorial-mono mt-2 text-lg font-semibold text-foreground">
                   {formatUsd(totalEquity)}
@@ -136,6 +152,8 @@ export function AccountPage() {
               <div className="editorial-kicker">{t("account.marginLocked")}</div>
               {shellLoading ? (
                 <SkeletonBar className="mt-1.5 h-6 w-24" />
+              ) : balanceUnavailable ? (
+                <div className="mt-2 text-sm text-negative">{t("balanceHero.balanceUnavailable")}</div>
               ) : (
                 <div className="editorial-mono mt-2 text-lg font-semibold text-foreground">
                   {formatUsd(marginLocked)}
@@ -146,6 +164,8 @@ export function AccountPage() {
               <div className="editorial-kicker">{t("account.availableBalance")}</div>
               {shellLoading ? (
                 <SkeletonBar className="mt-1.5 h-6 w-24" />
+              ) : balanceUnavailable ? (
+                <div className="mt-2 text-sm text-negative">{t("balanceHero.balanceUnavailable")}</div>
               ) : (
                 <div className="editorial-mono mt-2 text-lg font-semibold text-foreground">
                   {formatUsd(availableBalance)}
@@ -156,6 +176,8 @@ export function AccountPage() {
               <div className="editorial-kicker">{t("account.withdrawableBalance")}</div>
               {shellLoading ? (
                 <SkeletonBar className="mt-1.5 h-6 w-24" />
+              ) : balanceUnavailable ? (
+                <div className="mt-2 text-sm text-negative">{t("balanceHero.balanceUnavailable")}</div>
               ) : (
                 <div className="editorial-mono mt-2 text-lg font-semibold text-foreground">
                   {formatUsd(withdrawableBalance)}

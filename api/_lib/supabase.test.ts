@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildHeaders, looksLikeHtml, supabaseRequest } from "./supabase";
+import { UpstreamTimeoutError } from "./fetch-with-timeout";
+import {
+  SupabaseRequestError,
+  buildHeaders,
+  isSupabaseUnavailable,
+  looksLikeHtml,
+  supabaseRequest,
+} from "./supabase";
 
 const config = {
   supabaseUrl: "https://project.supabase.co",
@@ -138,5 +145,68 @@ describe("looksLikeHtml", () => {
   it("does not mistake JSON for markup", () => {
     expect(looksLikeHtml('{"html":"<html>"}')).toBe(false);
     expect(looksLikeHtml("[]")).toBe(false);
+  });
+});
+
+describe("SupabaseRequestError typing", () => {
+  it("carries kind http and the status for a refused request", async () => {
+    stubResponse({ ok: false, status: 409, body: "duplicate" });
+    await expect(supabaseRequest(config, "users")).rejects.toMatchObject({ kind: "http", status: 409 });
+  });
+
+  it("caps the body in the message at 200 characters", async () => {
+    stubResponse({ ok: false, status: 522, body: "<!DOCTYPE html>" + "x".repeat(5000) });
+    await expect(supabaseRequest(config, "users")).rejects.toSatisfy(
+      (e: unknown) =>
+        e instanceof Error &&
+        e.message.startsWith("Supabase request failed: 522 <!DOCTYPE html>") &&
+        e.message.length < 260,
+    );
+  });
+
+  it("carries kind html for a 200 text/html even with an empty body, as a HEAD is answered", async () => {
+    stubResponse({ status: 200, body: "", contentType: "text/html" });
+    await expect(supabaseRequest(config, "users", { method: "HEAD" })).rejects.toMatchObject({ kind: "html", status: 200 });
+  });
+
+  it("carries kind invalid-json for a body that will not parse", async () => {
+    stubResponse({ body: "{oops" });
+    await expect(supabaseRequest(config, "users")).rejects.toMatchObject({ kind: "invalid-json" });
+  });
+
+  it("wraps a connection that never opened as kind network", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
+    await expect(supabaseRequest(config, "users")).rejects.toMatchObject({ kind: "network", status: null });
+  });
+
+  it("lets the deadline and a caller's own abort through untouched", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new UpstreamTimeoutError("u", 4000)));
+    await expect(supabaseRequest(config, "users")).rejects.toBeInstanceOf(UpstreamTimeoutError);
+    const abort = new Error("aborted");
+    abort.name = "AbortError";
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(abort));
+    await expect(supabaseRequest(config, "users")).rejects.toBe(abort);
+  });
+});
+
+describe("isSupabaseUnavailable", () => {
+  const http = (status: number) => new SupabaseRequestError("x", "http", status);
+  it.each([
+    ["the 4s deadline", new UpstreamTimeoutError("u", 4000), true],
+    ["a connection that never opened", new SupabaseRequestError("x", "network", null), true],
+    ["http 500", http(500), true],
+    ["http 502", http(502), true],
+    ["http 503", http(503), true],
+    ["http 522", http(522), true],
+    ["http 499", http(499), false],
+    ["http 429", http(429), false],
+    ["http 401", http(401), false],
+    ["http 409", http(409), false],
+    ["http with no status", new SupabaseRequestError("x", "http", null), false],
+    ["html at 200 - a misrouted URL, not an outage", new SupabaseRequestError("x", "html", 200), false],
+    ["invalid json", new SupabaseRequestError("x", "invalid-json", 200), false],
+    ["a plain Error", new Error("x"), false],
+  ])("%s -> %s", (_label, error, expected) => {
+    expect(isSupabaseUnavailable(error)).toBe(expected);
   });
 });

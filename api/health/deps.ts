@@ -12,6 +12,10 @@
  * to detect it. No credentials, no network, no side effects: each entry below
  * loads what a real route loads and reports whether it resolved.
  *
+ * It never opens a connection. /api/health/db does — that is the probe that
+ * sees a database outage; this one reported eleven green modules through the
+ * whole of 2026-09-18's.
+ *
  * Deliberately loaded lazily, one at a time, so a failure names the module that
  * broke rather than taking this route down with it.
  */

@@ -1,4 +1,4 @@
-import { fetchWithTimeout } from "./fetch-with-timeout";
+import { UpstreamTimeoutError, fetchWithTimeout } from "./fetch-with-timeout";
 
 /**
  * One PostgREST client for every `_lib/supabase-admin.ts`.
@@ -15,6 +15,47 @@ import { fetchWithTimeout } from "./fetch-with-timeout";
 export interface SupabaseConfig {
   supabaseUrl: string;
   supabaseServiceRoleKey: string;
+}
+
+/**
+ * A PostgREST answer this transport could not accept, typed so a caller can
+ * tell an availability failure from a verdict. `http` is any non-2xx and the
+ * status says which: a 522 is Cloudflare failing to reach Supabase, a 401 a bad
+ * service key. `html` is a page where JSON should be; `invalid-json` a body
+ * that would not parse; `network` is no answer at all — DNS, a refused or reset
+ * connection, a TLS failure. Each message's status prefix is unchanged, so
+ * anything matching on it still does; the body is capped at 200 characters.
+ */
+export class SupabaseRequestError extends Error {
+  constructor(
+    message: string,
+    readonly kind: "http" | "html" | "invalid-json" | "network",
+    readonly status: number | null,
+  ) {
+    super(message);
+    this.name = "SupabaseRequestError";
+  }
+}
+
+/**
+ * Did Supabase fail to *answer*, as opposed to answering with a refusal?
+ *
+ * The shapes an outage takes: the 4s deadline firing, a connection that never
+ * opened (DNS, refused, reset, TLS), and a 5xx — on 2026-09-18 Cloudflare's
+ * 522 page for over an hour. Everything else is Supabase, or something standing
+ * where Supabase should be, *speaking*: a 4xx is a rotated key, a dropped
+ * column or a bad path; a 2xx HTML page is a misrouted URL or Vercel's SPA
+ * fallback (Cloudflare's error pages arrive as 5xx, never 2xx); invalid JSON is
+ * a body from the wrong service. Treating any of those as an outage would hide
+ * a broken deploy behind reads that appear to work.
+ */
+export function isSupabaseUnavailable(error: unknown): boolean {
+  if (error instanceof UpstreamTimeoutError) return true;
+  if (error instanceof SupabaseRequestError) {
+    if (error.kind === "network") return true;
+    if (error.kind === "http") return error.status != null && error.status >= 500;
+  }
+  return false;
 }
 
 /**
@@ -44,13 +85,29 @@ export async function supabaseRequest<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const response = await fetchWithTimeout(
-    `${config.supabaseUrl}/rest/v1/${path}`,
-    init,
-  );
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(`${config.supabaseUrl}/rest/v1/${path}`, init);
+  } catch (error) {
+    // The deadline keeps its own type, and a caller's own abort is theirs to
+    // handle. Anything else here is undici's bare `TypeError: fetch failed`
+    // with the reason on `cause` — a connection that never opened.
+    if (error instanceof UpstreamTimeoutError) throw error;
+    if (error instanceof Error && error.name === "AbortError") throw error;
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new SupabaseRequestError(
+      `Supabase request failed: ${reason.slice(0, 200)}`,
+      "network",
+      null,
+    );
+  }
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`Supabase request failed: ${response.status} ${body}`);
+    throw new SupabaseRequestError(
+      `Supabase request failed: ${response.status} ${body.slice(0, 200)}`,
+      "http",
+      response.status,
+    );
   }
 
   if (response.status === 204) {
@@ -69,17 +126,28 @@ export async function supabaseRequest<T>(
   //
   // An empty body is never valid JSON, so nothing that used to succeed changes
   // meaning here; a response with no content is reported as no content.
+  // The header check comes before the empty-body return: a HEAD answered by a
+  // web page has no body to sniff, and the probe that relies on HEAD must not
+  // read "200 text/html, nothing to parse" as the database answering.
+  if (contentType.includes("text/html")) {
+    throw new SupabaseRequestError(`Supabase returned HTML for ${path}`, "html", response.status);
+  }
+
   if (rawBody.length === 0) {
     return null as T;
   }
 
-  if (contentType.includes("text/html") || looksLikeHtml(rawBody)) {
-    throw new Error(`Supabase returned HTML for ${path}`);
+  if (looksLikeHtml(rawBody)) {
+    throw new SupabaseRequestError(`Supabase returned HTML for ${path}`, "html", response.status);
   }
 
   try {
     return JSON.parse(rawBody) as T;
   } catch {
-    throw new Error(`Supabase returned invalid JSON for ${path}`);
+    throw new SupabaseRequestError(
+      `Supabase returned invalid JSON for ${path}`,
+      "invalid-json",
+      response.status,
+    );
   }
 }

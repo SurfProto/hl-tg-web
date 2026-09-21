@@ -92,6 +92,8 @@ For the VPS deployment of the external notifications worker, see [apps/notificat
 1. Connect your repository to Vercel
 2. Set environment variables in Vercel dashboard
 3. Deploy
+4. Confirm the database answers: `curl -i https://<your-domain>/api/health/db`
+   (200 up, 503 down). See DEPLOYMENT.md → Troubleshooting.
 
 ### Telegram Mini App
 

@@ -75,18 +75,19 @@ import {
   isDevIdentityEnabled,
 } from "./dev-identity";
 import {
+  ApiError,
   fetchAccountFills,
   fetchAccountOrders,
   fetchAccountPortfolio,
   fetchAccountSnapshot,
-  type AccountSnapshot,
   fetchEdgeAssetCtx,
   fetchEdgeCandles,
   fetchEdgeMarketPrice,
-  fetchEdgeMarketStats,
   fetchEdgeMarkets,
+  fetchEdgeMarketStats,
   fetchEdgeMids,
   fetchEdgeOrderbook,
+  type AccountSnapshot,
 } from "./edge-proxy";
 
 const publicClientCache = new Map<"mainnet" | "testnet", HyperliquidClient>();
@@ -590,6 +591,36 @@ export function useCandles(coin: string, interval: string = "1h") {
 }
 
 /**
+ * Retry policy for the account queries, which all pass through the same
+ * server-side identity lookup and cache.
+ *
+ * React Query's default — three attempts with exponential backoff — held the
+ * first load on a spinner for twenty-odd seconds against a dead backend before
+ * `isError` let the hero say "unavailable". One retry covers a transient blip.
+ * But a 503 CACHE_WARMING is the server saying "another request is filling
+ * this cache, ask again", and keeps the patience the old policy gave it by
+ * accident, while a 401/403 will never pass on retry. Supabase and JWKS are
+ * bounded at 4s and Redis at 1.5s server-side, so a dead database fails fast;
+ * the Hyperliquid upstream is not bounded yet, and no retry count helps a hung
+ * upstream — that is its own follow-up.
+ */
+export function accountQueryRetry(failureCount: number, error: unknown): boolean {
+  if (error instanceof ApiError) {
+    // Never: a token that failed will fail again, and a 429 retried inside
+    // its own window only deepens it.
+    if (error.status === 401 || error.status === 403 || error.status === 429) return false;
+    // Patience only for a cache that is being filled. The other 503 this app
+    // sends - PROFILE_LOOKUP_UNAVAILABLE - means the server already spent its
+    // deadline on a dead database; three more tries would rebuild the twenty
+    // seconds this policy exists to remove, and quadruple the load on it.
+    if (error.status === 503) {
+      return error.code === "CACHE_WARMING" ? failureCount < 3 : failureCount < 1;
+    }
+  }
+  return failureCount < 1;
+}
+
+/**
  * The one query behind /api/account/snapshot.
  *
  * useUserState and useSpotBalance both used to fetch this endpoint under their
@@ -605,17 +636,22 @@ export function useAccountSnapshot<TSelected = AccountSnapshot>(
 
   return useQuery({
     queryKey: ["userState", scope],
-    queryFn: async (): Promise<AccountSnapshot> => {
+    queryFn: async ({ signal }): Promise<AccountSnapshot> => {
       const accessToken = await getAccessToken();
       if (!accessToken) {
         throw new Error("Missing access token");
       }
-      return fetchAccountSnapshot(accessToken);
+      // The signal lets a cancelled refetch (invalidate, Retry) abort the
+      // browser request, so React Query settles cleanly instead of racing two
+      // in-flight fetches. It does not reach the server: that function keeps
+      // running and its cache lock expires on its own 5s.
+      return fetchAccountSnapshot(accessToken, { signal });
     },
     enabled: Boolean(scope),
     // No placeholderData on account queries: it would render the previously
     // fetched account's figures while the new one loads.
     refetchInterval: 5_000,
+    retry: accountQueryRetry,
     select,
   });
 }
@@ -889,15 +925,16 @@ export function useOpenOrders() {
 
   return useQuery({
     queryKey: ["openOrders", scope],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const accessToken = await getAccessToken();
       if (!accessToken) {
         throw new Error("Missing access token");
       }
-      return fetchAccountOrders(accessToken);
+      return fetchAccountOrders(accessToken, { signal });
     },
     enabled: Boolean(scope),
     refetchInterval: 5000,
+    retry: accountQueryRetry,
   });
 }
 
@@ -910,15 +947,16 @@ export function useFills() {
 
   return useQuery({
     queryKey: ["fills", scope],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const accessToken = await getAccessToken();
       if (!accessToken) {
         throw new Error("Missing access token");
       }
-      return fetchAccountFills(accessToken);
+      return fetchAccountFills(accessToken, { signal });
     },
     enabled: Boolean(scope),
     refetchInterval: 10000,
+    retry: accountQueryRetry,
   });
 }
 

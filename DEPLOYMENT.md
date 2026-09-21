@@ -358,6 +358,32 @@ Function regions until Redis and Supabase locality has been validated.
 
 ## Troubleshooting
 
+### Is the API or the database down?
+
+Work down this ladder before reading code:
+
+```bash
+# 1. Does the database answer? 200 = yes. 503 = no (body: timeout / unreachable / error).
+#    429 = over the per-IP limit (30/min). 500 = the route itself is misconfigured.
+curl -i https://www.p34k.exchange/api/health/db      # GET or HEAD
+
+# 2. Does the code load? (Never opens a database connection.)
+curl -s https://www.p34k.exchange/api/health/deps
+
+# 3. Every public route at once
+pnpm smoke
+```
+
+Then Vercel's runtime logs (Project → Logs) and the Supabase dashboard's
+project status. Two operational notes. (1) If Vercel's bot challenge is on —
+it was on 2026-09-15 (`X-Vercel-Mitigated: challenge`) — a bare `curl` or an
+uptime monitor gets 403 on every path until a Firewall rule exempts
+`/api/health/*`. Add that rule, then point an external monitor at
+`GET /api/health/db` once a minute from one or two regions, alerting on
+anything but 200; the hourly smoke run alone can miss an outage entirely.
+(2) During a database outage, account reads keep working only for users active
+in the last 24h — see HANDOFF.md, "During a Supabase outage".
+
 ### Mini App not loading
 - Check that your Vercel deployment is live
 - Verify environment variables are set correctly

@@ -140,6 +140,11 @@ async function fetchUsers(supabaseUrl: string, serviceRoleKey: string): Promise<
   return response.json() as Promise<AuditedUserRow[]>;
 }
 
+// Writes a users row outside the API. HANDOFF.md ("During a Supabase outage")
+// requires such writes to clear both profile cache keys for the row's Privy id
+// — `invalidateProfileCache` in api/profile/_lib/supabase-admin.ts — or the
+// pre-repair wallet can be served as the stale copy for up to 24h during an
+// outage. This script does not yet do that; run it with that in mind.
 async function patchUser(
   supabaseUrl: string,
   serviceRoleKey: string,

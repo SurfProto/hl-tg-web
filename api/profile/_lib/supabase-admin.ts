@@ -1,5 +1,9 @@
-import { buildHeaders, supabaseRequest } from "../../_lib/supabase";
-import { redisDel, redisGet, redisSet } from "../../market/_lib/redis";
+import { buildHeaders, isSupabaseUnavailable, supabaseRequest } from "../../_lib/supabase";
+import {
+  __resetSupabaseUnavailableTelemetryForTests,
+  noteSupabaseUnavailable,
+} from "../../_lib/supabase-telemetry";
+import { redisDel, redisGet, redisSet, redisSetNx } from "../../market/_lib/redis";
 import { type ProfileConfig } from "./config";
 import { HttpError } from "../../onramp/_lib/http";
 
@@ -76,12 +80,56 @@ export function getDefaultNotificationPreferences(): NotificationPreferencesRow 
  */
 const PROFILE_CACHE_TTL_SECONDS = 60;
 
+/**
+ * How long the last server-resolved profile stays usable when Supabase itself
+ * is unreachable. On 2026-09-18 the database was down for over an hour; every
+ * fresh entry above expired within a minute of it, and from then on each
+ * account read went to a dead Supabase and every balance in the app blanked —
+ * although the balance never needed the database for anything but this one
+ * identity lookup, and Hyperliquid was healthy throughout. A day covers anyone
+ * who opened the app since yesterday. It bounds how far into an outage reads
+ * keep working and how old a row a user *inactive* before it can be handed —
+ * an active user's copy is rewritten on every fresh miss, so it is under a
+ * minute old when an outage begins. Every writer here clears both copies; a
+ * users row edited outside this API must call invalidateProfileCache (see
+ * HANDOFF.md). Served only when Supabase throws an availability error, never
+ * when it answers.
+ */
+const PROFILE_STALE_TTL_SECONDS = 24 * 60 * 60;
+
+/**
+ * After a stale serve the fresh key is re-primed for this long, so the user's
+ * next poll (every 5s) is a cache hit instead of another 4s wait on a dead
+ * database. It also bounds how long a recovered Supabase goes unnoticed.
+ */
+const PROFILE_STALE_REPRIME_SECONDS = 15;
+
+// The shared, throttled `[supabase] unavailable (profile-stale)` line: the
+// only runtime-log signal that a persistent 5xx is being papered over by
+// stale identities, so it must survive an outage without flooding it.
+function noteStaleServe(error: unknown) {
+  noteSupabaseUnavailable("profile-stale", error);
+}
+
+export function __resetProfileStaleTelemetryForTests() {
+  __resetSupabaseUnavailableTelemetryForTests();
+}
+
 function profileCacheKey(privyUserId: string): string {
   return `profile:privy:${privyUserId}`;
 }
 
+function profileStaleKey(privyUserId: string): string {
+  return `profile-stale:privy:${privyUserId}`;
+}
+
 export async function invalidateProfileCache(privyUserId: string): Promise<void> {
-  await redisDel(profileCacheKey(privyUserId));
+  // Both copies, or a relinked wallet could be served from the stale one
+  // through the next outage.
+  await Promise.all([
+    redisDel(profileCacheKey(privyUserId)),
+    redisDel(profileStaleKey(privyUserId)),
+  ]);
 }
 
 export async function getProfileByPrivyUserId(
@@ -98,19 +146,57 @@ export async function getProfileByPrivyUserId(
     }
   }
 
-  const rows = await supabaseRequest<ProfileRow[]>(
-    config,
-    `users?privy_user_id=eq.${encodeURIComponent(privyUserId)}&select=id,telegram_id,wallet_address,privy_user_id,username,email,language&limit=1`,
-    {
-      headers: buildHeaders(config),
-    },
-  );
+  let rows: ProfileRow[];
+  try {
+    rows = await supabaseRequest<ProfileRow[]>(
+      config,
+      `users?privy_user_id=eq.${encodeURIComponent(privyUserId)}&select=id,telegram_id,wallet_address,privy_user_id,username,email,language&limit=1`,
+      {
+        headers: buildHeaders(config),
+      },
+    );
+  } catch (error) {
+    // Only when Supabase did not answer — a timeout, a 5xx, a Cloudflare page.
+    // That is an availability failure, not a verdict about this user, so the
+    // last profile Supabase did resolve stands in: the same server-resolved
+    // row it always was; nothing here trusts the client. A 4xx is Supabase
+    // answering (a rotated key, a dropped column) and is rethrown, or a broken
+    // deploy would hide behind reads that appear to work. A profile Supabase
+    // has answered *about* (below) never reaches this branch, so a deleted or
+    // relinked account still gets its 404 on a healthy DB.
+    if (!isSupabaseUnavailable(error)) throw error;
+    const stale = await redisGet(profileStaleKey(privyUserId));
+    if (stale.value) {
+      let profile: ProfileRow | null = null;
+      try {
+        profile = JSON.parse(stale.value) as ProfileRow;
+      } catch {
+        profile = null; // Unparseable stale entry: nothing to fall back on.
+      }
+      if (profile) {
+        // NX: a concurrent healthy read may have just written a fresher entry.
+        await redisSetNx(key, stale.value, PROFILE_STALE_REPRIME_SECONDS);
+        noteStaleServe(error);
+        return profile;
+      }
+    }
+    throw error;
+  }
 
   const profile = rows[0] ?? null;
   // Only cache hits. Caching "no such profile" would make a user who has just
   // signed up wait out the TTL before the app could see them.
   if (profile) {
-    await redisSet(key, JSON.stringify(profile), PROFILE_CACHE_TTL_SECONDS);
+    const serialized = JSON.stringify(profile);
+    await Promise.all([
+      redisSet(key, serialized, PROFILE_CACHE_TTL_SECONDS),
+      redisSet(profileStaleKey(privyUserId), serialized, PROFILE_STALE_TTL_SECONDS),
+    ]);
+  } else {
+    // Supabase answered "no such user": a deleted row, or one whose Privy id
+    // moved elsewhere. The stale copy must go with it, or the next outage
+    // would serve an identity the database has already retired.
+    await redisDel(profileStaleKey(privyUserId));
   }
 
   return profile;

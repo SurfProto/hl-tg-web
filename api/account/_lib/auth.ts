@@ -1,6 +1,8 @@
 import { requirePrivySession } from "../../onramp/_lib/auth";
 import { getProfileConfig } from "../../profile/_lib/config";
 import { getProfileByPrivyUserId } from "../../profile/_lib/supabase-admin";
+import { isSupabaseUnavailable } from "../../_lib/supabase";
+import { noteSupabaseUnavailable } from "../../_lib/supabase-telemetry";
 import { HttpError } from "../../market/_lib/response";
 import { requireTelegramInitData } from "./telegram";
 import { rateLimitAccount } from "./rate-limit";
@@ -26,7 +28,27 @@ export async function requireAccountContext(request: any): Promise<AccountContex
   const telegram = requireTelegramInitData(request);
   await rateLimitAccount(request, session.privyUserId);
 
-  const profile = await getProfileByPrivyUserId(config, session.privyUserId);
+  let profile: Awaited<ReturnType<typeof getProfileByPrivyUserId>>;
+  try {
+    profile = await getProfileByPrivyUserId(config, session.privyUserId);
+  } catch (error) {
+    // The lookup failed because Supabase did not answer, not because of this
+    // request. Say so. As an unhandled error this became 500 INTERNAL_ERROR —
+    // the shape every code defect produces — which is why the 2026-09-18
+    // database outage was first read as an auth bug. 503 names the layer down.
+    if (isSupabaseUnavailable(error)) {
+      // The compact line the runtime log needs: an HttpError is rendered
+      // without logging, and a user with no stale copy would otherwise leave
+      // no trace at all during an outage.
+      noteSupabaseUnavailable("account-auth", error);
+      throw new HttpError(
+        503,
+        "PROFILE_LOOKUP_UNAVAILABLE",
+        "Account lookup is temporarily unavailable",
+      );
+    }
+    throw error;
+  }
   const walletAddress = profile?.wallet_address?.trim();
   if (!walletAddress) {
     throw new HttpError(404, "PROFILE_WALLET_NOT_FOUND", "No wallet profile is linked to this account");

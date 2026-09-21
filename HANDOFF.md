@@ -377,7 +377,45 @@ credentials and asserts two things:
   `index.html`, so a route that stops existing answers 200 with a page, which a
   status-only check would happily accept.
 
-**`/api/health/deps` is the check that matters most.** The smoke check above
+**`/api/health/db` is the check that sees the database.** `deps` proves the
+code loads and never opens a connection: on 2026-09-18 it reported eleven green
+modules through a full Supabase outage (every account read failing on a
+Cloudflare 522) and the only place that was visible was the runtime log.
+`/api/health/db` makes the one real PostgREST round trip `deps` never did and
+answers 200 up / 503 down — public, rate-limited per IP, and silent about error
+text. When balances vanish, hit this first. If Vercel's bot challenge is on, a
+bare `curl` or an uptime monitor gets 403 until a Firewall rule exempts
+`/api/health/*` (DEPLOYMENT.md → Troubleshooting has the ladder).
+
+**During a Supabase outage.** Two limits of the protection this added, so
+nobody assumes full coverage. Account reads — balance, positions, orders, fills
+— keep working only for users active in the last 24h: identity comes from the
+stale profile copy (written on each fresh lookup that finds a row) and the data from
+Hyperliquid, which the database was never needed for. Any `users` write made
+outside this API — the identity-repair script, a manual edit — must call
+`invalidateProfileCache`, or its pre-write row can be served for up to that
+long during an outage. Onramp (`api/onramp/_lib/supabase-admin.ts`) and rewards
+(`api/rewards/_lib/supabase-admin.ts`) resolve identity from Supabase directly;
+profile bootstrap and notification preferences pass the protected lookup but
+still need Supabase for a write or a second lookup. All four are down by design.
+A lookup that cannot reach Supabase answers 503 `PROFILE_LOOKUP_UNAVAILABLE`
+rather than 500 and writes a compact, throttled `[supabase] unavailable` line,
+so the runtime log names the layer that failed — grep for it, and for
+`(profile-stale)`, which is the only signal that a persistent 5xx is being
+papered over by stale identities. The stale copy lives in Redis: without
+Upstash/KV configured the fallback is per-instance memory, and the 24h coverage
+does not hold across serverless instances.
+
+**Deferred from the outage-resilience change, on purpose, and still open:** the
+writer cache-aside race (a prime-instead-of-delete in `bootstrapProfileUser` /
+`updateProfileUser`); a request deadline for the notification worker's
+supabase-js client; the first-hop `x-forwarded-for` copy in
+`api/client-errors.ts` (use `getRequestIp`); a Hyperliquid `postInfo` deadline
+so a hung upstream also converges to "unavailable"; and the Withdraw and Swap
+pages, which still render `$0.00` on a failed first load where the Account page
+now says "unavailable".
+
+**`/api/health/deps` is the check that matters most for a *code* break.** The smoke check above
 can only see failures at module *load*; the five-layer chain that broke every
 authenticated account read failed on a `require` **inside** a handler, past the
 auth check, so an unauthenticated probe still got its 401 and everything looked

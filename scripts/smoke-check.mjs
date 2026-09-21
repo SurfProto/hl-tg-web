@@ -32,6 +32,11 @@ const CHECKS = [
   // require rather than on a request.
   { method: "GET", path: "/api/health/deps", expect: 200 },
 
+  // The one probe that actually opens a database connection. deps proves the
+  // code loads; this proves Supabase answers. 503 here means the database is
+  // down even if everything else on this list is green.
+  { method: "GET", path: "/api/health/db", expect: 200 },
+
   { method: "GET", path: "/api/market/markets", expect: 200 },
   { method: "GET", path: "/api/market/stats", expect: 200 },
   { method: "GET", path: "/api/market/mids", expect: 200 },

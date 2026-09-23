@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { usePrivy } from "@privy-io/react-auth";
 import { useTranslation } from "react-i18next";
 import {
+  findProtectionSideIssue,
   getBuilderFeeTenthsBp,
   getMarketBaseAsset,
   getAvailableCollateralForMarket,
@@ -463,6 +464,11 @@ export function TradePage() {
     if (newSide !== activeSide) {
       haptics.light();
       setActiveSide(newSide);
+      // Triggers are only meaningful relative to a direction: a stop below the
+      // mark protects a long and targets a short. Carrying the draft across
+      // the toggle is what made a wrong-sided stop reachable without the user
+      // editing anything, so the levels are cleared rather than reinterpreted.
+      setProtectionDraft(EMPTY_PROTECTION_DRAFT);
     }
   };
 
@@ -487,6 +493,30 @@ export function TradePage() {
       if (protectionDraft.takeProfitEnabled && takeProfitPx == null) {
         haptics.error();
         setSubmitError(t("trade.enterValidTp"));
+        return;
+      }
+
+      // Refuse a wrong-sided trigger here, before the entry order exists.
+      //
+      // This rule used to be enforced only inside planPositionProtection,
+      // which runs after placeOrder has already filled — so the position
+      // opened and only the stop was refused, leaving a live leveraged trade
+      // unprotected with nothing but a toast. The draft also survives the
+      // buy/sell toggle, so a stop set for a long and submitted as a short
+      // reached that state without the user changing anything.
+      //
+      // It cannot make the pair atomic: the mark can still move between this
+      // check and the fill, and the SDK check remains the backstop for that.
+      // What it removes is the deterministic case, which is the common one.
+      const sideIssue = findProtectionSideIssue({
+        direction: activeSide === "buy" ? "long" : "short",
+        referencePrice: validationReferencePrice,
+        stopLossPx: protectionDraft.stopLossEnabled ? stopLossPx : null,
+        takeProfitPx: protectionDraft.takeProfitEnabled ? takeProfitPx : null,
+      });
+      if (sideIssue) {
+        haptics.error();
+        setSubmitError(t(`trade.protectionSide.${sideIssue}`));
         return;
       }
     }

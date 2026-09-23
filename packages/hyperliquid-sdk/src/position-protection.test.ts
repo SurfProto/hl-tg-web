@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   classifyProtectionOrder,
+  findProtectionSideIssue,
   planPositionProtection,
+  PROTECTION_SIDE_MESSAGES,
   type ProtectionOrder,
 } from "./position-protection";
 
@@ -254,5 +256,114 @@ describe("planPositionProtection", () => {
 
     expect(plan.cancelOids).toEqual([1]);
     expect(plan.toPlace).toEqual([{ triggerPx: 95, triggerKind: "stopLoss" }]);
+  });
+});
+
+/**
+ * The pre-submit half of the direction rule.
+ *
+ * planPositionProtection only runs after the entry order has filled, so until
+ * this predicate existed a wrong-sided stop opened the position and then
+ * refused the protection — a live leveraged trade with nothing guarding it.
+ * TradePage now calls this at the review step.
+ */
+describe("findProtectionSideIssue", () => {
+  it("accepts triggers that straddle the mark correctly", () => {
+    expect(
+      findProtectionSideIssue({
+        direction: "long",
+        referencePrice: 100,
+        stopLossPx: 90,
+        takeProfitPx: 110,
+      }),
+    ).toBeNull();
+    expect(
+      findProtectionSideIssue({
+        direction: "short",
+        referencePrice: 100,
+        stopLossPx: 110,
+        takeProfitPx: 90,
+      }),
+    ).toBeNull();
+  });
+
+  it("names a stop on the wrong side of the mark", () => {
+    expect(
+      findProtectionSideIssue({
+        direction: "long",
+        referencePrice: 100,
+        stopLossPx: 110,
+      }),
+    ).toBe("stopLossAboveMarkOnLong");
+    expect(
+      findProtectionSideIssue({
+        direction: "short",
+        referencePrice: 100,
+        stopLossPx: 90,
+      }),
+    ).toBe("stopLossBelowMarkOnShort");
+  });
+
+  it("names a take profit on the wrong side of the mark", () => {
+    expect(
+      findProtectionSideIssue({
+        direction: "long",
+        referencePrice: 100,
+        takeProfitPx: 90,
+      }),
+    ).toBe("takeProfitBelowMarkOnLong");
+    expect(
+      findProtectionSideIssue({
+        direction: "short",
+        referencePrice: 100,
+        takeProfitPx: 110,
+      }),
+    ).toBe("takeProfitAboveMarkOnShort");
+  });
+
+  /**
+   * The exact sequence that shipped: a stop set for a long, then the side
+   * toggled to sell. The draft used to survive the toggle, so this reached
+   * the exchange as a short whose stop sat on the take-profit side.
+   */
+  it("catches a long's stop reused on a short", () => {
+    expect(
+      findProtectionSideIssue({
+        direction: "short",
+        referencePrice: 60000,
+        stopLossPx: 58000,
+      }),
+    ).toBe("stopLossBelowMarkOnShort");
+  });
+
+  it("stays silent when there is no usable reference price", () => {
+    // Refusing here would block an order over a price the app has not
+    // fetched; the order path checks again with its own reference.
+    expect(
+      findProtectionSideIssue({
+        direction: "long",
+        referencePrice: 0,
+        stopLossPx: 110,
+      }),
+    ).toBeNull();
+    expect(
+      findProtectionSideIssue({
+        direction: "long",
+        referencePrice: Number.NaN,
+        stopLossPx: 110,
+      }),
+    ).toBeNull();
+  });
+
+  it("has a message for every issue it can return", () => {
+    const issues = [
+      "stopLossAboveMarkOnLong",
+      "stopLossBelowMarkOnShort",
+      "takeProfitBelowMarkOnLong",
+      "takeProfitAboveMarkOnShort",
+    ] as const;
+    for (const issue of issues) {
+      expect(PROTECTION_SIDE_MESSAGES[issue]).toBeTruthy();
+    }
   });
 });

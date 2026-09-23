@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   classifyProtectionOrder,
+  findProtectionSideIssue,
   planPositionProtection,
+  PROTECTION_SIDE_MESSAGES,
   type ProtectionOrder,
+  type ProtectionSideIssue,
 } from "./position-protection";
 
 const MARK = 100;
@@ -106,6 +109,27 @@ describe("planPositionProtection", () => {
         takeProfitPx: Number.NaN,
       }),
     ).toThrow(/Take profit trigger price must be greater than 0/);
+  });
+
+  /**
+   * The plan has a position open, so it must not guess. findProtectionSideIssue
+   * deliberately tolerates an unusable reference — its other caller runs before
+   * an order exists — and inheriting that tolerance here would place triggers
+   * without knowing which side of the mark they fall on. Before the rule was
+   * extracted this was implicit: every comparison against NaN was false.
+   */
+  it("refuses to plan against an unusable mark price", () => {
+    for (const referencePrice of [0, -1, Number.NaN]) {
+      expect(() =>
+        planPositionProtection({
+          ...base,
+          referencePrice,
+          positionSzi: 1,
+          stopLossPx: 90,
+          takeProfitPx: null,
+        }),
+      ).toThrow(/No usable mark price for BTC/);
+    }
   });
 
   it("rejects a stop on the wrong side of the mark", () => {
@@ -254,5 +278,119 @@ describe("planPositionProtection", () => {
 
     expect(plan.cancelOids).toEqual([1]);
     expect(plan.toPlace).toEqual([{ triggerPx: 95, triggerKind: "stopLoss" }]);
+  });
+});
+
+/**
+ * The pre-submit half of the direction rule.
+ *
+ * planPositionProtection only runs after the entry order has filled, so until
+ * this predicate existed a wrong-sided stop opened the position and then
+ * refused the protection — a live leveraged trade with nothing guarding it.
+ * TradePage now calls this at the review step.
+ */
+describe("findProtectionSideIssue", () => {
+  it("accepts triggers that straddle the mark correctly", () => {
+    expect(
+      findProtectionSideIssue({
+        direction: "long",
+        referencePrice: 100,
+        stopLossPx: 90,
+        takeProfitPx: 110,
+      }),
+    ).toBeNull();
+    expect(
+      findProtectionSideIssue({
+        direction: "short",
+        referencePrice: 100,
+        stopLossPx: 110,
+        takeProfitPx: 90,
+      }),
+    ).toBeNull();
+  });
+
+  it("names a stop on the wrong side of the mark", () => {
+    expect(
+      findProtectionSideIssue({
+        direction: "long",
+        referencePrice: 100,
+        stopLossPx: 110,
+      }),
+    ).toBe("stopLossAboveMarkOnLong");
+    expect(
+      findProtectionSideIssue({
+        direction: "short",
+        referencePrice: 100,
+        stopLossPx: 90,
+      }),
+    ).toBe("stopLossBelowMarkOnShort");
+  });
+
+  it("names a take profit on the wrong side of the mark", () => {
+    expect(
+      findProtectionSideIssue({
+        direction: "long",
+        referencePrice: 100,
+        takeProfitPx: 90,
+      }),
+    ).toBe("takeProfitBelowMarkOnLong");
+    expect(
+      findProtectionSideIssue({
+        direction: "short",
+        referencePrice: 100,
+        takeProfitPx: 110,
+      }),
+    ).toBe("takeProfitAboveMarkOnShort");
+  });
+
+  /**
+   * The exact sequence that shipped: a stop set for a long, then the side
+   * toggled to sell. The draft used to survive the toggle, so this reached
+   * the exchange as a short whose stop sat on the take-profit side.
+   */
+  it("catches a long's stop reused on a short", () => {
+    expect(
+      findProtectionSideIssue({
+        direction: "short",
+        referencePrice: 60000,
+        stopLossPx: 58000,
+      }),
+    ).toBe("stopLossBelowMarkOnShort");
+  });
+
+  it("stays silent when there is no usable reference price", () => {
+    // Refusing here would block an order over a price the app has not
+    // fetched; the order path checks again with its own reference.
+    expect(
+      findProtectionSideIssue({
+        direction: "long",
+        referencePrice: 0,
+        stopLossPx: 110,
+      }),
+    ).toBeNull();
+    expect(
+      findProtectionSideIssue({
+        direction: "long",
+        referencePrice: Number.NaN,
+        stopLossPx: 110,
+      }),
+    ).toBeNull();
+  });
+
+  /**
+   * Iterates the record rather than a hand-written list: a literal array
+   * silently keeps passing when a fifth issue code is added, which is exactly
+   * the drift this is meant to catch. The type already makes a *missing* key
+   * a compile error, so what is asserted here is that each message actually
+   * names the rule -- a side and the mark -- rather than being present.
+   */
+  it("gives every issue a message naming the side and the mark", () => {
+    const codes = Object.keys(PROTECTION_SIDE_MESSAGES) as ProtectionSideIssue[];
+    expect(codes).toHaveLength(4);
+    for (const code of codes) {
+      const message = PROTECTION_SIDE_MESSAGES[code];
+      expect(message, code).toMatch(/mark price/);
+      expect(message, code).toMatch(/long position|short position/);
+    }
   });
 });

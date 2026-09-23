@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { usePrivy } from "@privy-io/react-auth";
 import { useTranslation } from "react-i18next";
 import {
+  findProtectionSideIssue,
   getBuilderFeeTenthsBp,
   getMarketBaseAsset,
   getAvailableCollateralForMarket,
@@ -17,7 +18,27 @@ import {
   useUserState,
   validateOrderInput,
 } from "@repo/hyperliquid-sdk";
+import type { ProtectionSideIssue } from "@repo/hyperliquid-sdk";
 import type { AnyMarket, Order } from "@repo/types";
+
+/**
+ * The refusal says the same sentence the sheet already showed as a hint.
+ *
+ * ProtectionSheet states this rule as "For a long, stop loss must be below
+ * mark." and labels that number "Mark". Writing a second set of strings for
+ * the error gave one rule two vocabularies inside one flow, so the refusal
+ * reuses the hint's own wording and closes the loop it opened.
+ *
+ * Typed as a total Record over the SDK's union, so adding an issue code there
+ * is a compile error here rather than a raw key in the user's face at the
+ * moment the app is refusing their order.
+ */
+const PROTECTION_SIDE_MESSAGE_KEYS: Record<ProtectionSideIssue, string> = {
+  stopLossAboveMarkOnLong: "protection.longSlRule",
+  stopLossBelowMarkOnShort: "protection.shortSlRule",
+  takeProfitBelowMarkOnLong: "protection.longTpRule",
+  takeProfitAboveMarkOnShort: "protection.shortTpRule",
+};
 import { ProtectionSheet } from "../components/ProtectionSheet";
 import { SegmentedControl } from "../components/SegmentedControl";
 import { TokenIcon } from "../components/TokenIcon";
@@ -388,14 +409,28 @@ export function TradePage() {
 
   const stopLossPx = parseProtectionPrice(protectionDraft.stopLossPx);
   const takeProfitPx = parseProtectionPrice(protectionDraft.takeProfitPx);
+
+  // Toggling a section off in ProtectionSheet flips its flag and keeps the
+  // price text, so the parsed value is not the submitted value. These two are
+  // what the user actually asked for, and everything downstream — the review
+  // guard, the summary chip and the payload — must read the same pair. They
+  // did not: the summary and the guard honoured the flags while the payload
+  // sent whatever was parsed, so a disabled, wrong-sided stop left in the
+  // field skipped the guard and was still sent after the fill.
+  const effectiveStopLossPx = protectionDraft.stopLossEnabled
+    ? stopLossPx
+    : null;
+  const effectiveTakeProfitPx = protectionDraft.takeProfitEnabled
+    ? takeProfitPx
+    : null;
   const protectionEnabled = isPerp && hasProtectionEnabled(protectionDraft);
   const protectionSubmitDisabled = orderType === "limit";
   const protectionSummary = [
-    protectionDraft.stopLossEnabled && stopLossPx != null
-      ? `SL ${formatUsdPrice(stopLossPx)}`
+    effectiveStopLossPx != null
+      ? `SL ${formatUsdPrice(effectiveStopLossPx)}`
       : null,
-    protectionDraft.takeProfitEnabled && takeProfitPx != null
-      ? `TP ${formatUsdPrice(takeProfitPx)}`
+    effectiveTakeProfitPx != null
+      ? `TP ${formatUsdPrice(effectiveTakeProfitPx)}`
       : null,
   ].filter((value): value is string => value != null);
 
@@ -463,6 +498,22 @@ export function TradePage() {
     if (newSide !== activeSide) {
       haptics.light();
       setActiveSide(newSide);
+      // Triggers are only meaningful relative to a direction: a stop below the
+      // mark protects a long and targets a short. Carrying the draft across
+      // the toggle is what made a wrong-sided stop reachable without the user
+      // editing anything, so the levels are cleared rather than reinterpreted.
+      //
+      // Mirroring them across the mark was the alternative, and it was
+      // rejected: the mirrored number is a price the user never chose, on the
+      // one input where being wrong costs the position. Clearing is honest,
+      // but only if it is said out loud — a silently dropped stop is how a
+      // trade reaches the exchange unprotected while the user believes
+      // otherwise, so the discard is announced rather than left to be noticed
+      // by the absence of a chip.
+      if (hasProtectionEnabled(protectionDraft)) {
+        toast.info(t("trade.protectionClearedOnSideChange"));
+      }
+      setProtectionDraft(EMPTY_PROTECTION_DRAFT);
     }
   };
 
@@ -489,6 +540,31 @@ export function TradePage() {
         setSubmitError(t("trade.enterValidTp"));
         return;
       }
+
+      // Refuse a wrong-sided trigger here, before the entry order exists.
+      //
+      // This rule used to be enforced only inside planPositionProtection,
+      // which runs after placeOrder has already filled — so the position
+      // opened and only the stop was refused, leaving a live leveraged trade
+      // unprotected with nothing but a toast. The draft also used to survive
+      // the buy/sell toggle, which is how a stop set for a long reached a
+      // short without the user changing anything; handleSideToggle now clears
+      // it, and this check is the backstop for the cases that remain.
+      //
+      // It cannot make the pair atomic: the mark can still move between this
+      // check and the fill, and the SDK check remains the backstop for that.
+      // What it removes is the deterministic case, which is the common one.
+      const sideIssue = findProtectionSideIssue({
+        direction: activeSide === "buy" ? "long" : "short",
+        referencePrice: validationReferencePrice,
+        stopLossPx: effectiveStopLossPx,
+        takeProfitPx: effectiveTakeProfitPx,
+      });
+      if (sideIssue) {
+        haptics.error();
+        setSubmitError(t(PROTECTION_SIDE_MESSAGE_KEYS[sideIssue]));
+        return;
+      }
     }
 
     const order: Order = {
@@ -506,8 +582,8 @@ export function TradePage() {
     setReviewedTrade({
       order,
       protectionEnabled: orderType === "market" && protectionEnabled,
-      stopLossPx,
-      takeProfitPx,
+      stopLossPx: effectiveStopLossPx,
+      takeProfitPx: effectiveTakeProfitPx,
       estimatedProtectionSize,
       liquidationPx,
     });

@@ -181,12 +181,15 @@ export {
 
 export {
   classifyProtectionOrder,
+  findProtectionSideIssue,
   planPositionProtection,
+  PROTECTION_SIDE_MESSAGES,
 } from "./position-protection";
 export type {
   PositionDirection,
   ProtectionKind,
   ProtectionPlan,
+  ProtectionSideIssue,
 } from "./position-protection";
 
 // WebSocket manager

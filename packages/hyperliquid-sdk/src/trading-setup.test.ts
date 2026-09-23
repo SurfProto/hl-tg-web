@@ -40,18 +40,34 @@ const noLocalKey: AgentApprovalState = {
 
 describe("getBuilderApprovalState", () => {
   it("has nothing to approve when no builder is configured", () => {
-    expect(getBuilderApprovalState(undefined, false, false)).toBe("approved");
-    expect(getBuilderApprovalState(0, true, false)).toBe("approved");
+    expect(getBuilderApprovalState(undefined, false, false, 50)).toBe(
+      "approved",
+    );
+    expect(getBuilderApprovalState(0, true, false, 50)).toBe("approved");
   });
 
-  it("reads a positive fee as approval and zero as missing", () => {
-    expect(getBuilderApprovalState(10, false, true)).toBe("approved");
-    expect(getBuilderApprovalState(0, false, true)).toBe("missing");
+  it("approves only at or above the configured rate", () => {
+    expect(getBuilderApprovalState(50, false, true, 50)).toBe("approved");
+    expect(getBuilderApprovalState(60, false, true, 50)).toBe("approved");
+    expect(getBuilderApprovalState(0, false, true, 50)).toBe("missing");
+  });
+
+  /**
+   * The case that shipped. An approval between zero and the configured rate
+   * passed the old `feeTenthsBp > 0` gate, so setup reported the account ready
+   * and the order button lit — while `client.placeOrder` refused every order
+   * for exactly the same account, because it compares against the full fee.
+   */
+  it("treats an under-approved account as missing, not approved", () => {
+    expect(getBuilderApprovalState(10, false, true, 50)).toBe("missing");
+    expect(getBuilderApprovalState(49, false, true, 50)).toBe("missing");
   });
 
   it("separates a failed check from a completed one", () => {
-    expect(getBuilderApprovalState(undefined, false, true)).toBe("checking");
-    expect(getBuilderApprovalState(undefined, true, true)).toBe("stale");
+    expect(getBuilderApprovalState(undefined, false, true, 50)).toBe(
+      "checking",
+    );
+    expect(getBuilderApprovalState(undefined, true, true, 50)).toBe("stale");
   });
 });
 

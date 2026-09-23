@@ -1,11 +1,18 @@
-import React, { Suspense, lazy, useEffect, useRef, useState } from "react";
+import React, {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   PrivyProvider,
+  useLoginWithTelegram,
   usePrivy,
   useToken,
-  type User,
 } from "@privy-io/react-auth";
 import { useTranslation } from "react-i18next";
 import { arbitrum } from "viem/chains";
@@ -28,13 +35,6 @@ import { reportClientError, toReportableError } from "./lib/error-reporting";
 import { teardownStartupShell } from "./lib/startup";
 import "./index.css";
 import "./lib/i18n";
-
-interface PrivyWithTelegram {
-  ready: boolean;
-  authenticated: boolean;
-  user: User | null;
-  loginWithTelegram: () => Promise<void>;
-}
 
 function lazyNamedModule<T extends Record<string, React.ComponentType<any>>>(
   loader: () => Promise<T>,
@@ -193,11 +193,71 @@ function StartupShellController({
 }
 
 export function TelegramAuthGate({ children }: { children: React.ReactNode }) {
-  const privy = usePrivy() as unknown as PrivyWithTelegram;
+  const { ready, authenticated, user } = usePrivy();
+  // Telegram login is its own hook in Privy v3. It is NOT a property of
+  // usePrivy(): this file used to reach for `usePrivy().loginWithTelegram`
+  // behind an `as unknown as` cast, which compiled, shipped, and called
+  // undefined on every fresh login since the v1 -> v3 upgrade. The cast is
+  // gone so the compiler checks this call again.
+  const { login: loginWithTelegram } = useLoginWithTelegram();
   const { getAccessToken } = useToken();
   const { t } = useTranslation();
-  const { ready, authenticated, user, loginWithTelegram } = privy;
   const [loginError, setLoginError] = useState<string | null>(null);
+
+  // Privy memoizes `login` on its captcha state rather than on nothing, so a
+  // render can mint a new identity — and calling `login` is itself what
+  // mutates that captcha state. Reading it through a ref keeps the login
+  // effect below keyed on the auth facts alone; depending on the function
+  // itself would re-run the effect, and fire a second login, mid-flight.
+  const loginRef = useRef(loginWithTelegram);
+  loginRef.current = loginWithTelegram;
+
+  // One login at a time. Privy's `login` has no re-entrancy guard, and both
+  // StrictMode's dev double-invoke and an impatient Retry tap can otherwise
+  // start a second concurrent Telegram flow.
+  const loginInFlightRef = useRef(false);
+
+  /**
+   * Await inside try/catch rather than `login().catch(...)`.
+   *
+   * The bug this replaces was a *synchronous* TypeError from calling
+   * undefined, which a trailing `.catch` never sees — it needs a promise to
+   * attach to, and no promise was ever created. The error escaped into the
+   * ErrorBoundary and the retry path below was unreachable. Awaiting inside
+   * try/catch catches both shapes, so a `login` that goes missing from the
+   * hook's return degrades to the error card instead of a crash. (A rename of
+   * the hook *itself* would still throw during render — the contract test in
+   * App.auth-gate.test.tsx is what guards that.)
+   */
+  const runTelegramLogin = useCallback(async () => {
+    if (loginInFlightRef.current) return;
+    loginInFlightRef.current = true;
+    try {
+      await loginRef.current();
+    } catch (err: unknown) {
+      log.warn("[auth] Telegram login failed", { error: err });
+      // Server-visible for the same reason the stall above is reported.
+      //
+      // `hasLoginWidget` is the field worth reading first. Privy's
+      // `login()` drives the Telegram *Login Widget* (it discards mini-app
+      // initData and calls `window.Telegram.Login.auth`), and this app loads
+      // telegram-web-app.js only. So `hasLoginWidget=false` means this call
+      // could never have succeeded, and the real login path is Privy's
+      // seamless mini-app auth — a setting in the Privy dashboard, not code.
+      const { message, stack } = toReportableError(err);
+      reportClientError({
+        kind: "window-error",
+        message:
+          `[diag] loginWithTelegram failed: ${message} ` +
+          `hasLoginWidget=${Boolean(window.Telegram?.Login)} ` +
+          `hasInitData=${Boolean(window.Telegram?.WebApp?.initData)}`,
+        stack,
+      });
+      setLoginError(t("errors.loginFailed"));
+    } finally {
+      loginInFlightRef.current = false;
+    }
+  }, [t]);
 
   const isTMA = Boolean(window.Telegram?.WebApp?.initData);
   const authSettled = !isTMA || authenticated || loginError != null;
@@ -225,18 +285,21 @@ export function TelegramAuthGate({ children }: { children: React.ReactNode }) {
     if (!ready || authenticated || !isTMA) return;
 
     setLoginError(null);
-    loginWithTelegram().catch((err: unknown) => {
-      log.warn("[auth] Telegram login failed", { error: err });
-      // Server-visible for the same reason the stall above is reported.
-      const { message, stack } = toReportableError(err);
-      reportClientError({
-        kind: "window-error",
-        message: `[diag] loginWithTelegram failed: ${message}`,
-        stack,
-      });
-      setLoginError(t("errors.loginFailed"));
-    });
-  }, [authenticated, isTMA, loginWithTelegram, ready, t]);
+    void runTelegramLogin();
+  }, [authenticated, isTMA, ready, runTelegramLogin]);
+
+  // The error card below is worthless under an opaque overlay. #startup-shell
+  // is fixed, full-viewport and z-index 9999, and the only thing that removes
+  // it is StartupShellController — which the `loginError` branch returns
+  // before ever mounting. So the card and its Retry button were painted
+  // underneath it, which is why a failed login has always presented as a
+  // frozen splash. Tear the shell down as soon as the gate commits to an
+  // error, without waiting on the market bootstrap the controller also gates
+  // on: someone who cannot log in will never see markets load.
+  useEffect(() => {
+    if (!loginError) return;
+    teardownStartupShell();
+  }, [loginError]);
 
   useEffect(() => {
     if (!ready || !authenticated) return;
@@ -325,7 +388,10 @@ export function TelegramAuthGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (loginError) {
+  // `!authenticated` guards the race where one attempt authenticates and a
+  // second, already in flight, rejects: a signed-in user must not be parked
+  // on an error card.
+  if (loginError && !authenticated) {
     return (
       <div className="tg-root-height bg-background flex flex-col items-center justify-center gap-4 px-6 text-center">
         <p className="text-sm text-negative">{loginError}</p>
@@ -333,10 +399,9 @@ export function TelegramAuthGate({ children }: { children: React.ReactNode }) {
           className="editorial-button-primary"
           onClick={() => {
             setLoginError(null);
-            loginWithTelegram().catch((err: unknown) => {
-              log.warn("[auth] Telegram login retry failed", { error: err });
-              setLoginError(t("errors.loginFailed"));
-            });
+            // Same helper as the automatic attempt, so a retry failure is
+            // reported to the server too. The old inline copy swallowed it.
+            void runTelegramLogin();
           }}
         >
           {t("common.retry")}
@@ -416,6 +481,11 @@ function App() {
   const appId = import.meta.env.VITE_PRIVY_APP_ID;
 
   if (!appId) {
+    // This branch returns above ErrorBoundary, so nothing else ever uncovers
+    // the splash for it: a misconfigured deploy painted this message under the
+    // opaque overlay and looked like a hang. Safe during render — the teardown
+    // only touches a DOM node React does not own, and is idempotent.
+    teardownStartupShell();
     return (
       <div style={{ color: "red", padding: 40, fontSize: 24 }}>
         VITE_PRIVY_APP_ID is undefined! Check Vercel env vars.

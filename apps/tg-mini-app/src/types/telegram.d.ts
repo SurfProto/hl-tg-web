@@ -40,8 +40,25 @@ interface TelegramWebApp {
   offEvent(eventType: 'viewportChanged', callback: () => void): void;
 }
 
+/**
+ * The Telegram Login Widget, defined by telegram-widget.js.
+ *
+ * This app loads telegram-web-app.js (which defines `Telegram.WebApp`) and
+ * never the widget, so `Telegram.Login` is expected to be undefined here.
+ * It is declared only so the auth diagnostic can report its absence: Privy's
+ * `useLoginWithTelegram().login()` drives the widget flow, so when it is
+ * missing that call cannot succeed and seamless mini-app auth has to carry
+ * the login instead.
+ */
+interface TelegramLoginWidget {
+  auth(
+    options: { bot_id: string; request_access?: boolean },
+    callback: (result: unknown) => void,
+  ): void;
+}
+
 interface Window {
-  Telegram?: { WebApp?: TelegramWebApp };
+  Telegram?: { WebApp?: TelegramWebApp; Login?: TelegramLoginWidget };
   __APP_LOGS__?: Array<{
     level: 'debug' | 'info' | 'warn' | 'error';
     message: string;

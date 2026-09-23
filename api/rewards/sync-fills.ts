@@ -11,6 +11,7 @@ import {
   backfillFillCheckpoints,
   claimFillSyncBatch,
   getOrCreateActiveSeason,
+  getSeasonBounds,
   rebuildProjections,
 } from "./_lib/supabase-admin";
 
@@ -150,7 +151,26 @@ export default async function handler(request: any, response: any) {
       staleAfterSeconds: CLAIM_STALE_AFTER_SECONDS,
     });
 
+    // The season of every claim, not just the current one. A checkpoint may
+    // finish reading its own season after the next has begun, and it has to
+    // stop at that season's end — the bound whose absence granted September's
+    // trades under August as well. See syncAccountFills.
+    const seasonBounds = await getSeasonBounds(
+      config,
+      claims.map((claim) => claim.seasonId),
+    );
+    // The current season is known without a lookup, and it is the one bound
+    // that must never be missing.
+    seasonBounds.set(season.id, {
+      endsAt: season.ends_at,
+      startsAt: season.starts_at,
+    });
+
     let accountsSynced = 0;
+    let accountsRetired = 0;
+    let accountsSkipped = 0;
+    // Closed seasons whose tail this run read. See the rebuild after the batch.
+    const closedSeasonsWritten = new Set<string>();
     let accountsFailed = 0;
     let depositEvents = 0;
     let depositsFailed = 0;
@@ -160,6 +180,34 @@ export default async function handler(request: any, response: any) {
     let retentionRiskAccounts = 0;
 
     for (const claim of claims) {
+      const bounds = seasonBounds.get(claim.seasonId);
+      if (!bounds) {
+        // A claim whose season cannot be found is not synced on a guess. Its
+        // row would cascade-delete with its season, so this is not expected;
+        // but reading without the season's end is exactly the unbounded read
+        // this change exists to remove, so the account waits for the next run.
+        accountsSkipped += 1;
+        console.warn(
+          `[rewards-sync] season bounds missing user=${claim.userId} season=${claim.seasonId} wallet=${walletTag(claim.walletAddress)}`,
+        );
+        continue;
+      }
+
+      // A closed season's checkpoint whose cursor has reached that season's
+      // end has nothing left to read. Migration 030's claim no longer offers
+      // one, but a claim RPC that predates it still does — every August
+      // checkpoint, until the migration runs — and each would otherwise cost a
+      // deposit sync (Supabase round trips plus a Hyperliquid request) and be
+      // counted as a successful sync while reading nothing. The user's
+      // current-season claim syncs their deposits already.
+      if (
+        claim.seasonId !== season.id &&
+        Date.parse(claim.cursorTime) >= Date.parse(bounds.endsAt)
+      ) {
+        accountsRetired += 1;
+        continue;
+      }
+
       // Before the fills, so that a first deposit and the quest it completes
       // land in the same run rather than a cadence apart. Its own checkpoint
       // and its own failure: an unreadable ledger must not cost this account
@@ -182,6 +230,8 @@ export default async function handler(request: any, response: any) {
       // run continues; an unreachable wallet must not stop everyone else's XP.
       const result = await syncAccountFills(config, claim, {
         fetchFills: (walletAddress, window) => fetchFillsByTime(config, walletAddress, window),
+        isCurrentSeason: claim.seasonId === season.id,
+        seasonEndsAt: bounds.endsAt,
         seasonStartsAt: season.starts_at,
       });
 
@@ -194,6 +244,9 @@ export default async function handler(request: any, response: any) {
       }
 
       accountsSynced += 1;
+      if (claim.seasonId !== season.id && result.grantsWritten > 0) {
+        closedSeasonsWritten.add(claim.seasonId);
+      }
       fillsIngested += result.fillsIngested;
       grantsWritten += result.grantsWritten;
       requestCount += result.requestCount;
@@ -222,10 +275,21 @@ export default async function handler(request: any, response: any) {
     // is how the leaderboard came to rank on a frozen volume figure.
     const projections = await rebuildProjections(config, season.id);
 
+    // A closed season whose tail was read this run is rebuilt too. The rebuild
+    // above covers only the current season, and nothing else ever rebuilds a
+    // closed one — so the grants a checkpoint writes for a season's final
+    // stretch after it has ended would never reach that season's leaderboard.
+    // Only on runs that actually wrote such grants, which is the first few
+    // after each rollover.
+    for (const closedSeasonId of closedSeasonsWritten) {
+      await rebuildProjections(config, closedSeasonId);
+    }
+
     const durationMs = Date.now() - startedAt;
     console.info(
       `[rewards-sync] run complete season=${season.id} checkpointsCreated=${created} claimed=${claims.length} ` +
-        `synced=${accountsSynced} failed=${accountsFailed} fills=${fillsIngested} grants=${grantsWritten} ` +
+        `synced=${accountsSynced} failed=${accountsFailed} retired=${accountsRetired} skipped=${accountsSkipped} ` +
+        `closedSeasonsRebuilt=${closedSeasonsWritten.size} fills=${fillsIngested} grants=${grantsWritten} ` +
         `depositEvents=${depositEvents} depositsFailed=${depositsFailed} ` +
         `requests=${requestCount} retentionRisk=${retentionRiskAccounts} ` +
         `referralMilestones=${referrals.milestones} referralRows=${referrals.granted} ` +
@@ -236,7 +300,10 @@ export default async function handler(request: any, response: any) {
       success: true,
       data: {
         accountsFailed,
+        accountsRetired,
+        accountsSkipped,
         accountsSynced,
+        closedSeasonsRebuilt: closedSeasonsWritten.size,
         checkpointsCreated: created,
         claimed: claims.length,
         depositEvents,

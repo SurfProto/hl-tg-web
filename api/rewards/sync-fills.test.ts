@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   backfillFillCheckpoints: vi.fn(),
   claimFillSyncBatch: vi.fn(),
   getOrCreateActiveSeason: vi.fn(),
+  getSeasonBounds: vi.fn(),
   grantReferralMilestones: vi.fn(),
   rebuildProjections: vi.fn(),
   syncAccountDeposits: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock("./_lib/supabase-admin", () => ({
   backfillFillCheckpoints: mocks.backfillFillCheckpoints,
   claimFillSyncBatch: mocks.claimFillSyncBatch,
   getOrCreateActiveSeason: mocks.getOrCreateActiveSeason,
+  getSeasonBounds: mocks.getSeasonBounds,
   rebuildProjections: mocks.rebuildProjections,
 }));
 vi.mock("./_lib/deposits", () => ({ syncAccountDeposits: mocks.syncAccountDeposits }));
@@ -48,9 +50,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.CRON_SECRET = "cron-secret";
   mocks.getOrCreateActiveSeason.mockResolvedValue({
+    ends_at: "2026-09-01T00:00:00.000Z",
     id: "season-1",
     starts_at: "2026-08-01T00:00:00.000Z",
   });
+  // Empty by default: the handler fills in the current season itself, so a
+  // test only has to provide bounds for claims from other seasons.
+  mocks.getSeasonBounds.mockResolvedValue(new Map());
   mocks.backfillFillCheckpoints.mockResolvedValue(0);
   mocks.claimFillSyncBatch.mockResolvedValue([]);
   mocks.rebuildProjections.mockResolvedValue({ pointsRows: 0, weeklyRows: 0 });
@@ -185,6 +191,110 @@ describe("/api/rewards/sync-fills", () => {
       accountsSynced: 1,
       fillsIngested: 3,
     });
+  });
+
+  /**
+   * Each claim is bounded by its own season, and only the current one earns
+   * quests. Passing the current season's bounds to every claim is exactly
+   * the shape of the double grant: an August checkpoint read into September
+   * because nothing told it where August ended.
+   */
+  it("bounds every claim by the season it belongs to", async () => {
+    mocks.claimFillSyncBatch.mockResolvedValue([
+      { checkpointId: "cp-old", cursorTime: "2026-07-31T23:50:00.000Z", fillsIngested: 0, seasonId: "season-0", userId: "user-1", walletAddress: "0xaaaaaaaaaaaaaaaa" },
+      { checkpointId: "cp-now", cursorTime: "2026-08-01T00:00:00.000Z", fillsIngested: 0, seasonId: "season-1", userId: "user-1", walletAddress: "0xaaaaaaaaaaaaaaaa" },
+    ]);
+    mocks.getSeasonBounds.mockResolvedValue(
+      new Map([["season-0", { endsAt: "2026-08-01T00:00:00.000Z", startsAt: "2026-07-01T00:00:00.000Z" }]]),
+    );
+    mocks.syncAccountFills.mockResolvedValue({
+      errorCode: null, fillsIngested: 0, grantsWritten: 0, requestCount: 0,
+      retentionRisk: false, windowEndMs: 1, windowStartMs: 0,
+    });
+    vi.spyOn(console, "info").mockImplementation(() => {});
+
+    const { default: handler } = await import("./sync-fills");
+    await handler(AUTHED, makeResponse());
+
+    expect(mocks.getSeasonBounds).toHaveBeenCalledWith(expect.anything(), ["season-0", "season-1"]);
+    const byCheckpoint = new Map(
+      mocks.syncAccountFills.mock.calls.map(([, claim, deps]) => [claim.checkpointId, deps]),
+    );
+    expect(byCheckpoint.get("cp-old")).toMatchObject({
+      isCurrentSeason: false,
+      seasonEndsAt: "2026-08-01T00:00:00.000Z",
+    });
+    expect(byCheckpoint.get("cp-now")).toMatchObject({
+      isCurrentSeason: true,
+      seasonEndsAt: "2026-09-01T00:00:00.000Z",
+    });
+  });
+
+  /**
+   * Until migration 030 runs, the old claim RPC still offers every stranded
+   * August checkpoint. Each one would cost a deposit sync -- Supabase round
+   * trips plus a Hyperliquid request -- and be counted as a successful sync
+   * while reading nothing.
+   */
+  it("spends nothing on a closed season checkpoint that has already finished", async () => {
+    mocks.claimFillSyncBatch.mockResolvedValue([
+      { checkpointId: "cp-done", cursorTime: "2026-09-22T00:00:00.000Z", fillsIngested: 0, seasonId: "season-0", userId: "user-1", walletAddress: "0xaaaaaaaaaaaaaaaa" },
+    ]);
+    mocks.getSeasonBounds.mockResolvedValue(
+      new Map([["season-0", { endsAt: "2026-08-01T00:00:00.000Z", startsAt: "2026-07-01T00:00:00.000Z" }]]),
+    );
+    vi.spyOn(console, "info").mockImplementation(() => {});
+
+    const { default: handler } = await import("./sync-fills");
+    const response = makeResponse();
+    await handler(AUTHED, response);
+
+    expect(mocks.syncAccountDeposits).not.toHaveBeenCalled();
+    expect(mocks.syncAccountFills).not.toHaveBeenCalled();
+    expect(response.body.data).toMatchObject({ accountsRetired: 1, accountsSynced: 0 });
+  });
+
+  /**
+   * The run rebuilds the current season, and nothing else ever rebuilds a
+   * closed one -- so grants written for a season's final stretch after it
+   * ended would never reach that season's leaderboard.
+   */
+  it("rebuilds a closed season whose tail this run wrote", async () => {
+    mocks.claimFillSyncBatch.mockResolvedValue([
+      { checkpointId: "cp-tail", cursorTime: "2026-07-31T23:50:00.000Z", fillsIngested: 0, seasonId: "season-0", userId: "user-1", walletAddress: "0xaaaaaaaaaaaaaaaa" },
+    ]);
+    mocks.getSeasonBounds.mockResolvedValue(
+      new Map([["season-0", { endsAt: "2026-08-01T00:00:00.000Z", startsAt: "2026-07-01T00:00:00.000Z" }]]),
+    );
+    mocks.syncAccountFills.mockResolvedValue({
+      errorCode: null, fillsIngested: 2, grantsWritten: 2, requestCount: 1,
+      retentionRisk: false, windowEndMs: 1, windowStartMs: 0,
+    });
+    vi.spyOn(console, "info").mockImplementation(() => {});
+
+    const { default: handler } = await import("./sync-fills");
+    const response = makeResponse();
+    await handler(AUTHED, response);
+
+    expect(mocks.rebuildProjections).toHaveBeenCalledWith(expect.anything(), "season-1");
+    expect(mocks.rebuildProjections).toHaveBeenCalledWith(expect.anything(), "season-0");
+    expect(response.body.data).toMatchObject({ closedSeasonsRebuilt: 1 });
+  });
+
+  it("skips a claim whose season cannot be found rather than reading it unbounded", async () => {
+    mocks.claimFillSyncBatch.mockResolvedValue([
+      { checkpointId: "cp-orphan", cursorTime: "2026-07-01T00:00:00.000Z", fillsIngested: 0, seasonId: "season-gone", userId: "user-1", walletAddress: "0xaaaaaaaaaaaaaaaa" },
+    ]);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "info").mockImplementation(() => {});
+
+    const { default: handler } = await import("./sync-fills");
+    const response = makeResponse();
+    await handler(AUTHED, response);
+
+    expect(mocks.syncAccountFills).not.toHaveBeenCalled();
+    expect(mocks.syncAccountDeposits).not.toHaveBeenCalled();
+    expect(response.body.data).toMatchObject({ accountsSkipped: 1, accountsSynced: 0 });
   });
 
   /**

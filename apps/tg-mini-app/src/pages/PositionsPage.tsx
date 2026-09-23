@@ -458,14 +458,47 @@ function OpenOrderCard({
  * it on.
  */
 function PositionsSkeleton() {
+  const { t } = useTranslation();
+
   return (
-    <div className="space-y-3" aria-hidden="true">
-      {[0, 1].map((row) => (
-        <div
-          key={row}
-          className="h-28 animate-pulse rounded-[18px] border border-separator bg-surface"
-        />
-      ))}
+    <div className="space-y-3">
+      {/* The shimmer is decoration, so it is hidden from assistive tech — but
+          it is also the only thing in the panel while loading, and the tab
+          label now correctly withholds its count, so without this line a
+          screen-reader user gets no signal at all. */}
+      <p role="status" className="sr-only">
+        {t("common.loading")}
+      </p>
+      <div className="space-y-3" aria-hidden="true">
+        {[0, 1].map((row) => (
+          <div
+            key={row}
+            className="h-28 animate-pulse rounded-[18px] border border-separator bg-surface"
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The history tabs' own empty card.
+ *
+ * Deliberately not PositionsEmptyState: that one says "No open positions" and
+ * offers "Start trading", which is the wrong claim and the wrong offer for an
+ * account whose history is simply empty in the retained window.
+ */
+function HistoryEmptyState() {
+  const { t } = useTranslation();
+
+  return (
+    <div className="rounded-[18px] border border-separator bg-white p-10 text-center">
+      <p className="text-base font-semibold text-foreground">
+        {t("positions.historyEmptyTitle")}
+      </p>
+      <p className="mt-1 text-sm text-muted">
+        {t("positions.historyEmptySubtitle")}
+      </p>
     </div>
   );
 }
@@ -484,9 +517,15 @@ function PositionsUnavailable({
 }) {
   const { t } = useTranslation();
 
+  // Styled as a failure, not as the empty state. Reusing the empty card's
+  // shell made the two read alike at a glance, which is the confusion this
+  // whole change exists to remove. Same shape PointsPage already uses.
   return (
-    <div className="rounded-[18px] border border-separator bg-white p-10 text-center">
-      <p className="text-base font-semibold text-foreground">{message}</p>
+    <div className="rounded-2xl border border-negative/20 bg-negative/5 p-5 text-center">
+      <p className="text-sm font-semibold text-negative">
+        {t("errors.somethingWentWrong")}
+      </p>
+      <p className="mt-1 text-sm text-muted">{message}</p>
       <button
         type="button"
         className="editorial-button-primary mt-4"
@@ -577,9 +616,28 @@ export function PositionsPage() {
   } = useOpenOrders();
 
   // Computed after `positions` below, which the empty/ready split needs.
-  const { data: fills } = useFills();
-  const { data: historicalOrders } = useHistoricalOrders();
-  const { data: fundingPayments } = useUserFunding();
+  // History reads the same rule as the live tabs. It used to render the very
+  // same "No open positions -- Start trading" card from `data ?? []`, so a
+  // cold open or a failed query made the identical claim there, in the
+  // identical component, while the account had a full history.
+  const {
+    data: fills,
+    isLoading: fillsLoading,
+    isError: fillsError,
+    refetch: refetchFills,
+  } = useFills();
+  const {
+    data: historicalOrders,
+    isLoading: historicalOrdersLoading,
+    isError: historicalOrdersError,
+    refetch: refetchHistoricalOrders,
+  } = useHistoricalOrders();
+  const {
+    data: fundingPayments,
+    isLoading: fundingLoading,
+    isError: fundingError,
+    refetch: refetchFunding,
+  } = useUserFunding();
 
   // Net realized outcome over the fills the exchange still retains: closed
   // PnL minus every fee paid. "Recent" in the label is load-bearing — this is
@@ -625,6 +683,24 @@ export function PositionsPage() {
     isLoading: openOrdersLoading,
     isError: openOrdersError,
     count: openOrders?.length ?? 0,
+  });
+  const fillsState = getPositionsListViewState({
+    hasValue: Boolean(fills),
+    isLoading: fillsLoading,
+    isError: fillsError,
+    count: fills?.length ?? 0,
+  });
+  const historicalOrdersState = getPositionsListViewState({
+    hasValue: Boolean(historicalOrders),
+    isLoading: historicalOrdersLoading,
+    isError: historicalOrdersError,
+    count: historicalOrders?.length ?? 0,
+  });
+  const fundingState = getPositionsListViewState({
+    hasValue: Boolean(fundingPayments),
+    isLoading: fundingLoading,
+    isError: fundingError,
+    count: fundingPayments?.length ?? 0,
   });
   const positionsTabCount = getPositionsTabCount(
     positionsState,
@@ -928,11 +1004,18 @@ export function PositionsPage() {
           </div>
 
           {historyView === "funding" ? (
-            !fundingPayments || fundingPayments.length === 0 ? (
-              <PositionsEmptyState />
+            fundingState === "loading" ? (
+              <PositionsSkeleton />
+            ) : fundingState === "error" ? (
+              <PositionsUnavailable
+                message={t("positions.historyLoadFailed")}
+                onRetry={() => void refetchFunding()}
+              />
+            ) : fundingState === "empty" ? (
+              <HistoryEmptyState />
             ) : (
               <>
-                {fundingPayments.slice(0, visibleFunding).map((payment: FundingPayment) => {
+                {(fundingPayments ?? []).slice(0, visibleFunding).map((payment: FundingPayment) => {
                   const displayName = stripDexPrefix(payment.coin);
                   return (
                     <div
@@ -961,7 +1044,7 @@ export function PositionsPage() {
                     </div>
                   );
                 })}
-                {fundingPayments.length > visibleFunding && (
+                {(fundingPayments ?? []).length > visibleFunding && (
                   <button
                     type="button"
                     onClick={() => setVisibleFunding((count) => count + 20)}
@@ -976,11 +1059,18 @@ export function PositionsPage() {
               </>
             )
           ) : historyView === "orders" ? (
-            !historicalOrders || historicalOrders.length === 0 ? (
-              <PositionsEmptyState />
+            historicalOrdersState === "loading" ? (
+              <PositionsSkeleton />
+            ) : historicalOrdersState === "error" ? (
+              <PositionsUnavailable
+                message={t("positions.historyLoadFailed")}
+                onRetry={() => void refetchHistoricalOrders()}
+              />
+            ) : historicalOrdersState === "empty" ? (
+              <HistoryEmptyState />
             ) : (
               <>
-                {historicalOrders.slice(0, visibleOrders).map((order: HistoricalOrder) => {
+                {(historicalOrders ?? []).slice(0, visibleOrders).map((order: HistoricalOrder) => {
                   const displayName = stripDexPrefix(order.coin);
                   const statusKey = ORDER_STATUS_KEYS[order.status];
                   const partiallyFilled =
@@ -1031,7 +1121,7 @@ export function PositionsPage() {
                     </div>
                   );
                 })}
-                {historicalOrders.length > visibleOrders && (
+                {(historicalOrders ?? []).length > visibleOrders && (
                   <button
                     type="button"
                     onClick={() => setVisibleOrders((count) => count + 20)}
@@ -1045,8 +1135,15 @@ export function PositionsPage() {
                 </p>
               </>
             )
-          ) : !fills || fills.length === 0 ? (
-            <PositionsEmptyState />
+          ) : fillsState === "loading" ? (
+            <PositionsSkeleton />
+          ) : fillsState === "error" ? (
+            <PositionsUnavailable
+              message={t("positions.historyLoadFailed")}
+              onRetry={() => void refetchFills()}
+            />
+          ) : fillsState === "empty" ? (
+            <HistoryEmptyState />
           ) : (
             <>
               {/* The number a history screen is opened for: what trading has
@@ -1061,7 +1158,7 @@ export function PositionsPage() {
                   {formatPnl(realizedRecentUsd)}
                 </span>
               </div>
-              {fills.slice(0, visibleFills).map((fill: any) => {
+              {(fills ?? []).slice(0, visibleFills).map((fill: any) => {
                 // Realized PnL exists only where something was closed. An
                 // opening fill used to render "+$0.00" in green — a fabricated
                 // win; it shows the trade's notional instead.
@@ -1108,7 +1205,7 @@ export function PositionsPage() {
                   </div>
                 );
               })}
-              {fills.length > visibleFills && (
+              {(fills ?? []).length > visibleFills && (
                 <button
                   type="button"
                   onClick={() => setVisibleFills((count) => count + 20)}

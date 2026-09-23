@@ -30,19 +30,29 @@ const hookState = {
   },
 };
 
-vi.mock("@repo/hyperliquid-sdk", () => ({
+// Spreads the real module and overrides only the hooks. A bare factory has to
+// re-declare every export the page touches, and silently invents any it gets
+// wrong — which is the pattern that let the Telegram login defect ship green.
+vi.mock("@repo/hyperliquid-sdk", async () => {
+  const actual =
+    await vi.importActual<typeof import("@repo/hyperliquid-sdk")>(
+      "@repo/hyperliquid-sdk",
+    );
+  return {
+  ...actual,
   useUserState: () => hookState.userState,
   useOpenOrders: () => hookState.openOrders,
   useFills: () => ({ data: [] }),
   useHistoricalOrders: () => ({ data: [] }),
   useUserFunding: () => ({ data: [] }),
   useMarketPrice: () => ({ data: undefined, isLoading: false, isError: false }),
-  useCancelAllOrders: () => ({ mutate: vi.fn(), isPending: false }),
-  useCancelOrder: () => ({ mutate: vi.fn(), isPending: false }),
-  useModifyOrder: () => ({ mutate: vi.fn(), isPending: false }),
-  useClosePosition: () => ({ mutate: vi.fn(), isPending: false }),
-  useUpsertPositionProtection: () => ({ mutate: vi.fn(), isPending: false }),
-}));
+  useCancelAllOrders: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+  useCancelOrder: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+  useModifyOrder: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+  useClosePosition: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+  useUpsertPositionProtection: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+  };
+});
 
 vi.mock("react-router-dom", () => ({
   useNavigate: () => vi.fn(),
@@ -130,6 +140,45 @@ describe("PositionsPage account states", () => {
     render(<PositionsPage />);
 
     expect(screen.getByText("positions.emptyTitle")).toBeVisible();
+  });
+
+  it("renders an open position once the snapshot answers", () => {
+    setAccount({
+      data: {
+        assetPositions: [
+          { position: { coin: "BTC", szi: 0.5, entryPx: 100, unrealizedPnl: 5 } },
+        ],
+      },
+    });
+
+    render(<PositionsPage />);
+
+    expect(screen.getByText("BTC")).toBeVisible();
+    expect(screen.queryByText("positions.emptyTitle")).toBeNull();
+  });
+
+  /**
+   * The tab bar carried the same lie as the list: it rendered positions.length
+   * unconditionally, so a live position sat beside "Open · 0" while the
+   * snapshot was still in flight.
+   */
+  it("withholds the tab count until the snapshot answers", () => {
+    setAccount({ data: undefined, isLoading: true }, { isLoading: true });
+
+    render(<PositionsPage />);
+
+    const openTab = screen.getByRole("tab", { name: /positions.tabOpen/ });
+    expect(openTab.textContent).not.toMatch(/·/);
+  });
+
+  it("shows the tab count once it is known", () => {
+    setAccount({ data: { assetPositions: [] } }, { data: [] });
+
+    render(<PositionsPage />);
+
+    expect(
+      screen.getByRole("tab", { name: /positions.tabOpen/ }).textContent,
+    ).toContain("· 0");
   });
 
   it("does not claim an empty order book while orders are unavailable", () => {

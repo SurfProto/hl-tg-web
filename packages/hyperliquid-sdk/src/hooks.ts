@@ -167,6 +167,19 @@ function getStoredBuilderApproved(addr: string): number | undefined {
   }
 }
 
+/**
+ * Test-only handles on the builder-approval seed.
+ *
+ * Exposed because these two are the whole reason the gate can be lied to
+ * across a reload, and nothing else in the module reaches them. Same
+ * convention as __resetHyperliquidClientRegistryForTests below.
+ */
+export const __builderApprovalStorageForTests = {
+  read: (addr: string) => getStoredBuilderApproved(addr),
+  write: (addr: string, feeTenthsBp: number) =>
+    storeBuilderApproved(addr, feeTenthsBp),
+};
+
 function storeBuilderApproved(addr: string, feeTenthsBp: number): void {
   try {
     // The value itself, so `initialData` can be compared against the

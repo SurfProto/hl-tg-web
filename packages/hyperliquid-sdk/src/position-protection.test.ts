@@ -6,6 +6,7 @@ import {
   planPositionProtection,
   PROTECTION_SIDE_MESSAGES,
   type ProtectionOrder,
+  type ProtectionSideIssue,
 } from "./position-protection";
 
 const MARK = 100;
@@ -108,6 +109,27 @@ describe("planPositionProtection", () => {
         takeProfitPx: Number.NaN,
       }),
     ).toThrow(/Take profit trigger price must be greater than 0/);
+  });
+
+  /**
+   * The plan has a position open, so it must not guess. findProtectionSideIssue
+   * deliberately tolerates an unusable reference — its other caller runs before
+   * an order exists — and inheriting that tolerance here would place triggers
+   * without knowing which side of the mark they fall on. Before the rule was
+   * extracted this was implicit: every comparison against NaN was false.
+   */
+  it("refuses to plan against an unusable mark price", () => {
+    for (const referencePrice of [0, -1, Number.NaN]) {
+      expect(() =>
+        planPositionProtection({
+          ...base,
+          referencePrice,
+          positionSzi: 1,
+          stopLossPx: 90,
+          takeProfitPx: null,
+        }),
+      ).toThrow(/No usable mark price for BTC/);
+    }
   });
 
   it("rejects a stop on the wrong side of the mark", () => {
@@ -355,15 +377,20 @@ describe("findProtectionSideIssue", () => {
     ).toBeNull();
   });
 
-  it("has a message for every issue it can return", () => {
-    const issues = [
-      "stopLossAboveMarkOnLong",
-      "stopLossBelowMarkOnShort",
-      "takeProfitBelowMarkOnLong",
-      "takeProfitAboveMarkOnShort",
-    ] as const;
-    for (const issue of issues) {
-      expect(PROTECTION_SIDE_MESSAGES[issue]).toBeTruthy();
+  /**
+   * Iterates the record rather than a hand-written list: a literal array
+   * silently keeps passing when a fifth issue code is added, which is exactly
+   * the drift this is meant to catch. The type already makes a *missing* key
+   * a compile error, so what is asserted here is that each message actually
+   * names the rule -- a side and the mark -- rather than being present.
+   */
+  it("gives every issue a message naming the side and the mark", () => {
+    const codes = Object.keys(PROTECTION_SIDE_MESSAGES) as ProtectionSideIssue[];
+    expect(codes).toHaveLength(4);
+    for (const code of codes) {
+      const message = PROTECTION_SIDE_MESSAGES[code];
+      expect(message, code).toMatch(/mark price/);
+      expect(message, code).toMatch(/long position|short position/);
     }
   });
 });

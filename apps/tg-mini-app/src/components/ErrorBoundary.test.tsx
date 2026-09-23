@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ErrorBoundary } from "./ErrorBoundary";
 
@@ -54,12 +54,14 @@ describe("ErrorBoundary", () => {
     });
 
     // teardownStartupShell hides on the next animation frame and removes the
-    // element 180ms later. The wait has to sit outside act(), which does not
-    // drain jsdom's rAF queue.
-    await new Promise((resolve) => setTimeout(resolve, 300));
-
-    const remaining = document.getElementById("startup-shell");
-    expect(remaining === null || remaining.dataset.hidden === "true").toBe(true);
+    // element 180ms later. Polled rather than slept through: a fixed wait puts
+    // roughly 100ms of slack between this and a loaded CI box, and would fail
+    // for timing rather than for behaviour. The wait sits outside act(), which
+    // does not drain jsdom's rAF queue.
+    await waitFor(() => {
+      const shell = document.getElementById("startup-shell");
+      expect(shell === null || shell.dataset.hidden === "true").toBe(true);
+    });
 
     consoleError.mockRestore();
   });

@@ -118,12 +118,8 @@
     "addProtectionAfterFills": "Add protection after the limit entry fills.",
     "enterValidSl": "Enter a valid stop loss trigger price.",
     "enterValidTp": "Enter a valid take profit trigger price.",
-    "protectionSide": {
-      "stopLossAboveMarkOnLong": "Stop loss must be below the current price when you are buying.",
-      "stopLossBelowMarkOnShort": "Stop loss must be above the current price when you are selling.",
-      "takeProfitBelowMarkOnLong": "Take profit must be above the current price when you are buying.",
-      "takeProfitAboveMarkOnShort": "Take profit must be below the current price when you are selling."
-    },
+    "protectionClearedOnSideChange": "Stop loss and take profit were cleared - set them again for this direction.",
+
     "marketMetadataUnavailable": "Market metadata unavailable.",
     "loadingMarketPrice": "Loading market price...",
     "marketPriceUnavailable": "Market price unavailable.",
@@ -189,6 +185,9 @@
     "emptyTitle": "No open positions",
     "loadFailed": "We couldn't load your positions. Check your connection and try again.",
     "ordersLoadFailed": "We couldn't load your orders. Check your connection and try again.",
+    "historyLoadFailed": "We couldn't load your history. Check your connection and try again.",
+    "historyEmptyTitle": "Nothing here yet",
+    "historyEmptySubtitle": "Trades, orders and funding from the retained window will appear here.",
     "emptySubtitle": "Your active trades, orders, and fills will appear here.",
     "startTrading": "Start trading",
     "tabOpen": "Open",

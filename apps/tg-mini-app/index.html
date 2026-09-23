@@ -33,6 +33,36 @@
         pointer-events: none;
       }
 
+      /* Shown only by the failsafe below, and only when the app never mounted:
+         hiding the shell then would otherwise reveal an empty page. */
+      #startup-shell-failed {
+        display: none;
+        max-width: 18rem;
+        padding: 0 1rem;
+        text-align: center;
+        font-family: Manrope, system-ui, sans-serif;
+        color: #1c1c28;
+      }
+
+      #startup-shell[data-failed='true'] #startup-shell-spinner {
+        display: none;
+      }
+
+      #startup-shell[data-failed='true'] #startup-shell-failed {
+        display: block;
+      }
+
+      #startup-shell-failed button {
+        margin-top: 1rem;
+        padding: 0.625rem 1.25rem;
+        border: 0;
+        border-radius: 9999px;
+        background: #3447f3;
+        color: #fff;
+        font: inherit;
+        font-weight: 600;
+      }
+
       #startup-shell-spinner {
         width: 32px;
         height: 32px;
@@ -56,6 +86,10 @@
   <body>
     <div id="startup-shell" aria-hidden="true">
       <div id="startup-shell-spinner"></div>
+      <div id="startup-shell-failed">
+        <p>P34k didn’t start. Check your connection and try again.</p>
+        <button type="button" onclick="window.location.reload()">Reload</button>
+      </div>
     </div>
     <div id="root"></div>
     <script>
@@ -68,17 +102,28 @@
       // on screen to report and no way to reach the app underneath.
       //
       // Deliberately long: 15s is well past a cold start on a slow mobile
-      // connection, so a merely slow launch is never cut short. It only sets
-      // data-hidden, which makes the shell transparent and click-through;
-      // teardownStartupShell() still removes the element outright on the
-      // normal path, and this attribute is harmless if it lands first.
+      // connection, so a merely slow launch is never cut short.
+      //
+      // Which of the two things it does depends on whether React got as far as
+      // rendering. If #root has content, the app is alive and merely slow --
+      // possibly sitting on an auth step that holds the splash on purpose --
+      // so the shell just goes transparent and click-through and the app shows
+      // through. If #root is still empty the app never mounted, and hiding the
+      // shell would reveal a blank page; that case gets a message and a reload
+      // button instead, which is the whole point of catching it.
       //
       // Inline and above the module script on purpose: it must survive the
       // very failure it exists for, so it cannot live in a bundle.
       window.setTimeout(function () {
         var shell = document.getElementById('startup-shell');
-        if (shell) {
+        if (!shell) {
+          return;
+        }
+        var root = document.getElementById('root');
+        if (root && root.childElementCount > 0) {
           shell.setAttribute('data-hidden', 'true');
+        } else {
+          shell.setAttribute('data-failed', 'true');
         }
       }, 15000);
     </script>

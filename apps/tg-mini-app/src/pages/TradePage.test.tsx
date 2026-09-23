@@ -13,6 +13,7 @@ let pendingStopLossPx = 90;
 let pendingStopLossEnabled = true;
 let pendingTakeProfitPx = "";
 const upsertMutateAsync = vi.fn();
+const toastInfo = vi.fn();
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -125,7 +126,7 @@ vi.mock("../hooks/useHaptics", () => ({
   }),
 }));
 vi.mock("../hooks/useToast", () => ({
-  useToast: () => ({ error: vi.fn(), success: vi.fn() }),
+  useToast: () => ({ error: vi.fn(), success: vi.fn(), info: toastInfo }),
 }));
 
 function renderTrade() {
@@ -427,7 +428,7 @@ describe("TradePage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Review order" }));
 
     expect(
-      screen.getByText("trade.protectionSide.stopLossAboveMarkOnLong"),
+      screen.getByText("protection.longSlRule"),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "Review order" }),
@@ -493,7 +494,7 @@ describe("TradePage", () => {
       screen.getByRole("heading", { name: "Review order" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText("trade.protectionSide.stopLossBelowMarkOnShort"),
+      screen.queryByText("protection.shortSlRule"),
     ).toBeNull();
   });
 });

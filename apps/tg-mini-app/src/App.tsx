@@ -481,6 +481,11 @@ function App() {
   const appId = import.meta.env.VITE_PRIVY_APP_ID;
 
   if (!appId) {
+    // This branch returns above ErrorBoundary, so nothing else ever uncovers
+    // the splash for it: a misconfigured deploy painted this message under the
+    // opaque overlay and looked like a hang. Safe during render — the teardown
+    // only touches a DOM node React does not own, and is idempotent.
+    teardownStartupShell();
     return (
       <div style={{ color: "red", padding: 40, fontSize: 24 }}>
         VITE_PRIVY_APP_ID is undefined! Check Vercel env vars.

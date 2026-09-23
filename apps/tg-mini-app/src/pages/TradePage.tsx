@@ -18,7 +18,27 @@ import {
   useUserState,
   validateOrderInput,
 } from "@repo/hyperliquid-sdk";
+import type { ProtectionSideIssue } from "@repo/hyperliquid-sdk";
 import type { AnyMarket, Order } from "@repo/types";
+
+/**
+ * The refusal says the same sentence the sheet already showed as a hint.
+ *
+ * ProtectionSheet states this rule as "For a long, stop loss must be below
+ * mark." and labels that number "Mark". Writing a second set of strings for
+ * the error gave one rule two vocabularies inside one flow, so the refusal
+ * reuses the hint's own wording and closes the loop it opened.
+ *
+ * Typed as a total Record over the SDK's union, so adding an issue code there
+ * is a compile error here rather than a raw key in the user's face at the
+ * moment the app is refusing their order.
+ */
+const PROTECTION_SIDE_MESSAGE_KEYS: Record<ProtectionSideIssue, string> = {
+  stopLossAboveMarkOnLong: "protection.longSlRule",
+  stopLossBelowMarkOnShort: "protection.shortSlRule",
+  takeProfitBelowMarkOnLong: "protection.longTpRule",
+  takeProfitAboveMarkOnShort: "protection.shortTpRule",
+};
 import { ProtectionSheet } from "../components/ProtectionSheet";
 import { SegmentedControl } from "../components/SegmentedControl";
 import { TokenIcon } from "../components/TokenIcon";
@@ -482,6 +502,17 @@ export function TradePage() {
       // mark protects a long and targets a short. Carrying the draft across
       // the toggle is what made a wrong-sided stop reachable without the user
       // editing anything, so the levels are cleared rather than reinterpreted.
+      //
+      // Mirroring them across the mark was the alternative, and it was
+      // rejected: the mirrored number is a price the user never chose, on the
+      // one input where being wrong costs the position. Clearing is honest,
+      // but only if it is said out loud — a silently dropped stop is how a
+      // trade reaches the exchange unprotected while the user believes
+      // otherwise, so the discard is announced rather than left to be noticed
+      // by the absence of a chip.
+      if (hasProtectionEnabled(protectionDraft)) {
+        toast.info(t("trade.protectionClearedOnSideChange"));
+      }
       setProtectionDraft(EMPTY_PROTECTION_DRAFT);
     }
   };
@@ -531,7 +562,7 @@ export function TradePage() {
       });
       if (sideIssue) {
         haptics.error();
-        setSubmitError(t(`trade.protectionSide.${sideIssue}`));
+        setSubmitError(t(PROTECTION_SIDE_MESSAGE_KEYS[sideIssue]));
         return;
       }
     }

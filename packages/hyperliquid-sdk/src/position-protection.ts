@@ -76,27 +76,7 @@ function assertUsableTrigger(price: number, label: string): void {
   }
 }
 
-/**
- * Work out what to cancel and what to place so a position ends up with the
- * requested protection.
- *
- * Only the sides that changed are touched. Re-placing an unchanged stop would
- * leave the position unprotected for the moment between the cancel and the
- * new order landing, which is exactly the moment it matters.
- */
-/**
- * Which trigger, if any, sits on the wrong side of the mark price.
- *
- * Extracted so this rule can be applied BEFORE an order is placed as well as
- * inside `planPositionProtection`. It used to live only in the plan, which
- * runs after the entry order has already filled — so a stop set for a long
- * and then submitted as a short opened the position and only then refused the
- * stop, leaving a live leveraged trade with no protection and nothing but a
- * toast to say so. The UI can now refuse at the review step instead.
- *
- * Returns a code rather than a message because the caller decides the
- * wording: the SDK throws the English sentences below, the app translates.
- */
+/** The ways a trigger can sit on the wrong side of the mark price. */
 export type ProtectionSideIssue =
   | "stopLossAboveMarkOnLong"
   | "stopLossBelowMarkOnShort"
@@ -114,6 +94,19 @@ export const PROTECTION_SIDE_MESSAGES: Record<ProtectionSideIssue, string> = {
     "Take profit must be below the current mark price for a short position.",
 };
 
+/**
+ * Which trigger, if any, sits on the wrong side of the mark price.
+ *
+ * Extracted so this rule can be applied BEFORE an order is placed as well as
+ * inside `planPositionProtection`. It used to live only in the plan, which
+ * runs after the entry order has already filled — so a stop set for a long
+ * and then submitted as a short opened the position and only then refused the
+ * stop, leaving a live leveraged trade with no protection and nothing but a
+ * toast to say so. The UI can now refuse at the review step instead.
+ *
+ * Returns a code rather than a message because the caller decides the
+ * wording: the SDK throws the English sentences above, the app translates.
+ */
 export function findProtectionSideIssue({
   direction,
   referencePrice,
@@ -153,6 +146,14 @@ export function findProtectionSideIssue({
   return null;
 }
 
+/**
+ * Work out what to cancel and what to place so a position ends up with the
+ * requested protection.
+ *
+ * Only the sides that changed are touched. Re-placing an unchanged stop would
+ * leave the position unprotected for the moment between the cancel and the
+ * new order landing, which is exactly the moment it matters.
+ */
 export function planPositionProtection({
   positionSzi,
   referencePrice,
@@ -172,6 +173,19 @@ export function planPositionProtection({
   if (!Number.isFinite(positionSzi) || positionSzi === 0) {
     throw new Error(
       `No open position to protect for ${marketName}.`,
+    );
+  }
+
+  // The plan must not guess. findProtectionSideIssue tolerates an unusable
+  // reference because its other caller runs before an order exists and must
+  // not block on a price the app has merely not fetched yet; here a position
+  // is already open, and placing triggers without knowing which side of the
+  // mark they fall on is how an unprotected position gets called protected.
+  // Before the rule was extracted this was implicit — every comparison against
+  // NaN was false, so the old inline check threw.
+  if (!Number.isFinite(referencePrice) || referencePrice <= 0) {
+    throw new Error(
+      `No usable mark price for ${marketName}; cannot place protection orders.`,
     );
   }
 

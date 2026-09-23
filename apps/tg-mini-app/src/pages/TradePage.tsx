@@ -389,14 +389,28 @@ export function TradePage() {
 
   const stopLossPx = parseProtectionPrice(protectionDraft.stopLossPx);
   const takeProfitPx = parseProtectionPrice(protectionDraft.takeProfitPx);
+
+  // Toggling a section off in ProtectionSheet flips its flag and keeps the
+  // price text, so the parsed value is not the submitted value. These two are
+  // what the user actually asked for, and everything downstream — the review
+  // guard, the summary chip and the payload — must read the same pair. They
+  // did not: the summary and the guard honoured the flags while the payload
+  // sent whatever was parsed, so a disabled, wrong-sided stop left in the
+  // field skipped the guard and was still sent after the fill.
+  const effectiveStopLossPx = protectionDraft.stopLossEnabled
+    ? stopLossPx
+    : null;
+  const effectiveTakeProfitPx = protectionDraft.takeProfitEnabled
+    ? takeProfitPx
+    : null;
   const protectionEnabled = isPerp && hasProtectionEnabled(protectionDraft);
   const protectionSubmitDisabled = orderType === "limit";
   const protectionSummary = [
-    protectionDraft.stopLossEnabled && stopLossPx != null
-      ? `SL ${formatUsdPrice(stopLossPx)}`
+    effectiveStopLossPx != null
+      ? `SL ${formatUsdPrice(effectiveStopLossPx)}`
       : null,
-    protectionDraft.takeProfitEnabled && takeProfitPx != null
-      ? `TP ${formatUsdPrice(takeProfitPx)}`
+    effectiveTakeProfitPx != null
+      ? `TP ${formatUsdPrice(effectiveTakeProfitPx)}`
       : null,
   ].filter((value): value is string => value != null);
 
@@ -501,9 +515,10 @@ export function TradePage() {
       // This rule used to be enforced only inside planPositionProtection,
       // which runs after placeOrder has already filled — so the position
       // opened and only the stop was refused, leaving a live leveraged trade
-      // unprotected with nothing but a toast. The draft also survives the
-      // buy/sell toggle, so a stop set for a long and submitted as a short
-      // reached that state without the user changing anything.
+      // unprotected with nothing but a toast. The draft also used to survive
+      // the buy/sell toggle, which is how a stop set for a long reached a
+      // short without the user changing anything; handleSideToggle now clears
+      // it, and this check is the backstop for the cases that remain.
       //
       // It cannot make the pair atomic: the mark can still move between this
       // check and the fill, and the SDK check remains the backstop for that.
@@ -511,8 +526,8 @@ export function TradePage() {
       const sideIssue = findProtectionSideIssue({
         direction: activeSide === "buy" ? "long" : "short",
         referencePrice: validationReferencePrice,
-        stopLossPx: protectionDraft.stopLossEnabled ? stopLossPx : null,
-        takeProfitPx: protectionDraft.takeProfitEnabled ? takeProfitPx : null,
+        stopLossPx: effectiveStopLossPx,
+        takeProfitPx: effectiveTakeProfitPx,
       });
       if (sideIssue) {
         haptics.error();
@@ -536,8 +551,8 @@ export function TradePage() {
     setReviewedTrade({
       order,
       protectionEnabled: orderType === "market" && protectionEnabled,
-      stopLossPx,
-      takeProfitPx,
+      stopLossPx: effectiveStopLossPx,
+      takeProfitPx: effectiveTakeProfitPx,
       estimatedProtectionSize,
       liquidationPx,
     });

@@ -1593,7 +1593,13 @@ export function useApproveBuilderFee() {
       return approveBuilderFeeAction(client);
     },
     onSuccess: () => {
-      const fee = Math.max(1, client?.getBuilderStatus().feeTenthsBp ?? 0);
+      // The rate that was just approved is the configured one, so read it from
+      // the same source the gate compares against. The old Math.max(1, ...) floor
+      // only made sense against the retired `feeTenthsBp > 0` test; under the
+      // >= comparison a 1 means "missing", so that clamp would seed the cache
+      // and localStorage with a value the gate rejects and bounce a user who had
+      // just finished approving straight back into setup.
+      const fee = getBuilderFeeTenthsBp();
       queryClient.setQueryData(
         ["builderFeeApproval", getBuilderAddress(), walletAddress],
         fee,
@@ -2061,7 +2067,13 @@ export function useSetupTrading(_target?: { isHip3?: boolean } | null) {
 
       if (currentStatus.needsBuilderApproval && isBuilderConfigured()) {
         await approveBuilderFeeAction(client);
-        const fee = Math.max(1, client.getBuilderStatus().feeTenthsBp);
+        // The rate that was just approved is the configured one, so read it from
+        // the same source the gate compares against. The old Math.max(1, ...) floor
+        // only made sense against the retired `feeTenthsBp > 0` test; under the
+        // >= comparison a 1 means "missing", so that clamp would seed the cache
+        // and localStorage with a value the gate rejects and bounce a user who had
+        // just finished approving straight back into setup.
+        const fee = getBuilderFeeTenthsBp();
         queryClient.setQueryData(
           ["builderFeeApproval", getBuilderAddress(), walletAddress],
           fee,

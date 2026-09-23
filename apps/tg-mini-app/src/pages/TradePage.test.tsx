@@ -9,6 +9,10 @@ const mutateAsync = vi.fn();
 const setupReset = vi.fn();
 let canTrade = true;
 let authenticated = false;
+let pendingStopLossPx = 90;
+let pendingStopLossEnabled = true;
+let pendingTakeProfitPx = "";
+const upsertMutateAsync = vi.fn();
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -47,7 +51,17 @@ vi.mock("@privy-io/react-auth", () => ({
   usePrivy: () => ({ authenticated, user: { wallet: { address: "0x1" } } }),
 }));
 
-vi.mock("@repo/hyperliquid-sdk", () => ({
+vi.mock("@repo/hyperliquid-sdk", async () => {
+  // findProtectionSideIssue is pure, so the real one is used rather than a
+  // stand-in: the point of these tests is that rule reaching the review step.
+  // Mocking it would assert against an invented API, which is the pattern
+  // that let the Telegram login defect ship.
+  const actual =
+    await vi.importActual<typeof import("@repo/hyperliquid-sdk")>(
+      "@repo/hyperliquid-sdk",
+    );
+  return {
+  findProtectionSideIssue: actual.findProtectionSideIssue,
   getBuilderFeeTenthsBp: () => 50,
   getMarketBaseAsset: () => "BTC",
   getAvailableCollateralForMarket: () => 1000,
@@ -65,7 +79,7 @@ vi.mock("@repo/hyperliquid-sdk", () => ({
     status: { canTrade, blockingSteps: canTrade ? [] : ["approval"], isAgentExpired: false },
     setup: { reset: setupReset },
   }),
-  useUpsertPositionProtection: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpsertPositionProtection: () => ({ mutateAsync: upsertMutateAsync, isPending: false }),
   useUserState: () => ({
     data: { abstractionMode: "main", stableBalances: [], withdrawableBalance: 1000, assetPositions: [] },
     isError: false,
@@ -73,9 +87,29 @@ vi.mock("@repo/hyperliquid-sdk", () => ({
     refetch: vi.fn(),
   }),
   validateOrderInput: () => ({ isValid: true, minMarginUsd: 1, minSizeUsd: 10 }),
-}));
+  };
+});
 
-vi.mock("../components/ProtectionSheet", () => ({ ProtectionSheet: () => null }));
+// A stand-in that can push a draft into TradePage, which the null mock could
+// not: without it the protection branch is unreachable and the review-step
+// guard is never exercised.
+vi.mock("../components/ProtectionSheet", () => ({
+  ProtectionSheet: ({ onChange }: { onChange: (draft: unknown) => void }) => (
+    <button
+      type="button"
+      onClick={() =>
+        onChange({
+          stopLossEnabled: pendingStopLossEnabled,
+          stopLossPx: String(pendingStopLossPx),
+          takeProfitEnabled: pendingTakeProfitPx !== "",
+          takeProfitPx: pendingTakeProfitPx,
+        })
+      }
+    >
+      set-protection
+    </button>
+  ),
+}));
 vi.mock("../components/TokenIcon", () => ({ TokenIcon: () => <span>BTC icon</span> }));
 vi.mock("../components/TradingSetupSheet", () => ({
   TradingSetupSheet: ({ isOpen }: { isOpen: boolean }) =>
@@ -121,6 +155,10 @@ describe("TradePage", () => {
     vi.clearAllMocks();
     canTrade = true;
     authenticated = false;
+    pendingStopLossPx = 90;
+    pendingStopLossEnabled = true;
+    pendingTakeProfitPx = "";
+    upsertMutateAsync.mockResolvedValue({});
     mutateAsync.mockResolvedValue({});
   });
 
@@ -370,5 +408,92 @@ describe("TradePage", () => {
     expect(screen.getByText("Trading setup required")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Review order" })).toBeInTheDocument();
     expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The money assertion for the pre-submit protection guard.
+   *
+   * The rule used to be enforced only inside planPositionProtection, which
+   * runs after placeOrder has already filled — so a wrong-sided stop opened
+   * the position and only then refused the protection, leaving a live
+   * leveraged trade with nothing guarding it. Nothing may reach the exchange.
+   */
+  it("refuses a wrong-sided stop at review, without placing the order", () => {
+    pendingStopLossPx = 110; // above the mark of 100, on a buy
+    renderTrade();
+
+    typeInto(sizeInput(), "100");
+    fireEvent.click(screen.getByRole("button", { name: "set-protection" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review order" }));
+
+    expect(
+      screen.getByText("trade.protectionSide.stopLossAboveMarkOnLong"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Review order" }),
+    ).toBeNull();
+    expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("lets a correctly sided stop through to review", () => {
+    pendingStopLossPx = 90; // below the mark of 100, on a buy
+    renderTrade();
+
+    typeInto(sizeInput(), "100");
+    fireEvent.click(screen.getByRole("button", { name: "set-protection" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review order" }));
+
+    expect(
+      screen.getByRole("heading", { name: "Review order" }),
+    ).toBeInTheDocument();
+    expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A stop below the mark protects a long and targets a short, so carrying the
+   * draft across the toggle is what made a wrong-sided stop reachable without
+   * the user editing anything.
+   */
+  /**
+   * A toggled-off section keeps its price text — ProtectionSheet only flips
+   * the flag — so the parsed value is not what the user asked for. The guard,
+   * the summary and the payload all have to read the same effective pair. They
+   * did not: the payload sent whatever was parsed, so a disabled, wrong-sided
+   * stop skipped the guard and was still submitted after the fill.
+   */
+  it("never submits a trigger the user switched off", async () => {
+    pendingStopLossEnabled = false;
+    pendingStopLossPx = 110; // wrong-sided for a buy, and left in the field
+    pendingTakeProfitPx = "120"; // valid for a buy, and what keeps protection on
+    renderTrade();
+
+    typeInto(sizeInput(), "100");
+    fireEvent.click(screen.getByRole("button", { name: "set-protection" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review order" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm order" }));
+
+    await waitFor(() => expect(upsertMutateAsync).toHaveBeenCalled());
+    expect(upsertMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ stopLossPx: null, takeProfitPx: 120 }),
+    );
+  });
+
+  it("clears the protection draft when the side is toggled", () => {
+    pendingStopLossPx = 90;
+    renderTrade();
+
+    typeInto(sizeInput(), "100");
+    fireEvent.click(screen.getByRole("button", { name: "set-protection" }));
+    fireEvent.click(screen.getByRole("button", { name: /Sell/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Review order" }));
+
+    // 90 would be wrong-sided for a short. The draft was cleared, so review
+    // is reached with no protection rather than refused.
+    expect(
+      screen.getByRole("heading", { name: "Review order" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("trade.protectionSide.stopLossBelowMarkOnShort"),
+    ).toBeNull();
   });
 });

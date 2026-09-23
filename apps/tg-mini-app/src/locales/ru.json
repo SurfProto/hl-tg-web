@@ -118,6 +118,12 @@
     "addProtectionAfterFills": "Добавьте защиту после исполнения лимитного ордера.",
     "enterValidSl": "Введите действительную цену стоп-лосса.",
     "enterValidTp": "Введите действительную цену тейк-профита.",
+    "protectionSide": {
+      "stopLossAboveMarkOnLong": "Стоп-лосс должен быть ниже текущей цены при покупке.",
+      "stopLossBelowMarkOnShort": "Стоп-лосс должен быть выше текущей цены при продаже.",
+      "takeProfitBelowMarkOnLong": "Тейк-профит должен быть выше текущей цены при покупке.",
+      "takeProfitAboveMarkOnShort": "Тейк-профит должен быть ниже текущей цены при продаже."
+    },
     "marketMetadataUnavailable": "Метаданные рынка недоступны.",
     "loadingMarketPrice": "Загрузка цены...",
     "marketPriceUnavailable": "Цена недоступна.",
@@ -187,6 +193,8 @@
     "markPrice": "Рынок",
     "loadingMarkPrice": "Загрузка...",
     "emptyTitle": "Нет открытых позиций",
+    "loadFailed": "Не удалось загрузить позиции. Проверьте соединение и попробуйте снова.",
+    "ordersLoadFailed": "Не удалось загрузить ордера. Проверьте соединение и попробуйте снова.",
     "emptySubtitle": "Ваши активные сделки, ордера и исполнения появятся здесь.",
     "startTrading": "Начать торговлю",
     "tabPositions": "Позиции",

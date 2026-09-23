@@ -38,6 +38,10 @@ import {
   formatUsdPrice,
 } from "../utils/format";
 import { stripDexPrefix } from "../lib/market-symbol";
+import {
+  getPositionsListViewState,
+  getPositionsTabCount,
+} from "./positions-state";
 
 // The exchange's status words, in the user's language. An unmapped status
 // falls back to the raw word — honest, if unpolished, for the long tail
@@ -446,6 +450,54 @@ function OpenOrderCard({
   );
 }
 
+/**
+ * Shown while the account snapshot is still in flight.
+ *
+ * Deliberately not the empty state: "you have no open positions" is a claim
+ * about the account, and until the snapshot answers there is nothing to base
+ * it on.
+ */
+function PositionsSkeleton() {
+  return (
+    <div className="space-y-3" aria-hidden="true">
+      {[0, 1].map((row) => (
+        <div
+          key={row}
+          className="h-28 animate-pulse rounded-[18px] border border-separator bg-surface"
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Shown when the snapshot failed. The one thing this must never do is read as
+ * an empty account — the user is being told the app could not find out, not
+ * that there is nothing there.
+ */
+function PositionsUnavailable({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="rounded-[18px] border border-separator bg-white p-10 text-center">
+      <p className="text-base font-semibold text-foreground">{message}</p>
+      <button
+        type="button"
+        className="editorial-button-primary mt-4"
+        onClick={onRetry}
+      >
+        {t("common.retry")}
+      </button>
+    </div>
+  );
+}
+
 function PositionsEmptyState() {
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -500,8 +552,31 @@ export function PositionsPage() {
   const [pendingCloseCoin, setPendingCloseCoin] = useState<string | null>(null);
   const [pendingCancelOid, setPendingCancelOid] = useState<number | null>(null);
 
-  const { data: userState } = useUserState();
-  const { data: openOrders } = useOpenOrders();
+  // Loading and error are read, not just data.
+  //
+  // Reading `data` alone made an unanswered snapshot indistinguishable from a
+  // settled empty account: `positions` fell back to [] and the page told a
+  // leveraged trader "You have no open positions" on any cold open where the
+  // snapshot had not arrived — first paint, a webview eviction, or a 503 from
+  // /api/account/snapshot during a database outage. React Query holds the last
+  // good value through a failed refetch, so a session already open was never
+  // affected; it is the cold open, which in a Telegram mini app is every
+  // launch, that lied. Same rule the balance hero already follows: say
+  // "unavailable", never invent a zero.
+  const {
+    data: userState,
+    isLoading: userStateLoading,
+    isError: userStateError,
+    refetch: refetchUserState,
+  } = useUserState();
+  const {
+    data: openOrders,
+    isLoading: openOrdersLoading,
+    isError: openOrdersError,
+    refetch: refetchOpenOrders,
+  } = useOpenOrders();
+
+  // Computed after `positions` below, which the empty/ready split needs.
   const { data: fills } = useFills();
   const { data: historicalOrders } = useHistoricalOrders();
   const { data: fundingPayments } = useUserFunding();
@@ -537,6 +612,27 @@ export function PositionsPage() {
         ) ?? []
       ).filter((position: any) => position.szi !== 0),
     [userState?.assetPositions],
+  );
+
+  const positionsState = getPositionsListViewState({
+    hasValue: Boolean(userState),
+    isLoading: userStateLoading,
+    isError: userStateError,
+    count: positions.length,
+  });
+  const ordersState = getPositionsListViewState({
+    hasValue: Boolean(openOrders),
+    isLoading: openOrdersLoading,
+    isError: openOrdersError,
+    count: openOrders?.length ?? 0,
+  });
+  const positionsTabCount = getPositionsTabCount(
+    positionsState,
+    positions.length,
+  );
+  const ordersTabCount = getPositionsTabCount(
+    ordersState,
+    openOrders?.length ?? 0,
   );
 
   const positionsByCoin = useMemo(
@@ -608,8 +704,20 @@ export function PositionsPage() {
           value={activeTab}
           onChange={setActiveTab}
           options={[
-            { value: "positions", label: `${t("positions.tabOpen")} · ${positions.length}` },
-            { value: "orders", label: `${t("positions.tabOrders")} · ${openOrders?.length ?? 0}` },
+            {
+              value: "positions",
+              label:
+                positionsTabCount === null
+                  ? t("positions.tabOpen")
+                  : `${t("positions.tabOpen")} · ${positionsTabCount}`,
+            },
+            {
+              value: "orders",
+              label:
+                ordersTabCount === null
+                  ? t("positions.tabOrders")
+                  : `${t("positions.tabOrders")} · ${ordersTabCount}`,
+            },
             { value: "fills", label: t("positions.tabHistory") },
           ]}
         />
@@ -617,7 +725,14 @@ export function PositionsPage() {
 
       {activeTab === "positions" && (
         <div className="space-y-3">
-          {positions.length === 0 ? (
+          {positionsState === "loading" ? (
+            <PositionsSkeleton />
+          ) : positionsState === "error" ? (
+            <PositionsUnavailable
+              message={t("positions.loadFailed")}
+              onRetry={() => void refetchUserState()}
+            />
+          ) : positionsState === "empty" ? (
             <PositionsEmptyState />
           ) : (
             positions.map((position: any) => (
@@ -706,10 +821,17 @@ export function PositionsPage() {
               </button>
             </div>
           )}
-          {!openOrders || openOrders.length === 0 ? (
+          {ordersState === "loading" ? (
+            <PositionsSkeleton />
+          ) : ordersState === "error" ? (
+            <PositionsUnavailable
+              message={t("positions.ordersLoadFailed")}
+              onRetry={() => void refetchOpenOrders()}
+            />
+          ) : ordersState === "empty" ? (
             <PositionsEmptyState />
           ) : (
-            openOrders.map((order: any) => (
+            (openOrders ?? []).map((order: any) => (
               <OpenOrderCard
                 key={order.oid}
                 order={order}

@@ -142,7 +142,7 @@ export async function getRewardsDashboard(
     getFundedReferralStats(config, user.id, season.starts_at, config.fundedDepositThresholdUsd),
     getGrantedQuestIds(config, user.id, season.id),
     getSeasonXpTotals(config, user.id, season.id),
-    getRewardLedgerEntries(config, user.id, 150),
+    getRewardLedgerEntries(config, user.id, 150, 0, { postedXpOnly: true }),
     getFillCheckpointStatus(config, user.id, season.id),
     getCheckInStreak(config, user.id, season.id, now),
     getLifetimeXp(config, user.id),
@@ -183,7 +183,17 @@ export async function getRewardsDashboard(
     lifetimeXp,
     // Cash history — held or genuinely paid — is reconciliation data, not
     // something to show a user next to a notice saying payouts are paused.
-    rewardHistory: rewardHistory.filter((entry) => entry.rewardKind === "xp"),
+    //
+    // XP is filtered on status as well, now that XP can be held too. Holding
+    // is how migration 030 repairs the season-rollover double grant, and every
+    // XP *sum* already reads only 'posted' — but this list read every XP row
+    // regardless, so without the status test a repaired duplicate would stop
+    // counting toward the user's total and still sit in their history twice.
+    // The query above already asks for posted XP only; this stays as the
+    // backstop, so the rule does not depend on one query string.
+    rewardHistory: rewardHistory.filter(
+      (entry) => entry.rewardKind === "xp" && entry.status === "posted",
+    ),
     season: {
       // From the caller's own standing, not from the leaderboard page — that
       // page is the top ten, so anyone below it read their own volume as zero.

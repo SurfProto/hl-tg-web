@@ -356,6 +356,43 @@ export async function getOrCreateActiveSeason(config: RewardsConfig, now = new D
   return (Array.isArray(season) ? season[0] : season) as RewardsSeasonRow;
 }
 
+export interface SeasonBounds {
+  endsAt: string;
+  startsAt: string;
+}
+
+/**
+ * The window of each season a claimed batch belongs to, keyed by season id.
+ *
+ * The worker needs the season of every checkpoint it claims, not only the
+ * current one: a checkpoint is allowed to finish reading its own season after
+ * the next one has started, and it must stop at that season's end. Without its
+ * bounds it read [cursor, now] straight across the boundary, which is how
+ * September's trades came to be granted under August as well.
+ *
+ * One request for the whole batch. Season ids come from our own claim RPC, not
+ * from a caller, and the table holds one row a month.
+ */
+export async function getSeasonBounds(
+  config: RewardsConfig,
+  seasonIds: string[],
+): Promise<Map<string, SeasonBounds>> {
+  const unique = [...new Set(seasonIds)];
+  if (unique.length === 0) return new Map();
+
+  const rows = await supabaseRequest<
+    Array<{ ends_at: string; id: string; starts_at: string }>
+  >(
+    config,
+    `seasons?id=in.(${unique.map((id) => encodeURIComponent(id)).join(",")})&select=id,starts_at,ends_at`,
+    { headers: buildHeaders(config) },
+  );
+
+  return new Map(
+    rows.map((row) => [row.id, { endsAt: row.ends_at, startsAt: row.starts_at }]),
+  );
+}
+
 export type ReferrerClaimOutcome = "ok" | "already_set" | "self_referral";
 
 /**
@@ -545,10 +582,16 @@ export async function getRewardLedgerEntries(
   userId: string,
   limit = 100,
   offset = 0,
+  options: { postedXpOnly?: boolean } = {},
 ) {
+  // postedXpOnly filters in the query, not after it. Filtering the fetched
+  // page in memory let rows the user will never see — held duplicates from
+  // the season-rollover repair, parked cash — use up the page, so an active
+  // trader's visible history shrank by as many rows as they had duplicates.
+  const filters = options.postedXpOnly ? "&reward_kind=eq.xp&status=eq.posted" : "";
   const rows = await supabaseRequest<SupabaseRewardLedgerRow[]>(
     config,
-    `reward_ledger?user_id=eq.${userId}&select=*&order=created_at.desc&limit=${Math.max(1, Math.min(limit, 200))}&offset=${Math.max(0, offset)}`,
+    `reward_ledger?user_id=eq.${userId}${filters}&select=*&order=created_at.desc&limit=${Math.max(1, Math.min(limit, 200))}&offset=${Math.max(0, offset)}`,
     { headers: buildHeaders(config) },
   );
 

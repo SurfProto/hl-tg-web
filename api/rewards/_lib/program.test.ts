@@ -292,6 +292,33 @@ describe("getRewardsDashboard", () => {
   });
 
   /**
+   * XP can be held too, now: it is how migration 030 repairs the season-
+   * rollover double grant. Every XP sum already reads only 'posted', but this
+   * list read every XP row, so a repaired duplicate would have stopped counting
+   * toward the total and still appeared in the user's history twice.
+   */
+  it("keeps held XP out of the history as well as out of the totals", async () => {
+    supabaseAdmin.getRewardLedgerEntries.mockResolvedValue([
+      { id: "xp-sept", rewardKind: "xp", amount: 120, source: "volume_xp", status: "posted" },
+      { id: "xp-dup", rewardKind: "xp", amount: 120, source: "volume_xp", status: "held" },
+    ]);
+    const { getRewardsDashboard } = await import("./program");
+
+    const dashboard = await getRewardsDashboard({ privyUserId: "privy-1" }, config());
+
+    expect(dashboard.rewardHistory.map((entry) => entry.id)).toEqual(["xp-sept"]);
+    // Filtered in the query, not only after it: otherwise held rows use up
+    // the 150-row page and the visible history shrinks by as many rows.
+    expect(supabaseAdmin.getRewardLedgerEntries).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      150,
+      0,
+      { postedXpOnly: true },
+    );
+  });
+
+  /**
    * The 150-row accounting horizon.
    *
    * Totals were summed from the reward history the dashboard had already

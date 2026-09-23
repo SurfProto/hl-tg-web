@@ -36,7 +36,10 @@ import {
 /** Stops one very stale account from monopolising a run. */
 const MAX_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-export type FillSyncErrorCode = "EXCHANGE_UNAVAILABLE" | "LEDGER_WRITE_FAILED";
+export type FillSyncErrorCode =
+  | "EXCHANGE_UNAVAILABLE"
+  | "LEDGER_WRITE_FAILED"
+  | "SEASON_BOUNDS_INVALID";
 
 export interface FillSyncResult {
   checkpointId: string;
@@ -52,8 +55,19 @@ export interface FillSyncResult {
 export interface SyncAccountFillsDeps {
   /** Injected so the worker can be driven without an exchange in tests. */
   fetchFills: (walletAddress: string, window: FillWindow) => Promise<RawFill[]>;
+  /**
+   * Whether this claim belongs to the season running now. Quests are
+   * evaluated only for that one; see buildQuestAndReferralEntries' caller.
+   */
+  isCurrentSeason: boolean;
   now?: () => number;
-  /** The season's start, for the deposit and referral reads quests depend on. */
+  /**
+   * The end of the *claim's* season — not the current one. Seasons are
+   * half-open, so this is the first instant of the next season and no fill at
+   * or after it belongs to this checkpoint.
+   */
+  seasonEndsAt: string;
+  /** The current season's start, for the deposit reads quests depend on. */
   seasonStartsAt: string;
 }
 
@@ -113,10 +127,54 @@ export async function syncAccountFills(
 ): Promise<FillSyncResult> {
   const now = deps.now?.() ?? Date.now();
   const startMs = new Date(claim.cursorTime).getTime();
-  // Bounded so one neglected account cannot consume the whole run, and never
-  // past now: a window into the future would advance the cursor over fills that
-  // have not happened yet, and those fills would then never be read.
-  const endMs = Math.min(now, startMs + MAX_WINDOW_MS);
+  const seasonEndsAtMs = new Date(deps.seasonEndsAt).getTime();
+
+  // Fail closed on a season end that does not parse. NaN does not bound
+  // anything — Math.min returns it, the early return below does not fire, and
+  // the exchange is asked for [cursor, now]: the exact unbounded read this
+  // bound exists to remove, followed by a throw from toISOString after the
+  // ledger write had already landed. Recorded against the checkpoint, so a
+  // season row that ever stops parsing shows up as failing rather than as a
+  // quiet double grant.
+  if (!Number.isFinite(seasonEndsAtMs)) {
+    await completeFillSync(config, {
+      checkpointId: claim.checkpointId,
+      errorCode: "SEASON_BOUNDS_INVALID",
+    });
+    return {
+      checkpointId: claim.checkpointId,
+      errorCode: "SEASON_BOUNDS_INVALID",
+      fillsIngested: 0,
+      grantsWritten: 0,
+      requestCount: 0,
+      retentionRisk: false,
+      windowEndMs: startMs,
+      windowStartMs: startMs,
+    };
+  }
+  // Windows are inclusive at both ends and seasons are half-open, so the last
+  // instant this checkpoint may read is one millisecond before its season
+  // ends. A fill at exactly ends_at is the next season's.
+  const lastSeasonMs = seasonEndsAtMs - 1;
+  // Bounded so one neglected account cannot consume the whole run, never past
+  // now — a window into the future would advance the cursor over fills that
+  // have not happened yet, and those fills would then never be read — and
+  // never past the end of the claim's own season.
+  //
+  // That last bound is the fix for the season-rollover double grant. It was
+  // missing, so on 2026-09-01 every August checkpoint kept reading
+  // [cursor, now] into September beside the September checkpoint for the same
+  // wallet, and each fill was granted once under each season: the key embeds
+  // the season, so the two rows never collided.
+  //
+  // This bound is the one that stops new duplicates on its own. Migration
+  // 030's claim filter also retires a checkpoint whose season is done, but
+  // only after its cursor reaches ends_at — so without this bound, one window
+  // per straddling checkpoint still crosses the next rollover before it
+  // retires. This code must therefore be live before a rollover; the
+  // migration is what stops already-stranded checkpoints being claimed.
+  const endMs = Math.min(now, startMs + MAX_WINDOW_MS, lastSeasonMs);
+  const reachesSeasonEnd = endMs >= lastSeasonMs;
   const window: FillWindow = { endMs, startMs };
 
   const base = {
@@ -129,6 +187,11 @@ export async function syncAccountFills(
     windowStartMs: startMs,
   };
 
+  // Nothing left to read. Either the cursor is ahead of now, or — the case the
+  // season bound adds — it is already at or past the end of its own season,
+  // which is where every August checkpoint stood by the time this was fixed.
+  // Returning before any fetch is what stops a stale checkpoint granting
+  // anything at all, even from a claim RPC that still offers it.
   if (startMs > endMs) {
     return { ...base, errorCode: null };
   }
@@ -173,15 +236,37 @@ export async function syncAccountFills(
   // Quest and referral XP ride along in the same batch: one write, one failure
   // mode, and no window where the volume grants landed but the quest they
   // completed did not.
+  //
+  // Only for the season running now. A checkpoint finishing the tail of a
+  // closed season grants the volume it reads and nothing else, because every
+  // input a quest reads apart from these fills belongs to the present: the
+  // deposit read starts at the *current* season's start, and channel
+  // membership has no date at all. That mismatch is what paid first_deposit
+  // and first_trade under August for activity in September. The cost of the
+  // rule is narrow and deliberate — a quest completed by a trade in a
+  // season's final minutes, and not ingested until after rollover, is not
+  // granted for the closed season — and an undercount at one edge is the
+  // right trade against a systematic double count.
+  //
+  // "Running now" is checked against this claim's season end as well as the
+  // flag the worker passes, because the flag is computed once, at the start
+  // of a run, and a run can straddle midnight. Checked here, per claim, the
+  // rule becomes an invariant: no quest is ever written after its season has
+  // ended. Migration 030's repair reads "a quest written after its season
+  // ended" as "a quest the pre-fix worker wrote", and this is what keeps that
+  // true — and what makes it safe to re-run after a future rollover.
+  const questsAllowed = deps.isCurrentSeason && now < seasonEndsAtMs;
   let allEntries: RewardLedgerInsertInput[] = entries;
   try {
-    allEntries = [
-      ...entries,
-      ...(await buildQuestAndReferralEntries(config, claim, {
-        fills: appFills,
-        seasonStartsAt: deps.seasonStartsAt,
-      })),
-    ];
+    allEntries = questsAllowed
+      ? [
+          ...entries,
+          ...(await buildQuestAndReferralEntries(config, claim, {
+            fills: appFills,
+            seasonStartsAt: deps.seasonStartsAt,
+          })),
+        ]
+      : entries;
   } catch {
     await completeFillSync(config, {
       checkpointId: claim.checkpointId,
@@ -211,7 +296,16 @@ export async function syncAccountFills(
 
   await completeFillSync(config, {
     checkpointId: claim.checkpointId,
-    cursorTime: new Date(nextCursorMs(window)).toISOString(),
+    // A window that reached the season's last millisecond has proven the whole
+    // season ingested, so the cursor goes to the season boundary itself rather
+    // than one millisecond short of it. ends_at is exactly the value migration
+    // 030's claim treats as done (`cursor_time < ends_at`), so the checkpoint
+    // retires here instead of being re-offered forever on a zero-width window.
+    // Safe to claim that instant: it belongs to the next season, which this
+    // checkpoint never reads.
+    cursorTime: new Date(
+      reachesSeasonEnd ? seasonEndsAtMs : nextCursorMs(window),
+    ).toISOString(),
     fillsIngested: fetched.fills.length,
     retentionRisk,
   });

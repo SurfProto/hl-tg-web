@@ -73,15 +73,30 @@ export type RemoteAgent = {
  */
 export const AGENT_PROPAGATION_GRACE_MS = 2 * 60 * 1000;
 
+/**
+ * Approved means approved *at the configured rate*, the same test the order
+ * path applies.
+ *
+ * Every order carries `f: feeTenthsBp`, and the exchange rejects any order
+ * whose builder fee exceeds what the account approved — so an approval below
+ * the configured rate is as good as none. This used to ask `feeTenthsBp > 0`
+ * while `client.placeOrder` asked `maxFee >= configured`, and an account
+ * approved somewhere in between passed setup, lit the order button, and then
+ * failed on every single trade with no way back into the approval flow. The
+ * corrected comparison already existed in `isBuilderFeeApproved`; the bug was
+ * that this gate never used it. `requiredFeeTenthsBp` is passed in rather than
+ * read from module state so this stays a pure function.
+ */
 export function getBuilderApprovalState(
   feeTenthsBp: number | undefined,
   isError: boolean,
   builderConfigured: boolean,
+  requiredFeeTenthsBp: number,
 ): ApprovalRequirementState {
   // Nothing to approve when no builder is configured at all.
   if (!builderConfigured) return "approved";
   if (typeof feeTenthsBp === "number") {
-    return feeTenthsBp > 0 ? "approved" : "missing";
+    return feeTenthsBp >= requiredFeeTenthsBp ? "approved" : "missing";
   }
   return isError ? "stale" : "checking";
 }

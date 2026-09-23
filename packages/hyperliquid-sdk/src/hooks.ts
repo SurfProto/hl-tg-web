@@ -11,6 +11,7 @@ import { HyperliquidClient } from "./client";
 import {
   getBuilderAddress,
   approveBuilderFee as approveBuilderFeeAction,
+  getBuilderFeeTenthsBp,
   isBuilderConfigured,
 } from "./builder";
 import { isDepositGasSponsored } from "./gas-sponsorship";
@@ -138,15 +139,29 @@ const BUILDER_APPROVED_KEY = (addr: string) =>
 const UNIFIED_MODE_KEY = (addr: string) =>
   `hl-unified-mode:${addr.toLowerCase()}`;
 
+/**
+ * The approved fee, as a number, or undefined when it is not known.
+ *
+ * This used to collapse any positive fee to the sentinel "1", which was only
+ * ever meaningful against the `feeTenthsBp > 0` test the setup gate applied.
+ * Now that the gate compares against the configured rate — the same test the
+ * order path uses — a "1" cannot answer the question: it means "some positive
+ * fee", which may be below what orders require. So legacy sentinels are read
+ * as unknown rather than believed, which costs those devices one real fetch
+ * and nothing else. Guessing the other way is what let an under-approved
+ * account see a lit order button across reloads.
+ */
 function getStoredBuilderApproved(addr: string): number | undefined {
   try {
     const v = window.localStorage.getItem(BUILDER_APPROVED_KEY(addr));
-    // Sentinel: "1" means approved (any positive feeTenthsBp), "0" means not.
-    // Using 1 as the positive sentinel satisfies the `feeTenthsBp > 0` check
-    // that downstream consumers run against this value.
-    if (v === "1") return 1;
+    if (v === null) return undefined;
+    // "0" stays meaningful: no approval is no approval at any threshold.
     if (v === "0") return 0;
-    return undefined;
+    // "1" is the ambiguous legacy sentinel. Anything else this app wrote is
+    // the real fee.
+    if (v === "1") return undefined;
+    const fee = Number(v);
+    return Number.isFinite(fee) && fee >= 0 ? fee : undefined;
   } catch {
     return undefined;
   }
@@ -154,10 +169,9 @@ function getStoredBuilderApproved(addr: string): number | undefined {
 
 function storeBuilderApproved(addr: string, feeTenthsBp: number): void {
   try {
-    window.localStorage.setItem(
-      BUILDER_APPROVED_KEY(addr),
-      feeTenthsBp > 0 ? "1" : "0",
-    );
+    // The value itself, so `initialData` can be compared against the
+    // configured rate rather than merely tested for positivity.
+    window.localStorage.setItem(BUILDER_APPROVED_KEY(addr), String(feeTenthsBp));
   } catch {
     // ignore localStorage errors in embedded environments
   }
@@ -299,6 +313,7 @@ function buildTradingSetupStatus(args: {
       args.builderMaxFee,
       args.builderError,
       isBuilderConfigured(),
+      getBuilderFeeTenthsBp(),
     ),
     unifiedState: getUnifiedApprovalRequirementState(
       args.unifiedApproval,

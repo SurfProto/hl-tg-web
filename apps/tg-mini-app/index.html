@@ -58,6 +58,30 @@
       <div id="startup-shell-spinner"></div>
     </div>
     <div id="root"></div>
+    <script>
+      // Failsafe: stop covering the page even if the app never mounts.
+      //
+      // Every other way this splash comes down runs inside React. That is no
+      // help in the failure this app has actually shipped twice — a build
+      // whose entry chunk cannot load — because then no React code runs at
+      // all and the user is left on an opaque spinner forever, with nothing
+      // on screen to report and no way to reach the app underneath.
+      //
+      // Deliberately long: 15s is well past a cold start on a slow mobile
+      // connection, so a merely slow launch is never cut short. It only sets
+      // data-hidden, which makes the shell transparent and click-through;
+      // teardownStartupShell() still removes the element outright on the
+      // normal path, and this attribute is harmless if it lands first.
+      //
+      // Inline and above the module script on purpose: it must survive the
+      // very failure it exists for, so it cannot live in a bundle.
+      window.setTimeout(function () {
+        var shell = document.getElementById('startup-shell');
+        if (shell) {
+          shell.setAttribute('data-hidden', 'true');
+        }
+      }, 15000);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

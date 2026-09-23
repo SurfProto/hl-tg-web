@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 import i18n from '../lib/i18n';
 import { log } from '../lib/logger';
 import { reportClientError, toReportableError } from '../lib/error-reporting';
+import { teardownStartupShell } from '../lib/startup';
 
 interface Props {
   children: ReactNode;
@@ -25,6 +26,18 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: unknown, info: ErrorInfo) {
+    // Uncover the screen before anything else.
+    //
+    // #startup-shell is opaque and sits at z-index 9999, and the only thing
+    // that removes it is StartupShellController — which lives inside the tree
+    // this boundary has just replaced, so on a crash during startup it can
+    // never run. The fallback below was being painted underneath the splash,
+    // which is why a crash in that window has always presented as a frozen
+    // spinner with no error and no reload button. Crashes after startup were
+    // unaffected: teardownStartupShell ends in .remove(), so by then there is
+    // nothing left to hide. Idempotent, hence unconditional here.
+    teardownStartupShell();
+
     log.error('[ErrorBoundary] caught error', {
       error,
       componentStack: info.componentStack,
